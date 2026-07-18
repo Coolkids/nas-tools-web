@@ -708,7 +708,7 @@ async function deleteSelectedHardlinks() {
             <el-form-item label="季">
               <el-select v-model="transferSeason" style="width: 100%" :disabled="transferType === 'MOV'">
                 <el-option label="请选择" value="" />
-                <el-option v-for="s in 20" :key="s" :label="'第' + s + '季'" :value="String(s)" />
+                <el-option v-for="s in Array.from({ length: 51 }, (_, i) => i)" :key="s" :label="'第' + s + '季'" :value="String(s)" />
               </el-select>
             </el-form-item>
           </el-col>
