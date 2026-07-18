@@ -19,7 +19,7 @@ import {
 import { doAction } from '@/api'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
-import { nameTest, type NameTestData } from '@/api/system'
+import { nameTest, refreshProcess, type NameTestData } from '@/api/system'
 
 interface FileItem {
   path: string
@@ -264,6 +264,37 @@ const transferEpDetails = ref('')
 const transferEpOffset = ref('')
 const transferLoading = ref(false)
 
+// 转移进度遮罩层
+const progressVisible = ref(false)
+const progressValue = ref(0)
+const progressText = ref('请稍候...')
+const progressTitle = ref('')
+let progressTimer: ReturnType<typeof setTimeout> | null = null
+
+function startProgressPolling(type: string) {
+  stopProgressPolling()
+  async function poll() {
+    try {
+      const res = await refreshProcess(type)
+      if (res.code === 0 && res.value <= 100) {
+        progressValue.value = res.value
+        progressText.value = res.text
+      }
+    } catch {
+      // 忽略轮询错误
+    }
+    progressTimer = setTimeout(poll, 200)
+  }
+  poll()
+}
+
+function stopProgressPolling() {
+  if (progressTimer) {
+    clearTimeout(progressTimer)
+    progressTimer = null
+  }
+}
+
 function openTransfer(f: FileItem) {
   transferPath.value = f.path
   transferOutPath.value = ''
@@ -298,32 +329,46 @@ async function doTransfer() {
   if (transferEpDetails.value && !/^\d{1,5}([,-]\d{1,5})?$/.test(transferEpDetails.value)) return modal.warning('起始集/终止集格式错误')
   if (transferEpOffset.value && !/^-?\d{1,5}$/.test(transferEpOffset.value)) return modal.warning('集数偏移格式错误')
   if ((transferEpDetails.value || transferEpOffset.value) && !transferEpFormat.value) return modal.warning('集数定位必须填写{ep}格式')
-  transferLoading.value = true
+  const params: Record<string, string> = {
+    inpath: transferPath.value,
+    syncmod: transferSyncmod.value,
+    type: transferType.value
+  }
+  if (transferOutPath.value) params.outpath = transferOutPath.value
+  if (transferTmdb.value) params.tmdb = transferTmdb.value
+  if (transferSeason.value) params.season = transferSeason.value
+  if (transferMinFilesize.value) params.min_filesize = transferMinFilesize.value
+  if (transferEpFormat.value) params.episode_format = transferEpFormat.value
+  if (transferEpDetails.value) params.episode_details = transferEpDetails.value
+  if (transferEpOffset.value) params.episode_offset = transferEpOffset.value
+  transferVisible.value = false
+  progressTitle.value = '手动转移 ' + transferPath.value
+  progressValue.value = 0
+  progressText.value = '请稍候...'
+  progressVisible.value = true
+  startProgressPolling('filetransfer')
   try {
-    const params: Record<string, string> = {
-      inpath: transferPath.value,
-      syncmod: transferSyncmod.value,
-      type: transferType.value
-    }
-    if (transferOutPath.value) params.outpath = transferOutPath.value
-    if (transferTmdb.value) params.tmdb = transferTmdb.value
-    if (transferSeason.value) params.season = transferSeason.value
-    if (transferMinFilesize.value) params.min_filesize = transferMinFilesize.value
-    if (transferEpFormat.value) params.episode_format = transferEpFormat.value
-    if (transferEpDetails.value) params.episode_details = transferEpDetails.value
-    if (transferEpOffset.value) params.episode_offset = transferEpOffset.value
     const res = await doAction<{ retcode: number; retmsg: string }>('rename_udf', params)
+    stopProgressPolling()
     if (res.retcode === 0) {
-      modal.success('转移成功')
-      transferVisible.value = false
-      load()
+      progressValue.value = 100
+      progressText.value = '转移成功！'
+      setTimeout(() => {
+        progressVisible.value = false
+        modal.success('转移成功')
+        load()
+      }, 1000)
     } else {
-      modal.error(res.retmsg || '转移失败')
+      progressText.value = res.retmsg || '转移失败'
+      setTimeout(() => {
+        progressVisible.value = false
+        modal.error(res.retmsg || '转移失败')
+      }, 1000)
     }
   } catch (e) {
+    stopProgressPolling()
+    progressVisible.value = false
     modal.error(e instanceof Error ? e.message : '转移失败')
-  } finally {
-    transferLoading.value = false
   }
 }
 
@@ -762,6 +807,15 @@ async function deleteSelectedHardlinks() {
         <el-button @click="transferVisible = false">取消</el-button>
         <el-button type="primary" :loading="transferLoading" @click="doTransfer">转移</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 转移进度弹窗 -->
+    <el-dialog v-model="progressVisible" width="420px" :close-on-click-modal="false" :show-close="false" top="25vh" destroy-on-close>
+      <div style="text-align:center;">
+        <div style="margin-bottom:16px; font-weight:600;">{{ progressTitle }}</div>
+        <el-progress :percentage="progressValue" :stroke-width="20" :text-inside="true" />
+        <div style="margin-top:12px; color:var(--el-text-color-secondary); font-size:13px;">{{ progressText }}</div>
+      </div>
     </el-dialog>
 
     <!-- TMDB查询弹窗 -->
