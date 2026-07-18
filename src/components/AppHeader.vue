@@ -5,10 +5,15 @@ import { logout } from '@/api/auth'
 import { doAction } from '@/api'
 import { useModalStore } from '@/stores/modal'
 import AppSearchbar from '@/components/AppSearchbar.vue'
+import MessageCenter from '@/components/MessageCenter.vue'
+import RealTimeLogs from '@/components/RealTimeLogs.vue'
 
 const appVersion = ref('')
 const router = useRouter()
 const modal = useModalStore()
+
+const messageCenterVisible = ref(false)
+const realTimeLogsVisible = ref(false)
 
 onMounted(async () => {
   try {
@@ -54,13 +59,17 @@ function goHome() {
       </span>
       <template #dropdown>
         <el-dropdown-menu>
-          <el-dropdown-item @click="router.push('/users')">用户管理</el-dropdown-item>
+          <el-dropdown-item @click="messageCenterVisible = true">消息中心</el-dropdown-item>
+          <el-dropdown-item @click="realTimeLogsVisible = true">实时日志</el-dropdown-item>
+          <el-dropdown-item divided @click="router.push('/users')">用户管理</el-dropdown-item>
           <el-dropdown-item @click="router.push('/basic')">系统设置</el-dropdown-item>
           <el-dropdown-item divided disabled class="version-item">{{ appVersion }}</el-dropdown-item>
           <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>
+    <MessageCenter v-model:visible="messageCenterVisible" />
+    <RealTimeLogs v-model:visible="realTimeLogsVisible" />
   </div>
 </template>
 

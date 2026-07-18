@@ -135,6 +135,31 @@ export function netTest(url: string): Promise<NetTestResult> {
     .then((r) => r.data)
 }
 
+export interface RefreshMessageResult {
+  code: number
+  message: string[]
+  lst_time: string
+}
+
+export function refreshMessage(lstTime: string): Promise<RefreshMessageResult> {
+  return doAction<RefreshMessageResult>('refresh_message', { lst_time: lstTime })
+}
+
+export interface LogEntry {
+  time: string
+  level: string
+  source: string
+  text: string
+}
+
+export interface LoggingResult {
+  loglist: LogEntry[]
+}
+
+export function getLogging(refreshNew: number, source: string): Promise<LoggingResult> {
+  return doAction<LoggingResult>('logging', { refresh_new: refreshNew, source })
+}
+
 export const NETTEST_TARGETS: string[] = [
   'www.themoviedb.org',
   'api.themoviedb.org',
