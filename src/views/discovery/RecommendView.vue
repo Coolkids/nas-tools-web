@@ -32,66 +32,132 @@ const ROUTE_TYPE_MAP: Record<string, TypeConfig> = {
   downloaded: { type: 'DOWNLOADED', title: '最近下载' }
 }
 
-const DOUBAN_FILTERS: Record<string, FilterField> = {
-  tag: {
-    name: '标签',
-    options: [
-      { label: '热门', value: '热门' },
-      { label: '最新', value: '最新' },
-      { label: '经典', value: '经典' },
-      { label: '冷门', value: '冷门' }
-    ]
-  },
+const DOUBAN_MOVIE_FILTERS: Record<string, FilterField> = {
   sort: {
     name: '排序',
     options: [
-      { label: '综合排序', value: 'rank' },
-      { label: '评分排序', value: 'rating' },
-      { label: '时间排序', value: 'time' }
+      { label: '默认', value: '' },
+      { label: '综合排序', value: 'U' },
+      { label: '首播时间', value: 'T' },
+      { label: '高分优先', value: 'S' },
+      { label: '近期热度', value: 'R' }
+    ]
+  },
+  tags: {
+    name: '类型',
+    options: [
+      { label: '全部', value: '' },
+      { label: '喜剧', value: '喜剧' },
+      { label: '爱情', value: '爱情' },
+      { label: '动作', value: '动作' },
+      { label: '科幻', value: '科幻' },
+      { label: '动画', value: '动画' },
+      { label: '悬疑', value: '悬疑' },
+      { label: '犯罪', value: '犯罪' },
+      { label: '惊悚', value: '惊悚' },
+      { label: '冒险', value: '冒险' },
+      { label: '奇幻', value: '奇幻' },
+      { label: '恐怖', value: '恐怖' },
+      { label: '战争', value: '战争' },
+      { label: '武侠', value: '武侠' },
+      { label: '灾难', value: '灾难' }
     ]
   }
 }
 
-const TMDB_FILTERS: Record<string, FilterField> = {
+const DOUBAN_TV_FILTERS: Record<string, FilterField> = {
+  sort: {
+    name: '排序',
+    options: [
+      { label: '默认', value: '' },
+      { label: '综合排序', value: 'U' },
+      { label: '首播时间', value: 'T' },
+      { label: '高分优先', value: 'S' },
+      { label: '近期热度', value: 'R' }
+    ]
+  },
+  tags: {
+    name: '地区',
+    options: [
+      { label: '全部', value: '' },
+      { label: '华语', value: '华语' },
+      { label: '中国大陆', value: '中国大陆' },
+      { label: '中国香港', value: '中国香港' },
+      { label: '中国台湾', value: '中国台湾' },
+      { label: '欧美', value: '欧美' },
+      { label: '韩国', value: '韩国' },
+      { label: '日本', value: '日本' },
+      { label: '印度', value: '印度' },
+      { label: '泰国', value: '泰国' }
+    ]
+  }
+}
+
+const TMDB_MOVIE_FILTERS: Record<string, FilterField> = {
   with_genres: {
     name: '类型',
     options: [
       { label: '全部', value: '' },
-      { label: '动作', value: '28' },
       { label: '冒险', value: '12' },
       { label: '动画', value: '16' },
       { label: '喜剧', value: '35' },
       { label: '犯罪', value: '80' },
-      { label: '纪录片', value: '99' },
       { label: '剧情', value: '18' },
-      { label: '家庭', value: '10751' },
       { label: '奇幻', value: '14' },
-      { label: '历史', value: '36' },
       { label: '恐怖', value: '27' },
-      { label: '音乐', value: '10402' },
       { label: '悬疑', value: '9648' },
       { label: '爱情', value: '10749' },
       { label: '科幻', value: '878' },
-      { label: '战争', value: '10752' },
-      { label: '西部', value: '37' }
+      { label: '惊悚', value: '53' },
+      { label: '战争', value: '10752' }
     ]
   },
-  sort_by: {
-    name: '排序',
+  with_original_language: {
+    name: '语言',
     options: [
-      { label: '热门', value: 'popularity.desc' },
-      { label: '评分', value: 'vote_average.desc' },
-      { label: '上映日期', value: 'primary_release_date.desc' }
+      { label: '全部', value: '' },
+      { label: '中文', value: 'zh' },
+      { label: '英语', value: 'en' },
+      { label: '日语', value: 'ja' },
+      { label: '韩语', value: 'ko' },
+      { label: '法语', value: 'fr' },
+      { label: '德语', value: 'de' },
+      { label: '俄语', value: 'ru' },
+      { label: '印地语', value: 'hi' }
+    ]
+  }
+}
+
+const TMDB_TV_FILTERS: Record<string, FilterField> = {
+  with_genres: {
+    name: '类型',
+    options: [
+      { label: '全部', value: '' },
+      { label: '动作冒险', value: '10759' },
+      { label: '动画', value: '16' },
+      { label: '喜剧', value: '35' },
+      { label: '犯罪', value: '80' },
+      { label: '纪录', value: '99' },
+      { label: '剧情', value: '18' },
+      { label: '儿童', value: '10762' },
+      { label: '悬疑', value: '9648' },
+      { label: '真人秀', value: '10764' },
+      { label: '科幻', value: '10765' }
     ]
   },
-  year: {
-    name: '年份',
-    options: (() => {
-      const y = new Date().getFullYear()
-      const opts = [{ label: '全部', value: '' }]
-      for (let i = y; i >= 2000; i--) opts.push({ label: `${i}`, value: `${i}` })
-      return opts
-    })()
+  with_original_language: {
+    name: '语言',
+    options: [
+      { label: '全部', value: '' },
+      { label: '中文', value: 'zh' },
+      { label: '英语', value: 'en' },
+      { label: '日语', value: 'ja' },
+      { label: '韩语', value: 'ko' },
+      { label: '法语', value: 'fr' },
+      { label: '德语', value: 'de' },
+      { label: '俄语', value: 'ru' },
+      { label: '印地语', value: 'hi' }
+    ]
   }
 }
 
@@ -121,8 +187,10 @@ const isFilterable = computed(() => {
 
 const filterFields = computed(() => {
   const name = route.name as string
-  if (name.startsWith('douban')) return DOUBAN_FILTERS
-  if (name.startsWith('tmdb')) return TMDB_FILTERS
+  if (name === 'douban_movie') return DOUBAN_MOVIE_FILTERS
+  if (name === 'douban_tv') return DOUBAN_TV_FILTERS
+  if (name === 'tmdb_movie') return TMDB_MOVIE_FILTERS
+  if (name === 'tmdb_tv') return TMDB_TV_FILTERS
   return {}
 })
 
@@ -259,7 +327,7 @@ watch(
         </el-radio-group>
         <template v-if="isFilterable">
           <el-dropdown v-for="(field, key) in filterFields" :key="key" trigger="click" popper-class="recommend-filter-popper" @command="(v: string) => setFilter(key, v)">
-            <el-button size="small">
+            <el-button>
               {{ currentFilterLabel(key, field) }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
             </el-button>
             <template #dropdown>
