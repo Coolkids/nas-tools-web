@@ -24,6 +24,7 @@ const events = ref<CalendarEvent[]>([])
 const viewMode = ref<'week' | 'month' | 'schedule'>('week')
 
 const dayNames = ['日', '一', '二', '三', '四', '五', '六']
+const dayNamesLong = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
 
 onMounted(load)
 
@@ -146,6 +147,16 @@ const weekLabel = computed(() => {
 
 const totalEvents = computed(() => events.value.length)
 
+const groupedSchedule = computed(() => {
+  const map = new Map<string, CalendarEvent[]>()
+  for (const e of events.value) {
+    const key = (e.start || '').slice(0, 10)
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(e)
+  }
+  return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
+})
+
 function onPrev() {
   const d = new Date(currentDate.value)
   if (viewMode.value === 'week') {
@@ -234,19 +245,9 @@ function onToday() {
                 :key="`${e.id}-${e.start}`"
                 class="event-item"
                 :class="isMovie(e) ? 'movie' : 'tv'"
+                :title="e.title"
               >
-                <div class="event-poster" :style="posterStyle(e)">
-                  <el-icon v-if="!e.poster"><FilmIcon /></el-icon>
-                </div>
-                <div class="event-info">
-                  <div class="event-title" :title="e.title">{{ e.title }}</div>
-                  <div class="event-meta">
-                    <el-tag size="small" :type="isMovie(e) ? 'success' : 'primary'" effect="plain">
-                      {{ e.type }}
-                    </el-tag>
-                    <span v-if="e.vote_average" class="vote">★ {{ e.vote_average }}</span>
-                  </div>
-                </div>
+                {{ e.title }}
               </div>
             </div>
           </div>
@@ -255,12 +256,17 @@ function onToday() {
 
       <div v-else class="schedule-view">
         <div class="schedule-list">
-          <template v-for="ev in events" :key="`${ev.id}-${ev.start}`">
-            <div class="schedule-item" :class="isMovie(ev) ? 'movie' : 'tv'">
-              <div class="schedule-date">
-                <div class="schedule-month">{{ (ev.start || '').slice(5, 7) }}月</div>
-                <div class="schedule-day">{{ (ev.start || '').slice(8, 10) }}</div>
-              </div>
+          <template v-for="[date, dayEvents] in groupedSchedule" :key="date">
+            <div class="schedule-date-header">
+              <span class="schedule-date-label">{{ date }}</span>
+              <span class="schedule-date-weekday">{{ dayNamesLong[new Date(date).getDay()] }}</span>
+            </div>
+            <div
+              v-for="ev in dayEvents"
+              :key="`${ev.id}-${ev.start}`"
+              class="schedule-item"
+              :class="isMovie(ev) ? 'movie' : 'tv'"
+            >
               <div class="schedule-poster" :style="posterStyle(ev)">
                 <el-icon v-if="!ev.poster" :size="20"><FilmIcon /></el-icon>
               </div>
@@ -305,12 +311,12 @@ function onToday() {
 }
 .week-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(130px, 1fr));
   gap: 1px;
   background: var(--el-border-color-light);
   border: 1px solid var(--el-border-color-light);
   border-radius: 6px;
-  overflow: hidden;
+  overflow-x: auto;
 }
 .week-col {
   background: var(--el-bg-color);
@@ -373,6 +379,18 @@ function onToday() {
   color: var(--el-text-color-placeholder);
 }
 
+:deep(.el-calendar-table) {
+  table-layout: fixed;
+}
+:deep(.el-calendar-table tr td) {
+  height: 1px;
+  min-height: 200px;
+  vertical-align: top;
+}
+:deep(.el-calendar-table .el-calendar-day) {
+  min-height: 200px;
+  padding: 4px;
+}
 .calendar-cell {
   height: 100%;
   display: flex;
@@ -391,17 +409,20 @@ function onToday() {
 .event-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   overflow: hidden;
+  margin-top: 2px;
 }
 .event-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 4px;
-  border-left: 3px solid var(--el-color-primary);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-left: 2px solid var(--el-color-primary);
   border-radius: 2px;
   background-color: var(--el-fill-color-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
 }
 .event-item.movie {
   border-left-color: var(--el-color-success);
@@ -409,29 +430,9 @@ function onToday() {
 .event-item.tv {
   border-left-color: var(--el-color-primary);
 }
-.event-poster {
-  width: 28px;
-  height: 36px;
-  flex-shrink: 0;
-  background-size: cover;
-  background-position: center;
-  background-color: var(--el-fill-color-darker);
-  border-radius: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--el-text-color-placeholder);
-}
 .event-info {
   flex: 1;
   min-width: 0;
-}
-.event-title {
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .event-meta {
   display: flex;
@@ -449,6 +450,25 @@ function onToday() {
   flex-direction: column;
   gap: 6px;
   padding: 4px 0;
+}
+.schedule-date-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  border-bottom: 1px solid var(--el-border-color-light);
+  margin-top: 4px;
+}
+.schedule-date-header:first-child {
+  margin-top: 0;
+}
+.schedule-date-weekday {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--el-text-color-secondary);
 }
 .schedule-item {
   display: flex;
