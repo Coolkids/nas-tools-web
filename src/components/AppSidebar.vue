@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import {
+  Aim,
+  Bell, Calendar, ChatDotRound, CircleClose, Clock, Collection,
+  Compass, Connection,
+  Document, Download, EditPen, Files,
+  Film, Filter,
+  Histogram,
+  HomeFilled, List, Loading, Monitor, Postcard, Refresh,
+  Search, Setting, SetUp, Tools, User,
+  VideoCamera,
+  VideoPlay
+} from "@element-plus/icons-vue";
 
 const route = useRoute()
 const activeMenu = computed(() => route.path)
@@ -125,6 +137,10 @@ const activeMenu = computed(() => route.path)
         <el-icon><Setting /></el-icon>
         <span>基础设置</span>
       </el-menu-item>
+      <el-menu-item index="/customwords">
+        <el-icon><EditPen /></el-icon>
+        <span>自定义识别词</span>
+      </el-menu-item>
       <el-menu-item index="/downloader">
         <el-icon><Download /></el-icon>
         <span>下载器</span>
@@ -160,10 +176,6 @@ const activeMenu = computed(() => route.path)
       <el-menu-item index="/douban">
         <el-icon><Connection /></el-icon>
         <span>豆瓣同步</span>
-      </el-menu-item>
-      <el-menu-item index="/customwords">
-        <el-icon><EditPen /></el-icon>
-        <span>自定义识别词</span>
       </el-menu-item>
       <el-menu-item index="/filterrule">
         <el-icon><Filter /></el-icon>
