@@ -60,25 +60,25 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/douban_movie',
     name: 'douban_movie',
-    component: () => import('@/views/discovery/RecommendView.vue'),
+    component: () => import('@/views/discovery/DoubanMovieView.vue'),
     meta: { title: '豆瓣电影' }
   },
   {
     path: '/douban_tv',
     name: 'douban_tv',
-    component: () => import('@/views/discovery/RecommendView.vue'),
+    component: () => import('@/views/discovery/DoubanTvView.vue'),
     meta: { title: '豆瓣剧集' }
   },
   {
     path: '/tmdb_movie',
     name: 'tmdb_movie',
-    component: () => import('@/views/discovery/RecommendView.vue'),
+    component: () => import('@/views/discovery/TmdbMovieView.vue'),
     meta: { title: 'TMDB电影' }
   },
   {
     path: '/tmdb_tv',
     name: 'tmdb_tv',
-    component: () => import('@/views/discovery/RecommendView.vue'),
+    component: () => import('@/views/discovery/TmdbTvView.vue'),
     meta: { title: 'TMDB剧集' }
   },
   {
@@ -90,7 +90,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/downloaded',
     name: 'downloaded',
-    component: () => import('@/views/discovery/RecommendView.vue'),
+    component: () => import('@/views/discovery/DownloadedView.vue'),
     meta: { title: '最近下载' }
   },
 
