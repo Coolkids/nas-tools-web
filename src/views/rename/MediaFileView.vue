@@ -77,7 +77,10 @@ onMounted(async () => {
   try {
     const res = await getConfig()
     if (res.code === 0) {
-      const dirs = (res.config as Record<string, unknown>)?.downloaddir as DownloadDirItem[] | undefined
+      const config = res.config as Record<string, unknown>
+      const mode = (config?.pt as Record<string, unknown>)?.['rmt_mode'] as string | undefined
+      if (mode) defaultTransferMode.value = mode
+      const dirs = config?.downloaddir as DownloadDirItem[] | undefined
       if (dirs && dirs.length > 0 && dirs[0].save_path) {
         load(getParentDir(dirs[0].save_path))
         return
@@ -282,6 +285,7 @@ async function doNameTest(f: FileItem) {
 
 // ---- 转移 ----
 
+const defaultTransferMode = ref('copy')
 const transferVisible = ref(false)
 const transferPath = ref('')
 const transferOutPath = ref('')
@@ -329,7 +333,7 @@ function stopProgressPolling() {
 function openTransfer(f: FileItem) {
   transferPath.value = f.path
   transferOutPath.value = ''
-  transferSyncmod.value = 'copy'
+  transferSyncmod.value = defaultTransferMode.value
   transferType.value = 'MOV'
   transferTmdb.value = ''
   transferSeason.value = ''
@@ -343,7 +347,7 @@ function openTransfer(f: FileItem) {
 function openTransferAll() {
   transferPath.value = currentDir.value
   transferOutPath.value = ''
-  transferSyncmod.value = 'copy'
+  transferSyncmod.value = defaultTransferMode.value
   transferType.value = 'MOV'
   transferTmdb.value = ''
   transferSeason.value = ''

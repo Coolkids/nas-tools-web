@@ -106,6 +106,16 @@ const submitting = ref(false)
 const rssSitesSelected = ref<string[]>([])
 const searchSitesSelected = ref<string[]>([])
 
+const allRssSelected = computed(() => rssSitesSelected.value.length === rssSites.value.length)
+const allSearchSelected = computed(() => searchSitesSelected.value.length === searchSites.value.length)
+
+function toggleRssSites() {
+  rssSitesSelected.value = allRssSelected.value ? [] : rssSites.value.map(s => s.name)
+}
+function toggleSearchSites() {
+  searchSitesSelected.value = allSearchSelected.value ? [] : searchSites.value.map(s => s.name)
+}
+
 const form = reactive({
   id: '' as string | number,
   name: '',
@@ -526,11 +536,11 @@ onMounted(loadOptions)
       destroy-on-close
       top="5vh"
     >
-      <el-form :model="form" label-width="120px" label-position="right">
+      <el-form :model="form" label-width="120px" label-position="left">
         <el-row :gutter="16">
           <el-col :span="8">
             <el-form-item label="名称" required>
-              <el-input v-model="form.name" placeholder="别名" />
+              <el-input v-model="form.name" placeholder="别名" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -542,9 +552,9 @@ onMounted(loadOptions)
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item required>
+            <el-form-item required label-width="auto">
               <template #label>刷新间隔(分钟)<HelpTip text="检查RSS更新的间隔时间" /></template>
-              <el-input v-model="form.interval" placeholder="30" />
+              <el-input v-model="form.interval" placeholder="30" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -552,7 +562,7 @@ onMounted(loadOptions)
           <el-col :span="16">
             <el-form-item required>
               <template #label>地址<HelpTip text="RSS订阅的链接地址" /></template>
-              <el-input v-model="form.address" placeholder="RSS地址" />
+              <el-input v-model="form.address" placeholder="RSS地址" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -573,34 +583,29 @@ onMounted(loadOptions)
 
         <div v-if="form.uses === 'D'">
           <el-row :gutter="16">
-            <el-col :span="8">
-            <el-form-item>
-              <template #label>包含<HelpTip text="RSS报文中title符合包括规则的才会被处理" /></template>
-              <el-input v-model="form.include" placeholder="关键字/正则" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>排除<HelpTip text="RSS报文中title符合排除规则的则不会被处理" /></template>
-              <el-input v-model="form.exclude" placeholder="关键字/正则" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>过滤规则<HelpTip text="只有符合过滤规则的才会被处理" /></template>
-              <el-select v-model="form.rule" style="width: 100%" clearable>
-                <el-option v-for="r in ruleGroups" :key="r.id" :label="r.name" :value="r.id" />
-              </el-select>
+            <el-col :span="12">
+              <el-form-item>
+                <template #label>包含<HelpTip text="RSS报文中title符合包括规则的才会被处理" /></template>
+                <el-input v-model="form.include" placeholder="关键字/正则" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item>
+                <template #label>排除<HelpTip text="RSS报文中title符合排除规则的则不会被处理" /></template>
+                <el-input v-model="form.exclude" placeholder="关键字/正则" style="width: 100%" />
               </el-form-item>
             </el-col>
           </el-row>
           <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="保存路径">
-                <el-input v-model="form.save_path" placeholder="留空自动选择" />
+            <el-col :span="8">
+              <el-form-item>
+                <template #label>过滤规则<HelpTip text="只有符合过滤规则的才会被处理" /></template>
+                <el-select v-model="form.rule" style="width: 100%" clearable>
+                  <el-option v-for="r in ruleGroups" :key="r.id" :label="r.name" :value="r.id" />
+                </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="8">
               <el-form-item label="下载设置">
                 <el-select v-model="form.download_setting" style="width: 100%" clearable>
                   <el-option label="默认" value="" />
@@ -608,7 +613,14 @@ onMounted(loadOptions)
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="8">
+              <el-form-item label="保存路径">
+                <el-input v-model="form.save_path" placeholder="留空自动选择" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="8">
               <el-form-item>
                 <template #label>识别<HelpTip text="RSS报文中title能识别到媒体信息的才会被处理" /></template>
                 <el-select v-model="form.recognization" style="width: 100%">
@@ -622,43 +634,45 @@ onMounted(loadOptions)
 
         <div v-else>
           <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item>
-              <template #label>包含<HelpTip text="RSS报文中title符合包括规则的才会被处理" /></template>
-              <el-input v-model="form.include" placeholder="关键字/正则" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item>
-              <template #label>排除<HelpTip text="RSS报文中title符合排除规则的则不会被处理" /></template>
-              <el-input v-model="form.exclude" placeholder="关键字/正则" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-divider content-position="left">订阅设置 <HelpTip text="订阅设置将在添加电影/电视剧订阅时同步" /></el-divider>
+            <el-col :span="12">
+              <el-form-item>
+                <template #label>包含<HelpTip text="RSS报文中title符合包括规则的才会被处理" /></template>
+                <el-input v-model="form.include" placeholder="关键字/正则" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item>
+                <template #label>排除<HelpTip text="RSS报文中title符合排除规则的则不会被处理" /></template>
+                <el-input v-model="form.exclude" placeholder="关键字/正则" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-divider content-position="left">订阅设置 <HelpTip text="订阅设置将在添加电影/电视剧订阅时同步" /></el-divider>
           <el-row :gutter="16">
-            <el-col :span="6">
+            <el-col :span="12">
               <el-form-item label="质量">
                 <el-select v-model="form.restype" style="width: 100%" clearable>
                   <el-option v-for="r in RESTYPE_OPTIONS" :key="r" :label="r" :value="r" />
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="12">
               <el-form-item label="分辨率">
                 <el-select v-model="form.pix" style="width: 100%" clearable>
                   <el-option v-for="p in PIX_OPTIONS" :key="p" :label="p" :value="p" />
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
               <el-form-item label="制作组">
-                <el-input v-model="form.team" placeholder="支持正则" />
+                <el-input v-model="form.team" placeholder="支持正则" style="width: 100%" />
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="12">
               <el-form-item>
-                <template #label>过滤规则<HelpTip text="质量、分辨率与过滤规则为『与』的关系，过滤规则不选择时将使用站点的过滤规则，站点也未设置过滤规则时将使用默认过滤规则" /></template>
+                <template #label>过滤规则<HelpTip text="质量、分辨率与过滤规则为『与』的关系" /></template>
                 <el-select v-model="form.rule" style="width: 100%" clearable>
                   <el-option label="站点规则" value="" />
                   <el-option v-for="r in ruleGroups" :key="r.id" :label="r.name" :value="r.id" />
@@ -667,7 +681,7 @@ onMounted(loadOptions)
             </el-col>
           </el-row>
           <el-row :gutter="16">
-            <el-col :span="6">
+            <el-col :span="12">
               <el-form-item label="下载设置">
                 <el-select v-model="form.download_setting" style="width: 100%" clearable>
                   <el-option label="站点设置" value="" />
@@ -677,10 +691,12 @@ onMounted(loadOptions)
             </el-col>
             <el-col :span="12">
               <el-form-item label="保存路径">
-                <el-input v-model="form.save_path" placeholder="留空使用默认" />
+                <el-input v-model="form.save_path" placeholder="留空使用默认" style="width: 100%" />
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
               <el-form-item>
                 <template #label>洗版<HelpTip text="开启后RSS不检查媒体库是否已存在，命中即会下载" /></template>
                 <el-select v-model="form.over_edition" style="width: 100%">
@@ -690,29 +706,27 @@ onMounted(loadOptions)
               </el-form-item>
             </el-col>
           </el-row>
-          <el-form-item>
+          <el-form-item v-if="rssSites.length > 0">
             <template #label>
               <span style="display:flex;justify-content:space-between;width:100%;">
                 订阅站点
-                <el-button link size="small" @click="rssSitesSelected = rssSites.map(s => s.name)">全选</el-button>
+                <el-button link size="small" @click="toggleRssSites">{{ allRssSelected ? '全不选' : '全选' }}</el-button>
               </span>
             </template>
             <el-checkbox-group v-model="rssSitesSelected" style="width: 100%">
               <el-checkbox v-for="s in rssSites" :key="s.name" :value="s.name">{{ s.name }}</el-checkbox>
             </el-checkbox-group>
-            <el-empty v-if="rssSites.length === 0" description="暂无订阅站点" :image-size="40" />
           </el-form-item>
-          <el-form-item>
+          <el-form-item v-if="searchSites.length > 0">
             <template #label>
               <span style="display:flex;justify-content:space-between;width:100%;">
                 搜索站点
-                <el-button link size="small" @click="searchSitesSelected = searchSites.map(s => s.name)">全选</el-button>
+                <el-button link size="small" @click="toggleSearchSites">{{ allSearchSelected ? '全不选' : '全选' }}</el-button>
               </span>
             </template>
             <el-checkbox-group v-model="searchSitesSelected" style="width: 100%">
               <el-checkbox v-for="s in searchSites" :key="s.name" :value="s.name">{{ s.name }}</el-checkbox>
             </el-checkbox-group>
-            <el-empty v-if="searchSites.length === 0" description="暂无搜索站点" :image-size="40" />
           </el-form-item>
         </div>
       </el-form>

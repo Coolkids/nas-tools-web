@@ -324,47 +324,49 @@ function fmtSize(size: number) {
       width="820px"
       :close-on-click-modal="false"
     >
-      <el-form label-width="180px">
+      <el-form label-width="160px" label-position="left">
         <el-divider content-position="left">基础设置</el-divider>
         <el-row :gutter="12">
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="名称" required>
-              <el-input v-model="form.name" placeholder="别名" />
+              <el-input v-model="form.name" placeholder="别名" style="width: 100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="动作">
-              <el-select v-model="form.action">
+              <el-select v-model="form.action" style="width: 100%">
                 <el-option v-for="a in ACTION_OPTIONS" :key="a.value" :value="a.value" :label="a.label" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="运行间隔(分钟)" required>
-              <el-input v-model="form.interval" placeholder="分钟" />
-            </el-form-item>
-          </el-col>
         </el-row>
         <el-row :gutter="12">
-          <el-col :span="8">
+          <el-col :span="12">
+            <el-form-item label="运行间隔(分钟)" required>
+              <el-input v-model="form.interval" placeholder="分钟" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
             <el-form-item label="状态">
-              <el-select v-model="form.enabled">
+              <el-select v-model="form.enabled" style="width: 100%">
                 <el-option :value="1" label="启用" />
                 <el-option :value="0" label="停用" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="12">
             <el-form-item label="处理辅种">
-              <el-select v-model="form.samedata">
+              <el-select v-model="form.samedata" style="width: 100%">
                 <el-option :value="0" label="否" />
                 <el-option :value="1" label="是" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="只管理NAStool添加">
-              <el-select v-model="form.onlynastool">
+              <el-select v-model="form.onlynastool" style="width: 100%">
                 <el-option :value="0" label="否" />
                 <el-option :value="1" label="是" />
               </el-select>
@@ -374,43 +376,45 @@ function fmtSize(size: number) {
 
         <el-divider content-position="left">条件设置</el-divider>
         <el-row :gutter="12">
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="分享率">
-              <el-input v-model="form.ratio" placeholder="保留一位小数" />
+              <el-input v-model="form.ratio" placeholder="保留一位小数" style="width: 100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="做种时间(小时)">
-              <el-input v-model="form.seeding_time" placeholder="小时" />
+              <el-input v-model="form.seeding_time" placeholder="小时" style="width: 100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="12">
             <el-form-item label="平均上传速度(KB/s)">
-              <el-input v-model="form.upload_avs" placeholder="KB/s" />
+              <el-input v-model="form.upload_avs" placeholder="KB/s" style="width: 100%" />
             </el-form-item>
           </el-col>
-        </el-row>
-        <el-row :gutter="12">
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="种子大小(GB)">
-              <el-input v-model="form.size" placeholder="如 1-10" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="16">
-            <el-form-item label="标签">
-              <el-input v-model="form.tags" placeholder="多个标签用;分隔" />
+              <el-input v-model="form.size" placeholder="如 1-10" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="标签">
+              <el-input v-model="form.tags" placeholder="多个标签用;分隔" style="width: 100%" />
+            </el-form-item>
+          </el-col>
           <el-col :span="12">
             <el-form-item label="保存路径关键词">
-              <el-input v-model="form.savepath_key" placeholder="支持正则表达式" />
+              <el-input v-model="form.savepath_key" placeholder="支持正则表达式" style="width: 100%" />
             </el-form-item>
           </el-col>
+        </el-row>
+        <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="tracker关键词">
-              <el-input v-model="form.tracker_key" placeholder="支持正则表达式" />
+              <el-input v-model="form.tracker_key" placeholder="支持正则表达式" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -423,7 +427,7 @@ function fmtSize(size: number) {
         </el-form-item>
         <template v-if="form.downloader === 'Qb'">
           <el-row :gutter="12">
-            <el-col :span="14">
+            <el-col :span="12">
               <el-form-item label="种子状态">
                 <el-select
                   v-model="form.qb_state"
@@ -431,21 +435,22 @@ function fmtSize(size: number) {
                   filterable
                   multiple
                   :reserve-keyword="true"
+                  style="width: 100%"
                 >
                   <el-option v-for="s in QB_STATES" :key="s" :value="s" :label="s" />
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="10">
+            <el-col :span="12">
               <el-form-item label="分类">
-                <el-input v-model="form.qb_category" placeholder="多个分类用;分隔" />
+                <el-input v-model="form.qb_category" placeholder="多个分类用;分隔" style="width: 100%" />
               </el-form-item>
             </el-col>
           </el-row>
         </template>
         <template v-else>
           <el-row :gutter="12">
-            <el-col :span="14">
+            <el-col :span="12">
               <el-form-item label="种子状态">
                 <el-select
                   v-model="form.tr_state"
@@ -453,14 +458,15 @@ function fmtSize(size: number) {
                   filterable
                   multiple
                   :reserve-keyword="true"
+                  style="width: 100%"
                 >
                   <el-option v-for="s in TR_STATES" :key="s" :value="s" :label="s" />
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="10">
+            <el-col :span="12">
               <el-form-item label="错误信息关键词">
-                <el-input v-model="form.tr_error_key" placeholder="支持正则表达式" />
+                <el-input v-model="form.tr_error_key" placeholder="支持正则表达式" style="width: 100%" />
               </el-form-item>
             </el-col>
           </el-row>
