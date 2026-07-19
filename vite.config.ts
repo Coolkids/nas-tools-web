@@ -24,7 +24,7 @@ export default defineConfig({
     port: 5173,
     // 开发期把后端接口代理到 Flask，同源请求，cookie 跨端口共享（浏览器 cookie 不区分端口）
     proxy: {
-      '/do': { target: FLASK_TARGET, changeOrigin: true },
+      '/do': { target: FLASK_TARGET, changeOrigin: true, bypass: (req) => { if (req.url?.split('?')[0] !== '/do') return req.url } },
       '/login_json': { target: FLASK_TARGET, changeOrigin: true },
       '/logout_json': { target: FLASK_TARGET, changeOrigin: true },
       '/dirlist': { target: FLASK_TARGET, changeOrigin: true },

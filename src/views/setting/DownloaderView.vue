@@ -172,6 +172,7 @@ async function handleTest() {
 }
 
 function openDir() {
+  syncConfig()
   dirVisible.value = true
 }
 

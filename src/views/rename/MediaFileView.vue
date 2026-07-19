@@ -20,6 +20,7 @@ import { doAction } from '@/api'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
 import { nameTest, refreshProcess, type NameTestData } from '@/api/system'
+import { getConfig } from '@/api/config'
 
 interface FileItem {
   path: string
@@ -53,9 +54,39 @@ const files = ref<FileItem[]>([])
 const treeRef = ref()
 const treeKey = ref(0)
 
-onMounted(() => {
-  const initPath = (route.query.path as string) || ''
-  load(initPath || currentDir.value)
+function getParentDir(p: string): string {
+  const idx = p.lastIndexOf('/')
+  if (idx <= 0) return '/'
+  return p.slice(0, idx)
+}
+
+interface DownloadDirItem {
+  type: string
+  category: string
+  save_path: string
+  container_path: string
+  label: string
+}
+
+onMounted(async () => {
+  const queryPath = route.query.path as string
+  if (queryPath) {
+    load(queryPath)
+    return
+  }
+  try {
+    const res = await getConfig()
+    if (res.code === 0) {
+      const dirs = (res.config as Record<string, unknown>)?.downloaddir as DownloadDirItem[] | undefined
+      if (dirs && dirs.length > 0 && dirs[0].save_path) {
+        load(getParentDir(dirs[0].save_path))
+        return
+      }
+    }
+  } catch {
+    // 忽略
+  }
+  load(currentDir.value)
 })
 
 async function loadTreeChildren(parentPath: string) {

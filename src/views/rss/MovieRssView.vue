@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Refresh, Clock, Film, Plus, MoreFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
+import { doAction } from '@/api'
 import { getMovieRssList, type RssMediaItem } from '@/api/rss'
 import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
 import RssMediaDetailDialog from '@/components/RssMediaDetailDialog.vue'
@@ -19,7 +20,29 @@ const selectedItem = ref<RssMediaItem | null>(null)
 const editRssid = ref<string | number>('')
 const editDialogVisible = ref(false)
 
-onMounted(load)
+const filterRuleMap = ref<Record<string, string>>({})
+
+async function loadFilterRules() {
+  try {
+    const res = await doAction<{ code: number; ruleGroups?: Array<{ id: number | string; name: string }> }>('get_filterrules', {})
+    if (res.code === 0 && res.ruleGroups) {
+      const map: Record<string, string> = {}
+      for (const g of res.ruleGroups) map[String(g.id)] = g.name
+      filterRuleMap.value = map
+    }
+  } catch {
+    // 忽略
+  }
+}
+
+function ruleName(id: string | number): string {
+  return filterRuleMap.value[String(id)] || String(id)
+}
+
+onMounted(() => {
+  loadFilterRules()
+  load()
+})
 
 function addSuccess() {
   modal.success('添加订阅成功')
@@ -57,6 +80,11 @@ function stateMeta(state?: string) {
     default:
       return { label: '完成', type: 'primary' as const }
   }
+}
+
+function epCount(item: RssMediaItem): string | null {
+  if (item.total_ep && item.current_ep) return `${item.current_ep}/${item.total_ep}`
+  return null
 }
 
 function openDetail(item: RssMediaItem) {
@@ -111,53 +139,50 @@ function goHistory() {
       description="当前没有正在订阅的电影。"
     />
 
-    <div v-else v-loading="loading" class="card-grid">
-      <el-card
-        v-for="item in items"
-        :key="item.id"
-        class="rss-card"
-        shadow="hover"
-        :body-style="{ padding: '0' }"
-      >
-        <div class="card-bg">
-          <img :src="item.image" class="bg-image" alt="" />
-          <div class="card-bg-overlay" />
-          <div class="card-top-right" @click.stop="openDetail(item)">
-            <el-icon :size="20" class="more-icon"><MoreFilled /></el-icon>
-          </div>
-          <div class="card-content">
-            <div class="card-top">
-              <el-image :src="item.poster || item.image" fit="cover" class="card-poster">
-                <template #error>
-                  <div class="poster-placeholder-sm">
-                    <el-icon :size="22"><Film /></el-icon>
+      <div v-else v-loading="loading" class="card-grid">
+        <el-card
+          v-for="item in items"
+          :key="item.id"
+          class="rss-card"
+          shadow="hover"
+          :body-style="{ padding: '0' }"
+        >
+          <div class="card-bg">
+            <img :src="item.image" class="bg-image" alt="" />
+            <div class="card-bg-overlay" />
+            <div class="card-top-right" @click.stop="openDetail(item)">
+              <el-icon :size="20" class="more-icon"><MoreFilled /></el-icon>
+            </div>
+            <div class="card-content">
+              <div class="card-top">
+                <el-image :src="item.poster || item.image" fit="cover" class="card-poster">
+                  <template #error>
+                    <div class="poster-placeholder-sm">
+                      <el-icon :size="22"><Film /></el-icon>
+                    </div>
+                  </template>
+                </el-image>
+                <div class="card-info">
+                  <div class="info-row-top">
+                    <span v-if="item.year" class="info-year">{{ item.year }}</span>
+                    <el-tag size="small" :type="stateMeta(item.state).type" effect="dark">
+                      {{ stateMeta(item.state).label }}
+                    </el-tag>
+                    <span v-if="epCount(item)" class="info-ep">{{ epCount(item) }}</span>
+                    <el-tag v-if="item.over_edition" size="small" type="danger" effect="dark">洗版</el-tag>
                   </div>
-                </template>
-              </el-image>
-              <div class="card-info">
-                <div class="info-row-top">
-                  <span v-if="item.year" class="info-year">{{ item.year }}</span>
-                  <el-tag size="small" :type="stateMeta(item.state).type" effect="dark">
-                    {{ stateMeta(item.state).label }}
-                  </el-tag>
-                  <el-tag v-if="item.over_edition" size="small" type="danger" effect="dark">洗版</el-tag>
-                </div>
-                <div class="info-title">
-                  <span class="info-name">{{ item.name }}</span>
+                  <div class="info-title">
+                    <span class="info-name">{{ item.name }}</span>
+                  </div>
+                  <div v-if="item.filter_team" class="info-line info-team" :title="item.filter_team">{{ item.filter_team }}</div>
+                  <div v-if="item.filter_rule" class="info-line info-rule" :title="ruleName(item.filter_rule)">{{ ruleName(item.filter_rule) }}</div>
+                  <div v-if="item.search_sites?.length" class="info-line info-sites" :title="item.search_sites.join(' / ')">{{ item.search_sites.join(' / ') }}</div>
                 </div>
               </div>
             </div>
-            <div class="card-mid">
-              <span v-if="item.filter_team" class="mid-tag">{{ item.filter_team }}</span>
-              <span v-if="item.filter_rule" class="mid-tag">{{ item.filter_rule }}</span>
-            </div>
-            <div v-if="item.search_sites?.length" class="card-sites">
-              <span class="sites-item" v-for="s in item.search_sites" :key="s">{{ s }}</span>
-            </div>
           </div>
-        </div>
-      </el-card>
-    </div>
+        </el-card>
+      </div>
     <AddRssMediaDialog
       v-model="addDialogVisible"
       type="MOV"
@@ -189,7 +214,7 @@ function goHistory() {
 }
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 12px;
 }
 .rss-card {
@@ -202,7 +227,7 @@ function goHistory() {
 }
 .card-bg {
   position: relative;
-  height: 200px;
+  height: 220px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -277,8 +302,9 @@ function goHistory() {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-top: 4px;
+  gap: 3px;
+  padding-top: 2px;
+  overflow: hidden;
 }
 .info-row-top {
   display: flex;
@@ -289,6 +315,15 @@ function goHistory() {
 .info-year {
   font-size: 15px;
   color: rgba(255,255,255,0.8);
+}
+.info-ep {
+  font-size: 13px;
+  color: rgba(255,255,255,0.85);
+  background: rgba(64,158,255,0.3);
+  padding: 0 6px;
+  border-radius: 3px;
+  line-height: 20px;
+  white-space: nowrap;
 }
 .info-title {
   display: flex;
@@ -303,32 +338,21 @@ function goHistory() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.card-mid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-.mid-tag {
-  font-size: 15px;
-  color: rgba(255,255,255,0.85);
-  background: rgba(255,255,255,0.15);
-  padding: 1px 8px;
-  border-radius: 3px;
-  line-height: 20px;
-}
-.card-sites {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
-}
-.sites-item {
+.info-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
-  color: rgba(255,255,255,0.65);
-  background: rgba(255,255,255,0.08);
-  padding: 0 6px;
-  border-radius: 3px;
-  line-height: 18px;
+  line-height: 1.4;
+  padding: 0 2px;
+}
+.info-team {
+  color: rgba(255,255,255,0.85);
+}
+.info-rule {
+  color: rgba(255,255,255,0.7);
+}
+.info-sites {
+  color: rgba(255,255,255,0.5);
 }
 </style>

@@ -229,9 +229,9 @@ function setFilter(key: string, value: string) {
 
 function currentFilterLabel(fieldId: string, field: FilterField): string {
   const v = filterParams.value[fieldId]
-  if (!v) return field.name
+  if (v === undefined || v === null) return field.name
   const opt = field.options.find((o) => o.value === v)
-  return opt ? opt.label : field.name
+  return opt ? opt.label : v
 }
 
 async function loadPage() {
