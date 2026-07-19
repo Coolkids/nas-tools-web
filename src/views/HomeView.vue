@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
-import { Refresh, Film, Monitor, Headset, User, VideoPlay } from '@element-plus/icons-vue'
+import { Refresh, Film, Monitor, Headset, User } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
 import {
@@ -31,36 +31,32 @@ const history = ref<PlayHistoryItem[]>([])
 
 const serverOk = computed(() => mediaCount.value.code === 0)
 
-const totalStat = computed(() => {
-  const sum = (arr: number[]) => arr.reduce((a, b) => a + (b || 0), 0)
-  return {
-    movie: sum(stat.value.MovieNums),
-    tv: sum(stat.value.TvNums),
-    anime: sum(stat.value.AnimeNums)
-  }
+const chartLabels = computed(() => stat.value.TvChartLabels || [])
+const chartMax = computed(() => {
+  const all = [...(stat.value.TvNums || []), ...(stat.value.AnimeNums || [])]
+  return Math.max(1, ...all)
 })
 
-const statMax = computed(() =>
-  Math.max(1, totalStat.value.movie, totalStat.value.tv, totalStat.value.anime)
-)
-
-const statRows = computed(() => {
-  const movieMap = new Map<string, number>()
-  stat.value.MovieChartLabels.forEach((d, i) => movieMap.set(d, stat.value.MovieNums[i] || 0))
-  const tvMap = new Map<string, number>()
-  const animeMap = new Map<string, number>()
-  stat.value.TvChartLabels.forEach((d, i) => {
-    tvMap.set(d, stat.value.TvNums[i] || 0)
-    animeMap.set(d, stat.value.AnimeNums[i] || 0)
-  })
-  const dates = Array.from(new Set([...stat.value.MovieChartLabels, ...stat.value.TvChartLabels]))
-  return dates.map((d) => ({
-    date: d,
-    movie: movieMap.get(d) || 0,
-    tv: tvMap.get(d) || 0,
-    anime: animeMap.get(d) || 0
+function smoothLinePath(data: number[], width: number, height: number): string {
+  if (data.length < 2) return ''
+  const stepX = width / (data.length - 1)
+  const points = data.map((v, i) => ({
+    x: i * stepX,
+    y: height - (v / chartMax.value) * height * 0.9
   }))
-})
+  let path = `M${points[0].x},${points[0].y}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = i > 0 ? points[i - 1] : points[i]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p2.x - p0.x) / 6
+    const cp2y = p2.y - (p2.y - p0.y) / 6
+    path += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`
+  }
+  return path
+}
 
 const usedPercentNum = computed(() => {
   const v = space.value.UsedPercent
@@ -68,10 +64,6 @@ const usedPercentNum = computed(() => {
   const n = typeof v === 'number' ? v : Number.parseFloat(v)
   return Number.isFinite(n) ? n : 0
 })
-
-function pct(v: number): number {
-  return Math.round((v / statMax.value) * 100)
-}
 
 async function load() {
   loading.value = true
@@ -124,7 +116,7 @@ onMounted(load)
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="12" :md="6">
-        <el-card shadow="hover">
+        <el-card shadow="hover" class="tv-card">
           <div class="stat-card">
             <el-icon class="stat-icon" color="var(--el-color-success)"><Monitor /></el-icon>
             <div class="stat-body">
@@ -133,6 +125,10 @@ onMounted(load)
               <div class="stat-sub">集数 {{ mediaCount.Episodes || 0 }}</div>
             </div>
           </div>
+          <svg class="chart-bg" viewBox="0 0 300 80" preserveAspectRatio="none" v-if="chartLabels.length > 1">
+            <path :d="smoothLinePath(stat.TvNums, 300, 80)" fill="none" stroke="var(--el-color-success)" stroke-width="1.5" opacity="0.3" />
+            <path :d="smoothLinePath(stat.AnimeNums, 300, 80)" fill="none" stroke="var(--el-color-warning)" stroke-width="1.5" opacity="0.3" />
+          </svg>
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="12" :md="6">
@@ -176,55 +172,13 @@ onMounted(load)
       />
     </el-card>
 
-    <el-card shadow="never" class="block">
-      <template #header>
-        <span class="block-title">转移统计（近 30 天）</span>
-      </template>
-      <el-row :gutter="16" class="transfer-summary">
-        <el-col :xs="24" :sm="8">
-          <div class="transfer-item">
-            <div class="transfer-name">
-              <el-icon color="var(--el-color-primary)"><Film /></el-icon>
-              <span>电影</span>
-              <span class="transfer-count">{{ totalStat.movie }}</span>
-            </div>
-            <el-progress :percentage="pct(totalStat.movie)" :show-text="false" />
-          </div>
-        </el-col>
-        <el-col :xs="24" :sm="8">
-          <div class="transfer-item">
-            <div class="transfer-name">
-              <el-icon color="var(--el-color-success)"><Monitor /></el-icon>
-              <span>电视剧</span>
-              <span class="transfer-count">{{ totalStat.tv }}</span>
-            </div>
-            <el-progress :percentage="pct(totalStat.tv)" :show-text="false" color="var(--el-color-success)" />
-          </div>
-        </el-col>
-        <el-col :xs="24" :sm="8">
-          <div class="transfer-item">
-            <div class="transfer-name">
-              <el-icon color="var(--el-color-warning)"><VideoPlay /></el-icon>
-              <span>动漫</span>
-              <span class="transfer-count">{{ totalStat.anime }}</span>
-            </div>
-            <el-progress :percentage="pct(totalStat.anime)" :show-text="false" color="var(--el-color-warning)" />
-          </div>
-        </el-col>
-      </el-row>
-      <el-table :data="statRows" size="small" max-height="320" empty-text="暂无转移数据" style="margin-top: 12px">
-        <el-table-column prop="date" label="日期" min-width="120" />
-        <el-table-column prop="movie" label="电影" width="90" align="center" />
-        <el-table-column prop="tv" label="电视剧" width="90" align="center" />
-        <el-table-column prop="anime" label="动漫" width="90" align="center" />
-      </el-table>
-    </el-card>
+
 
     <el-card shadow="never" class="block">
       <template #header>
         <span class="block-title">播放历史</span>
       </template>
-      <el-table :data="history" size="small" empty-text="暂无播放记录">
+      <el-table :data="history" size="small" empty-text="暂无播放记录" max-height="360">
         <el-table-column label="事件" min-width="320">
           <template #default="{ row }">
             <div class="history-row">
@@ -326,5 +280,17 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tv-card {
+  position: relative;
+  overflow: hidden;
+}
+.chart-bg {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  width: 100%;
+  height: 80px;
+  pointer-events: none;
 }
 </style>
