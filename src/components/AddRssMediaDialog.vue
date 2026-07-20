@@ -290,93 +290,95 @@ async function submit(keepOpen = false) {
   <el-dialog
     v-model="visible"
     :title="props.rssid ? '编辑订阅' : '新增订阅'"
-    width="820px"
+    width="min(94vw, clamp(880px, 46vw, 1024px))"
     :close-on-click-modal="false"
     destroy-on-close
     append-to-body
     top="4vh"
+    class="rss-media-dialog"
   >
     <el-form :model="form" label-width="120px" label-position="right">
-      <el-row :gutter="16">
-        <el-col :span="9">
+      <div class="form-section">
+        <div class="section-head">
+          <span class="section-title">基本信息</span>
+          <span class="section-line"></span>
+        </div>
+        <div class="form-grid row-basic">
           <el-form-item label="标题" required>
             <el-input v-model="form.name" placeholder="标题" />
           </el-form-item>
-        </el-col>
-        <el-col :span="6">
           <el-form-item label="年份">
             <el-input v-model="form.year" placeholder="年份" />
           </el-form-item>
-        </el-col>
-        <el-col :span="9">
-          <el-form-item label="自定义搜索词">
+          <el-form-item label="自定义搜索词" class="f-keyword">
             <el-input v-model="form.keyword" placeholder="留空使用TMDB数据" />
           </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-row v-if="type === 'TV'" :gutter="16">
-        <el-col :span="8">
+        </div>
+        <div v-if="type === 'TV'" class="form-grid row-tv">
           <el-form-item label="季" required>
             <el-select v-model="form.season" placeholder="请选择" style="width: 100%">
               <el-option label="请选择" value="" />
               <el-option v-for="s in SEASON_OPTIONS" :key="s.value" :label="s.label" :value="s.value" />
             </el-select>
           </el-form-item>
-        </el-col>
-        <el-col :span="8">
           <el-form-item>
             <template #label>总集数<HelpTip text="可留空应用TMDB剧集信息" /></template>
             <el-input v-model="form.total_ep" placeholder="总集数" />
           </el-form-item>
-        </el-col>
-        <el-col :span="8">
-          <el-form-item label="开始订阅集数">
+          <el-form-item label="开始订阅集数" class="f-current">
             <el-input v-model="form.current_ep" placeholder="开始订阅集数" />
           </el-form-item>
-        </el-col>
-      </el-row>
+        </div>
+      </div>
 
-      <el-row :gutter="16">
-        <el-col :span="6">
-          <el-form-item>
-            <template #label>模糊匹配<HelpTip text="开启后不检查TMDB是否有媒体信息，只要种子名称、标题、年份任一匹配关键字即会下载，此时标题可以配置正则表达式实现模糊匹配" /></template>
-            <el-switch v-model="form.fuzzy_match" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="6">
-          <el-form-item>
-            <template #label>洗版<HelpTip text="开启洗版后不会检查本地是否已存在，满足订阅条件即会下载；除非匹配了对应的过滤规则中最高优先级的那条规则否则不会删除订阅（未明确过滤规则时使用默认规则），同一优先级的资源只下载一次；多个资源下载后如命名一致，则只会保留文件体积较大的，如需都保留则需要在文件重命名规则中增加相关要素以做区分" /></template>
-            <el-switch v-model="form.over_edition" />
-          </el-form-item>
-        </el-col>
-      </el-row>
+      <div class="form-section">
+        <div class="section-head">
+          <span class="section-title">订阅选项</span>
+          <span class="section-line"></span>
+        </div>
+        <div class="option-cards">
+          <div
+            class="option-card"
+            :class="{ 'is-active': form.fuzzy_match }"
+            @click="form.fuzzy_match = !form.fuzzy_match"
+          >
+            <span class="option-card__label">模糊匹配<HelpTip text="开启后不检查TMDB是否有媒体信息，只要种子名称、标题、年份任一匹配关键字即会下载，此时标题可以配置正则表达式实现模糊匹配" /></span>
+            <el-switch v-model="form.fuzzy_match" @click.stop />
+          </div>
+          <div
+            class="option-card"
+            :class="{ 'is-active': form.over_edition }"
+            @click="form.over_edition = !form.over_edition"
+          >
+            <span class="option-card__label">洗版<HelpTip text="开启洗版后不会检查本地是否已存在，满足订阅条件即会下载；除非匹配了对应的过滤规则中最高优先级的那条规则否则不会删除订阅（未明确过滤规则时使用默认规则），同一优先级的资源只下载一次；多个资源下载后如命名一致，则只会保留文件体积较大的，如需都保留则需要在文件重命名规则中增加相关要素以做区分" /></span>
+            <el-switch v-model="form.over_edition" @click.stop />
+          </div>
+        </div>
+      </div>
 
-      <el-row :gutter="16">
-        <el-col :span="8">
+      <div class="form-section">
+        <div class="section-head">
+          <span class="section-title">过滤与下载</span>
+          <span class="section-line"></span>
+        </div>
+        <div class="form-grid row-filter">
           <el-form-item label="质量">
             <el-select v-model="form.filter_restype" style="width: 100%" clearable>
               <el-option label="全部" value="" />
               <el-option v-for="r in RESTYPE_OPTIONS" :key="r" :label="r" :value="r" />
             </el-select>
           </el-form-item>
-        </el-col>
-        <el-col :span="8">
           <el-form-item label="分辨率">
             <el-select v-model="form.filter_pix" style="width: 100%" clearable>
               <el-option label="全部" value="" />
               <el-option v-for="p in PIX_OPTIONS" :key="p" :label="p" :value="p" />
             </el-select>
           </el-form-item>
-        </el-col>
-        <el-col :span="8">
-          <el-form-item label="制作组/字幕组">
+          <el-form-item label="制作组/字幕组" class="f-team">
             <el-input v-model="form.filter_team" placeholder="支持正则表达式" />
           </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row :gutter="16">
-        <el-col :span="12">
+        </div>
+        <div class="form-grid row-dl">
           <el-form-item>
             <template #label>过滤规则<HelpTip text="质量、分辨率与过滤规则为“与”的关系，过滤规则不选择时将使用站点的过滤规则，站点也未设置过滤规则时将使用默认过滤规则" /></template>
             <el-select v-model="form.filter_rule" style="width: 100%" clearable>
@@ -384,26 +386,22 @@ async function submit(keepOpen = false) {
               <el-option v-for="r in ruleGroups" :key="r.id" :label="r.name" :value="r.id" />
             </el-select>
           </el-form-item>
-        </el-col>
-        <el-col :span="12">
           <el-form-item label="下载设置">
             <el-select v-model="form.download_setting" style="width: 100%" clearable @change="onDownloadSettingChange">
               <el-option label="站点设置" value="" />
               <el-option v-for="d in downloadSettings" :key="d.id" :label="d.name" :value="d.id" />
             </el-select>
           </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row :gutter="16">
-        <el-col :span="24">
+        </div>
+        <div class="form-grid row-full">
           <el-form-item label="保存路径">
             <el-select v-model="form.save_path" style="width: 100%" clearable>
               <el-option label="自动" value="" />
               <el-option v-for="p in savePaths" :key="p" :label="p" :value="p" />
             </el-select>
           </el-form-item>
-        </el-col>
-      </el-row>
+        </div>
+      </div>
 
       <el-form-item v-if="false">
         <template #label>
@@ -418,23 +416,25 @@ async function submit(keepOpen = false) {
         <el-empty v-if="rssSites.length === 0" description="暂无订阅站点" :image-size="40" />
       </el-form-item>
 
-      <el-form-item v-if="!form.fuzzy_match" label-position="top">
-        <template #label>
-          <span style="display:flex;justify-content:space-between;width:100%;">
-            搜索站点
-            <span style="white-space:nowrap;margin-left: 10px">
-              <el-button link size="small" @click="toggleAllSearchSites">{{ searchToggleLabel }}</el-button>
-              <el-button link size="small" @click="invertSearchSites" style="margin-left:8px">反选</el-button>
-            </span>
+      <div v-if="!form.fuzzy_match" class="form-section">
+        <div class="section-head">
+          <span class="section-title">搜索站点</span>
+          <span class="section-line"></span>
+          <span class="section-actions">
+            <el-button link type="primary" size="small" @click="toggleAllSearchSites">{{ searchToggleLabel }}</el-button>
+            <el-button link type="primary" size="small" @click="invertSearchSites">反选</el-button>
           </span>
-        </template>
-        <el-checkbox-group v-model="searchSitesSelected" style="width: 100%">
-          <el-checkbox-button v-for="s in searchSites" :key="s.name" :value="s.name" class="rounded-checkbox">{{ s.name }}</el-checkbox-button>
-        </el-checkbox-group>
-        <el-empty v-if="searchSites.length === 0" description="暂无搜索站点" :image-size="40" />
-      </el-form-item>
+        </div>
+        <div class="sites-box">
+          <el-checkbox-group v-model="searchSitesSelected" style="width: 100%">
+            <el-checkbox-button v-for="s in searchSites" :key="s.name" :value="s.name" class="rounded-checkbox">{{ s.name }}</el-checkbox-button>
+          </el-checkbox-group>
+          <el-empty v-if="searchSites.length === 0" description="暂无搜索站点" :image-size="40" />
+        </div>
+      </div>
     </el-form>
     <template #footer>
+      <el-button @click="visible = false">取消</el-button>
       <el-button v-if="!props.rssid" @click="submit(true)">添加并继续</el-button>
       <el-button type="primary" :loading="submitting" @click="submit(false)">{{ props.rssid ? '确定' : '添加' }}</el-button>
     </template>
@@ -442,22 +442,212 @@ async function submit(keepOpen = false) {
 </template>
 
 <style>
-.rounded-checkbox {
-  border-radius: 6px !important;
-  margin: 2px !important;
-}
-.rounded-checkbox .el-checkbox-button__inner {
-  border-radius: 6px !important;
-  border: 1px solid var(--el-border-color) !important;
-}
-.rounded-checkbox.is-checked .el-checkbox-button__inner {
-  border-color: var(--el-color-primary) !important;
-  background-color: var(--el-color-primary) !important;
-  color: #fff !important;
-}
+/* 全局复用：其他页面也依赖此布局（勿移除） */
 .el-checkbox-group {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/* ===== 弹窗整体 ===== */
+.rss-media-dialog {
+  border-radius: 10px;
+  overflow: hidden;
+}
+.rss-media-dialog .el-dialog__header {
+  padding: 16px 24px;
+  margin-right: 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.rss-media-dialog .el-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.rss-media-dialog .el-dialog__body {
+  padding: 20px 24px 12px;
+  max-height: calc(92vh - 120px);
+  overflow-y: auto;
+}
+.rss-media-dialog .el-dialog__footer {
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+/* ===== 分区标题 ===== */
+.rss-media-dialog .section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 14px;
+}
+.rss-media-dialog .section-title {
+  position: relative;
+  padding-left: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+}
+.rss-media-dialog .section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--el-color-primary);
+}
+.rss-media-dialog .section-line {
+  flex: 1;
+  height: 1px;
+  background: var(--el-border-color-lighter);
+}
+.rss-media-dialog .section-actions {
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* ===== 表单栅格 ===== */
+.rss-media-dialog .form-grid {
+  display: grid;
+  column-gap: 16px;
+}
+.rss-media-dialog .row-basic {
+  grid-template-columns: 9fr 6fr 9fr;
+}
+.rss-media-dialog .row-tv,
+.rss-media-dialog .row-filter {
+  grid-template-columns: repeat(3, 1fr);
+}
+.rss-media-dialog .row-dl {
+  grid-template-columns: repeat(2, 1fr);
+}
+.rss-media-dialog .row-full {
+  grid-template-columns: 1fr;
+}
+
+/* ===== 开关选项卡片 ===== */
+.rss-media-dialog .option-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.rss-media-dialog .option-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.rss-media-dialog .option-card:hover {
+  border-color: var(--el-color-primary-light-5);
+}
+.rss-media-dialog .option-card.is-active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+.rss-media-dialog .option-card__label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+
+/* ===== 站点选择 ===== */
+.rss-media-dialog .sites-box {
+  max-height: 172px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
+.rss-media-dialog .sites-box::-webkit-scrollbar {
+  width: 6px;
+}
+.rss-media-dialog .sites-box::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--el-border-color);
+}
+.rss-media-dialog .sites-box::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rss-media-dialog .sites-box .el-checkbox-group {
+  gap: 6px;
+}
+.rss-media-dialog .rounded-checkbox {
+  border-radius: 6px !important;
+  margin: 0 !important;
+}
+.rss-media-dialog .rounded-checkbox .el-checkbox-button__inner {
+  border-radius: 6px !important;
+  border: 1px solid var(--el-border-color) !important;
+}
+.rss-media-dialog .rounded-checkbox.is-checked .el-checkbox-button__inner {
+  border-color: var(--el-color-primary) !important;
+  background-color: var(--el-color-primary) !important;
+  color: #fff !important;
+}
+
+/* ===== 分辨率适配：窗口变窄时（弹窗宽度 = 94vw） ===== */
+@media (max-width: 936px) {
+  .rss-media-dialog .el-dialog__body {
+    padding: 16px 18px 8px;
+  }
+  .rss-media-dialog .row-basic {
+    grid-template-columns: 7fr 5fr;
+  }
+  .rss-media-dialog .row-basic .f-keyword {
+    grid-column: 1 / -1;
+  }
+  .rss-media-dialog .row-tv,
+  .rss-media-dialog .row-filter {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .rss-media-dialog .row-tv .f-current,
+  .rss-media-dialog .row-filter .f-team {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 680px) {
+  .rss-media-dialog .form-grid,
+  .rss-media-dialog .option-cards {
+    grid-template-columns: 1fr !important;
+  }
+  .rss-media-dialog .form-grid > * {
+    grid-column: 1 / -1 !important;
+  }
+  .rss-media-dialog .el-form-item__label {
+    width: 96px !important;
+  }
+}
+
+/* ===== 高度适配：矮屏（如 1366x768）压缩间距 ===== */
+@media (max-height: 820px) {
+  .rss-media-dialog .el-dialog__body {
+    padding-top: 14px;
+  }
+  .rss-media-dialog .section-head {
+    margin-bottom: 10px;
+  }
+  .rss-media-dialog .el-form-item {
+    margin-bottom: 14px;
+  }
+  .rss-media-dialog .option-cards {
+    margin-bottom: 14px;
+  }
+  .rss-media-dialog .sites-box {
+    max-height: 128px;
+  }
 }
 </style>
