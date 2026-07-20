@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { Search, Loading, Download, Link, Refresh, Plus, Delete } from '@element-plus/icons-vue'
+import {Search, Loading, Refresh, Plus, Delete, Link} from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import AddDownloadDialog from '@/components/AddDownloadDialog.vue'
 import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
@@ -24,6 +24,22 @@ const tmdbInfo = ref<TaskTmdbInfo | null>(null)
 const siteFilter = ref<string[]>([])
 const nameFilter = ref('')
 
+const showResultsDialog = ref(false)
+const vxeTableRef = ref()
+const tableHeight = ref(400)
+
+function recalcTable() {
+  nextTick(() => {
+    const rightPanel = document.querySelector('.result-dialog .right-panel') as HTMLElement | null
+    if (!rightPanel) return
+    const filterBar = rightPanel.querySelector('.filter-bar') as HTMLElement | null
+    let used = 0
+    if (filterBar) used += filterBar.offsetHeight + 12
+    tableHeight.value = Math.max(500, rightPanel.clientHeight - used - 8)
+    vxeTableRef.value?.recalculate()
+  })
+}
+
 let taskPollTimer: ReturnType<typeof setInterval> | null = null
 
 const uniqueSites = computed(() => {
@@ -43,7 +59,7 @@ const filteredResults = computed(() => {
   return results
 })
 
-function statusTag(status: string): { type: string; text: string } {
+function statusTag(status: string): { type: 'success' | 'warning' | 'info' | 'danger'; text: string } {
   switch (status) {
     case 'running': return { type: 'warning', text: '运行中' }
     case 'queued': return { type: 'info', text: '排队中' }
@@ -109,6 +125,7 @@ async function deleteTask(task: SearchTaskItem) {
 
 async function selectTask(task: SearchTaskItem) {
   selectedTask.value = task
+  showResultsDialog.value = true
   siteFilter.value = []
   nameFilter.value = ''
   if (task.status === 'success' || task.status === 'failed') {
@@ -132,6 +149,7 @@ async function loadTaskResult(kw: string) {
     // ignore
   }
   loadingResults.value = false
+  recalcTable()
 }
 
 function startTaskPoll() {
@@ -153,13 +171,13 @@ function selectRunningTask(task: SearchTaskItem) {
   startTaskPoll()
 }
 
-function freeText(t: SearchTaskResultItem): { text: string; type: string } | null {
+function freeText(t: SearchTaskResultItem): { text: string; type: 'success' | 'info' } | null {
   if (t.download_volume_factor === 0) return { text: 'FREE', type: 'success' }
   if (t.download_volume_factor !== 1) return { text: `${Math.round(t.download_volume_factor * 100)}%DL`, type: 'info' }
   return null
 }
 
-function uploadText(t: SearchTaskResultItem): { text: string; type: string } | null {
+function uploadText(t: SearchTaskResultItem): { text: string; type: 'warning' | 'info' } | null {
   if (t.upload_volume_factor !== 1) return { text: `${Math.round(t.upload_volume_factor * 100)}%UL`, type: 'warning' }
   return null
 }
@@ -351,7 +369,7 @@ onBeforeUnmount(stopTaskPoll)
       </template>
     </PageHeader>
 
-    <el-table :data="tasks" stripe size="small" @row-click="selectTask" highlight-current-row>
+    <el-table :data="tasks" stripe size="small" @row-click="selectTask" highlight-current-row max-height="200" class="tasks-table">
       <el-table-column label="搜索关键词" min-width="200">
         <template #default="{ row }">
           <span class="keyword-cell">{{ row.keyword }}</span>
@@ -387,88 +405,91 @@ onBeforeUnmount(stopTaskPoll)
       </el-table-column>
     </el-table>
 
-    <div v-if="selectedTask" class="result-section">
-      <div class="result-header">
-        <h3>搜索结果：{{ selectedTask.keyword }}</h3>
-        <el-tag :type="statusTag(selectedTask.status).type" size="small">
-          {{ statusTag(selectedTask.status).text }}
-        </el-tag>
-      </div>
-
-      <div v-if="tmdbInfo" class="tmdb-card">
-        <img v-if="tmdbInfo.poster" :src="tmdbInfo.poster" class="tmdb-poster" alt="poster">
-        <div class="tmdb-meta">
-          <div class="tmdb-title">{{ tmdbInfo.title }}<span v-if="tmdbInfo.year" class="tmdb-year"> ({{ tmdbInfo.year }})</span></div>
-          <div v-if="tmdbInfo.overview" class="tmdb-overview">{{ tmdbInfo.overview }}</div>
-        </div>
-      </div>
-
-      <div v-if="loadingResults" class="loading-tip">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <span>加载中...</span>
-      </div>
-
-      <template v-else-if="taskResults.length > 0">
-        <div class="filter-bar">
-          <el-select v-model="siteFilter" multiple placeholder="站点筛选" clearable collapse-tags style="width: 200px">
-            <el-option v-for="s in uniqueSites" :key="s" :label="s" :value="s" />
-          </el-select>
-          <el-input v-model="nameFilter" placeholder="名称过滤..." clearable style="width: 240px" />
-          <span class="filter-count">共 {{ filteredResults.length }} 条结果</span>
+    <el-dialog
+      v-model="showResultsDialog"
+      :title="selectedTask ? `搜索结果：${selectedTask.keyword}` : '搜索结果'"
+      width="90%"
+      top="3vh"
+      class="result-dialog"
+      destroy-on-close
+      :close-on-click-modal="false"
+      @opened="recalcTable"
+    >
+      <div class="dialog-body">
+        <div v-if="tmdbInfo" class="left-panel">
+          <img v-if="tmdbInfo.poster" :src="tmdbInfo.poster" class="tmdb-poster" alt="poster">
+          <div class="tmdb-meta">
+            <div class="tmdb-title">{{ tmdbInfo.title }}<span v-if="tmdbInfo.year" class="tmdb-year"> ({{ tmdbInfo.year }})</span></div>
+            <div v-if="tmdbInfo.overview" class="tmdb-overview">{{ tmdbInfo.overview }}</div>
+          </div>
         </div>
 
-        <el-table :data="filteredResults" stripe size="small" class="result-table">
-          <el-table-column label="站点" width="90">
-            <template #default="{ row }">
-              <span class="site-cell">{{ row.site }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="种子名称" min-width="280">
-            <template #default="{ row }">
-              <div class="torrent-name">{{ row.torrent_name }}</div>
-              <div v-if="row.description" class="torrent-desc">{{ row.description }}</div>
-              <div class="torrent-badges">
-                <el-tag v-if="row.title" size="small" type="primary">{{ row.title }}</el-tag>
-                <el-tag v-if="row.type === 'MOV'" size="small" type="success">电影</el-tag>
-                <el-tag v-else-if="row.type === 'TV'" size="small" type="warning">电视剧</el-tag>
-                <el-tag v-if="row.size" size="small" type="info">{{ row.size }}</el-tag>
-                <el-tag
-                  v-if="uploadText(row)"
-                  size="small"
-                  :type="uploadText(row)!.type"
-                >{{ uploadText(row)!.text }}</el-tag>
-                <el-tag
-                  v-if="freeText(row)"
-                  size="small"
-                  :type="freeText(row)!.type"
-                >{{ freeText(row)!.text }}</el-tag>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="大小" width="90" prop="size" />
-          <el-table-column label="做种" width="70" align="center">
-            <template #default="{ row }">
-              <span v-if="row.seeders">{{ row.seeders }}↑</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="140" align="center">
-            <template #default="{ row }">
-              <el-button size="small" type="primary" :icon="Download" @click="openTorrent(row)">
-                下载
-              </el-button>
-              <el-button
-                v-if="row.pageurl"
-                size="small"
-                :icon="Link"
-                @click="openPage(row.pageurl)"
-              />
-            </template>
-          </el-table-column>
-        </el-table>
-      </template>
+        <div class="right-panel">
+          <div v-if="loadingResults" class="loading-tip">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>加载中...</span>
+          </div>
 
-      <el-empty v-else description="暂无搜索结果" />
-    </div>
+          <template v-else-if="taskResults.length > 0">
+            <div class="filter-bar">
+              <el-select v-model="siteFilter" multiple placeholder="站点筛选" clearable collapse-tags style="width: 200px">
+                <el-option v-for="s in uniqueSites" :key="s" :label="s" :value="s" />
+              </el-select>
+              <el-input v-model="nameFilter" placeholder="名称过滤..." clearable style="width: 240px" />
+              <span class="filter-count">共 {{ filteredResults.length }} 条结果</span>
+            </div>
+
+            <vxe-table
+              ref="vxeTableRef"
+              :data="filteredResults"
+              :height="tableHeight"
+              border
+              stripe
+              size="small"
+              :scroll-y="{ enabled: true, gt: 20 }"
+              :row-config="{ height: 56 }"
+              :column-config="{ resizable: true }"
+            >
+              <vxe-column field="site" title="站点" width="90">
+                <template #default="{ row }">
+                  <span class="site-cell">{{ row.site }}</span>
+                </template>
+              </vxe-column>
+              <vxe-column field="torrent_name" title="种子名称" min-width="400">
+                <template #default="{ row }">
+                  <div class="torrent-name">{{ row.torrent_name }}</div>
+                  <div v-if="row.description" class="torrent-desc">{{ row.description }}</div>
+                  <div class="torrent-badges">
+                    <el-tag v-if="row.title" size="small" type="primary">{{ row.title }}</el-tag>
+                    <el-tag v-if="row.type === 'MOV'" size="small" type="success">电影</el-tag>
+                    <el-tag v-else-if="row.type === 'TV'" size="small" type="warning">电视剧</el-tag>
+                    <el-tag v-if="row.size" size="small" type="info">{{ row.size }}</el-tag>
+                    <el-tag v-if="uploadText(row)" size="small" :type="uploadText(row)!.type">{{ uploadText(row)!.text }}</el-tag>
+                    <el-tag v-if="freeText(row)" size="small" :type="freeText(row)!.type">{{ freeText(row)!.text }}</el-tag>
+                  </div>
+                </template>
+              </vxe-column>
+              <vxe-column field="size" title="大小" width="90" />
+              <vxe-column field="seeders" title="做种" width="70" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.seeders">{{ row.seeders }}↑</span>
+                </template>
+              </vxe-column>
+              <vxe-column title="操作" width="140" align="center">
+                <template #default="{ row }">
+                  <el-button size="small" type="primary" @click="openTorrent(row)">下载</el-button>
+                  <el-button v-if="row.pageurl" size="small" @click="openPage(row.pageurl)">
+                    <el-icon><Link /></el-icon>
+                  </el-button>
+                </template>
+              </vxe-column>
+            </vxe-table>
+          </template>
+
+          <el-empty v-else description="暂无搜索结果" />
+        </div>
+      </div>
+    </el-dialog>
 
     <AddDownloadDialog
       v-model="downloadDialogVisible"
@@ -589,26 +610,75 @@ onBeforeUnmount(stopTaskPoll)
 
 <style scoped>
 .search-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
   padding: 16px;
+}
+.tasks-table {
+  flex-shrink: 0;
 }
 .keyword-cell {
   font-weight: 600;
   cursor: pointer;
 }
-.result-section {
-  margin-top: 24px;
-}
-.result-header {
+.result-dialog :deep(.el-dialog) {
+  max-height: 92vh;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+}
+.result-dialog :deep(.el-dialog__body) {
+  height: 75vh;
+  padding: 16px 20px;
+  overflow: hidden;
+  flex: 1;
+}
+.dialog-body {
+  display: flex;
+  gap: 20px;
+  height: 100%;
+}
+.left-panel {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  margin-bottom: 16px;
+  overflow-y: auto;
 }
-.result-header h3 {
-  margin: 0;
+.left-panel .tmdb-poster {
+  width: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.left-panel .tmdb-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.left-panel .tmdb-title {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
 }
+.left-panel .tmdb-year {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  font-weight: 400;
+}
+.left-panel .tmdb-overview {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+.right-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .loading-tip {
   display: flex;
   align-items: center;
@@ -635,51 +705,51 @@ onBeforeUnmount(stopTaskPoll)
   gap: 4px;
   margin-top: 4px;
 }
-.tmdb-card {
-  display: flex;
-  gap: 20px;
-  padding: 16px;
-  background: var(--el-fill-color-light);
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-.tmdb-poster {
-  width: 120px;
-  min-height: 160px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-.tmdb-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.tmdb-title {
-  font-size: 18px;
-  font-weight: 700;
-}
-.tmdb-year {
-  font-size: 14px;
-  color: var(--el-text-color-secondary);
-  font-weight: 400;
-}
-.tmdb-overview {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--el-text-color-secondary);
-}
 .filter-bar {
   display: flex;
   gap: 12px;
   align-items: center;
   margin-bottom: 12px;
+  flex-shrink: 0;
 }
 .filter-count {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
-.result-table {
-  margin-top: 0;
+
+/* ---- responsive ---- */
+@media (max-width: 1200px) {
+  .left-panel {
+    width: 200px;
+  }
 }
+@media (max-width: 768px) {
+  .result-dialog :deep(.el-dialog__body) {
+    height: 80vh;
+  }
+  .dialog-body {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .left-panel {
+    width: 100%;
+    flex-direction: row;
+    align-items: flex-start;
+    max-height: 140px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .left-panel .tmdb-poster {
+    width: 90px;
+    min-height: 120px;
+    flex-shrink: 0;
+  }
+  .left-panel .tmdb-overview {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
 </style>
