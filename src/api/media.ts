@@ -85,3 +85,77 @@ export interface GetSearchResultResult {
 export function getSearchResult(): Promise<GetSearchResultResult> {
   return doAction<GetSearchResultResult>('get_search_result', {})
 }
+
+export interface SearchTaskItem {
+  keyword: string
+  status: string
+  start_time: string
+  end_time: string
+  message: string
+}
+
+export interface SearchTaskResultItem {
+  id: number
+  torrent_name: string
+  enclosure: string
+  description: string
+  type: string
+  title: string
+  year: string
+  season: string
+  episode: string
+  es_string: string
+  vote: string
+  image: string
+  poster: string
+  tmdbid: string
+  overview: string
+  res_type: string
+  res_order: string
+  size: string
+  seeders: number
+  peers: number
+  site: string
+  site_order: string
+  pageurl: string
+  otherinfo: string
+  upload_volume_factor: number
+  download_volume_factor: number
+  note: string
+}
+
+export interface GetSearchTaskListResult {
+  code: number
+  tasks: SearchTaskItem[]
+}
+
+export interface TaskTmdbInfo {
+  poster: string
+  overview: string
+  title: string
+  year: string
+}
+
+export interface GetSearchTaskResultResult {
+  code: number
+  task: SearchTaskItem
+  results: SearchTaskResultItem[]
+  tmdb_info: TaskTmdbInfo
+}
+
+export function getSearchTaskList(): Promise<GetSearchTaskListResult> {
+  return doAction<GetSearchTaskListResult>('search_task_list', {})
+}
+
+export function getSearchTaskResult(keyword: string): Promise<GetSearchTaskResultResult> {
+  return doAction<GetSearchTaskResultResult>('search_task_result', { keyword })
+}
+
+export interface SearchTaskDeleteResult {
+  code: number
+  msg: string
+}
+
+export function searchTaskDelete(keyword: string): Promise<SearchTaskDeleteResult> {
+  return doAction<SearchTaskDeleteResult>('search_task_delete', { keyword })
+}
