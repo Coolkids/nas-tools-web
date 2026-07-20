@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import {Search, Loading, Refresh, Plus, Delete, Link} from '@element-plus/icons-vue'
+import { Search, Loading, Refresh, Plus, Delete, Link } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import AddDownloadDialog from '@/components/AddDownloadDialog.vue'
 import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
 import { search, getSearchTaskList, getSearchTaskResult, searchTaskDelete, type SearchTaskItem, type SearchTaskResultItem, type TaskTmdbInfo } from '@/api/media'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
+import { ElMessageBox } from 'element-plus'
 
 const route = useRoute()
 const modal = useModalStore()
@@ -191,11 +192,6 @@ function openTorrent(t: SearchTaskResultItem) {
   pendingTorrent.value = t
 }
 
-function openRssSubscribe(task: SearchTaskItem) {
-  rssKeyword.value = task.keyword
-  rssDialogVisible.value = true
-}
-
 function openPage(url: string) {
   if (url) window.open(url, '_blank')
 }
@@ -205,6 +201,28 @@ const pendingTorrent = ref<SearchTaskResultItem | null>(null)
 
 const rssDialogVisible = ref(false)
 const rssKeyword = ref('')
+const rssType = ref<'MOV' | 'TV'>('MOV')
+
+async function openRssSubscribe(task: SearchTaskItem) {
+  try {
+    await ElMessageBox.confirm('', '选择订阅类型', {
+      confirmButtonText: '电影',
+      cancelButtonText: '电视剧',
+      distinguishCancelAndClose: true,
+      type: 'info',
+      message: '请选择需要订阅的媒体类型'
+    })
+    rssType.value = 'MOV'
+  } catch (action: any) {
+    if (action === 'cancel') {
+      rssType.value = 'TV'
+    } else {
+      return
+    }
+  }
+  rssKeyword.value = task.keyword
+  rssDialogVisible.value = true
+}
 
 function onDownloadSuccess() {
   modal.success(`${pendingTorrent.value?.site || ''} ${pendingTorrent.value?.torrent_name || ''} 添加下载成功！`)
@@ -212,6 +230,15 @@ function onDownloadSuccess() {
 
 function onDownloadError(msg: string) {
   modal.error(`添加下载失败：${msg}`)
+}
+
+function onRssSuccess() {
+  modal.success('添加订阅成功')
+  rssDialogVisible.value = false
+}
+
+function onRssError(msg: string) {
+  modal.error(msg || '添加订阅失败')
 }
 
 // ---- 高级搜索 ----
@@ -502,9 +529,11 @@ onBeforeUnmount(stopTaskPoll)
 
     <AddRssMediaDialog
       v-model="rssDialogVisible"
-      type="MOV"
+      :type="rssType"
       :initial-name="rssKeyword"
       :initial-keyword="rssKeyword"
+      @success="onRssSuccess"
+      @error="onRssError"
     />
 
     <el-dialog v-model="showAdvanced" title="高级搜索" width="750px" destroy-on-close>
