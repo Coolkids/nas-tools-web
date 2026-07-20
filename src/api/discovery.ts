@@ -117,6 +117,20 @@ export function personMedias(
   return doAction<MediaListResult>('person_medias', { personid, type, page })
 }
 
+export interface TvSeason {
+  text: string
+  num: number
+}
+
+export interface TvSeasonListResult {
+  code: number
+  seasons: TvSeason[]
+}
+
+export function getTvSeasonList(params: { tmdbid: string | number; title?: string }): Promise<TvSeasonListResult> {
+  return doAction<TvSeasonListResult>('get_tvseason_list', params)
+}
+
 export function proxyDoubanImage(url?: string): string {
   if (!url) return ''
   if (url.indexOf('doubanio.com') !== -1) {

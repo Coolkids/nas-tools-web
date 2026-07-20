@@ -8,6 +8,9 @@ const props = defineProps<{
   modelValue: boolean
   type: 'MOV' | 'TV'
   rssid?: string | number
+  initialName?: string
+  initialYear?: string
+  initialKeyword?: string
 }>()
 
 const emit = defineEmits<{
@@ -70,6 +73,9 @@ watch(
       await loadEditDetail()
     } else {
       await loadSaved()
+      if (props.initialName) form.name = props.initialName
+      if (props.initialKeyword) form.keyword = props.initialKeyword
+      if (props.initialYear) form.year = props.initialYear
     }
   }
 )

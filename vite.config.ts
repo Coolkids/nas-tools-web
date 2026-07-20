@@ -21,7 +21,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5173,
+    port: 5174,
     // 开发期把后端接口代理到 Flask，同源请求，cookie 跨端口共享（浏览器 cookie 不区分端口）
     proxy: {
       '/do': { target: FLASK_TARGET, changeOrigin: true, bypass: (req) => { if (req.url?.split('?')[0] !== '/do') return req.url } },

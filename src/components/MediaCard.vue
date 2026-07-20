@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Star, Search, Check } from '@element-plus/icons-vue'
+import { search } from '@/api/media'
+import { removeRssMedia } from '@/api/rss'
+import { useModalStore } from '@/stores/modal'
+import AddRssMediaDialog from './AddRssMediaDialog.vue'
 
 const props = defineProps<{
   tmdbId?: string | number
@@ -22,6 +26,9 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'fav-change', fav: string): void }>()
 
 const router = useRouter()
+const modal = useModalStore()
+
+const rssDialogVisible = ref(false)
 
 function goDetail() {
   if (props.tmdbId && props.mediaType) {
@@ -29,10 +36,55 @@ function goDetail() {
   }
 }
 
-function onLoveClick() {
-  // P0 阶段仅切换状态，订阅逻辑在 P3 实现
-  const next = props.fav === '1' ? '0' : '1'
-  emit('fav-change', next)
+async function onSearchClick(e: MouseEvent) {
+  e.stopPropagation()
+  if (!props.tmdbId || !props.title) return
+  modal.showLoading(`正在搜索 ${props.title} ...`)
+  try {
+    const res = await search({ tmdbid: props.tmdbId, search_word: props.title, media_type: props.mediaType })
+    if (res.code === 0) {
+      router.push({ path: '/search', query: { q: props.title } })
+    } else {
+      modal.error(res.msg || '搜索失败')
+    }
+  } catch (e) {
+    modal.error(e instanceof Error ? e.message : '搜索请求失败')
+  } finally {
+    modal.hideLoading()
+  }
+}
+
+async function onLoveClick(e: MouseEvent) {
+  e.stopPropagation()
+  if (!props.title || !props.tmdbId) return
+
+  if (props.fav === '1') {
+    const ok = await modal.confirm(`是否确定将 ${props.title} 从订阅中移除？`)
+    if (!ok) return
+    try {
+      const res = await removeRssMedia({
+        name: props.title,
+        type: props.mediaType === 'TV' ? 'TV' : 'MOV',
+        year: props.year,
+        tmdbid: props.tmdbId
+      })
+      if (res.code === 0) {
+        emit('fav-change', '0')
+        modal.success('已取消订阅')
+      } else {
+        modal.error(res.msg || '取消订阅失败')
+      }
+    } catch (e) {
+      modal.error(e instanceof Error ? e.message : '取消订阅失败')
+    }
+  } else {
+    rssDialogVisible.value = true
+  }
+}
+
+function onRssSuccess() {
+  emit('fav-change', '1')
+  rssDialogVisible.value = false
 }
 
 function formatVote(v: string | number | undefined): string {
@@ -75,12 +127,12 @@ const voteText = computed(() => formatVote(props.vote))
           <small v-if="date" class="overlay-date">{{ date }}</small>
         </div>
         <div v-if="showSub === '1'" class="overlay-actions">
-          <el-icon class="action-icon" title="搜索资源"><Search /></el-icon>
+          <el-icon class="action-icon" title="搜索资源" @click="onSearchClick"><Search /></el-icon>
           <el-icon
             class="action-icon"
             :class="{ 'icon-filled': fav === '1' }"
             title="加入/取消订阅"
-            @click.stop="onLoveClick"
+            @click="onLoveClick"
           >
             <Star />
           </el-icon>
@@ -88,6 +140,15 @@ const voteText = computed(() => formatVote(props.vote))
       </div>
     </div>
   </div>
+
+  <AddRssMediaDialog
+    v-model="rssDialogVisible"
+    :type="mediaType === 'TV' ? 'TV' : 'MOV'"
+    :initial-name="title"
+    :initial-year="year"
+    :initial-keyword="title"
+    @success="onRssSuccess"
+  />
 </template>
 
 <style scoped>

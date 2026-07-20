@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Search, Star, Check, Loading } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import MediaCard from '@/components/MediaCard.vue'
 import PersonCard from '@/components/PersonCard.vue'
+import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
 import {
   mediaDetail,
   mediaRecommendations,
@@ -14,9 +15,12 @@ import {
   type RecommendItem,
   type PersonItem
 } from '@/api/discovery'
+import { search } from '@/api/media'
+import { removeRssMedia } from '@/api/rss'
 import { useModalStore } from '@/stores/modal'
 
 const route = useRoute()
+const router = useRouter()
 const modal = useModalStore()
 
 const media = ref<MediaDetail | null>(null)
@@ -26,6 +30,8 @@ const loading = ref(false)
 const loadingRec = ref(false)
 const loadingPerson = ref(false)
 const errMsg = ref('')
+
+const rssDialogVisible = ref(false)
 
 async function loadAll() {
   const type = (route.query.type as string) || 'movie'
@@ -66,16 +72,56 @@ async function loadAll() {
   }
 }
 
-function onSearchResource() {
+async function onSearchResource() {
   if (!media.value) return
-  modal.info(`搜索资源：${media.value.title}（订阅/下载逻辑后续实现）`)
+  const mediaType = (route.query.type as string) || 'movie'
+  modal.showLoading(`正在搜索 ${media.value.title} ...`)
+  try {
+    const res = await search({ tmdbid: media.value.tmdbid, search_word: media.value.title, media_type: mediaType })
+    if (res.code === 0) {
+      router.push({ path: '/search', query: { q: media.value.title } })
+    } else {
+      modal.error(res.msg || '搜索失败')
+    }
+  } catch (e) {
+    modal.error(e instanceof Error ? e.message : '搜索请求失败')
+  } finally {
+    modal.hideLoading()
+  }
 }
 
-function onToggleFav() {
+async function onToggleFav() {
   if (!media.value) return
-  const next = media.value.fav === '1' ? '0' : '1'
-  media.value.fav = next
-  modal.success(next === '1' ? '已加入订阅' : '已取消订阅')
+
+  const mediaType = (route.query.type as string) || 'MOV'
+  if (media.value.fav === '1') {
+    const ok = await modal.confirm(`是否确定将 ${media.value.title} 从订阅中移除？`)
+    if (!ok) return
+    try {
+      const res = await removeRssMedia({
+        name: media.value.title,
+        type: mediaType === 'TV' ? 'TV' : 'MOV',
+        year: media.value.year,
+        tmdbid: media.value.tmdbid
+      })
+      if (res.code === 0) {
+        media.value.fav = '0'
+        modal.success('已取消订阅')
+      } else {
+        modal.error(res.msg || '取消订阅失败')
+      }
+    } catch (e) {
+      modal.error(e instanceof Error ? e.message : '取消订阅失败')
+    }
+  } else {
+    rssDialogVisible.value = true
+  }
+}
+
+function onRssSuccess() {
+  if (!media.value) return
+  media.value.fav = '1'
+  rssDialogVisible.value = false
 }
 
 onMounted(loadAll)
@@ -220,6 +266,15 @@ watch(() => [route.query.type, route.query.id], loadAll)
     <div v-else class="loading-tip">
       <el-icon class="is-loading"><Loading /></el-icon> 加载中...
     </div>
+
+    <AddRssMediaDialog
+      v-model="rssDialogVisible"
+      :type="(route.query.type as string) === 'TV' ? 'TV' : 'MOV'"
+      :initial-name="media?.title"
+      :initial-year="media?.year"
+      :initial-keyword="media?.title"
+      @success="onRssSuccess"
+    />
   </div>
 </template>
 
