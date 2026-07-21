@@ -78,6 +78,7 @@ onMounted(load)
         :key="s.type"
         shadow="hover"
         class="server-card"
+        :class="{ active: activeServer === s.type }"
         @click="openDialog(s.type)"
       >
         <div class="server-body">
@@ -143,6 +144,10 @@ onMounted(load)
 }
 .server-card:hover {
   transform: translateY(-2px);
+}
+.server-card.active {
+  border-color: var(--el-color-primary);
+  border-width: 2px;
 }
 .server-body {
   display: flex;

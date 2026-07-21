@@ -235,6 +235,7 @@ async function saveSpeed() {
         :key="d.type"
         shadow="hover"
         class="downloader-card"
+        :class="{ active: activeType() === d.type }"
         @click="openDownloader(d)"
       >
 <div class="dl-body">
@@ -395,6 +396,10 @@ async function saveSpeed() {
 }
 .downloader-card:hover {
   transform: translateY(-2px);
+}
+.downloader-card.active {
+  border-color: var(--el-color-primary);
+  border-width: 2px;
 }
 .dl-body {
   display: flex;

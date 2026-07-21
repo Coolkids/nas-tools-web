@@ -169,7 +169,7 @@ onMounted(load)
   <div v-loading="loading" class="indexer-view">
     <PageHeader title="索引器" description="选择并配置资源索引器" />
     <div class="server-grid">
-      <el-card shadow="hover" class="server-card" @click="openBuiltin">
+      <el-card shadow="hover" class="server-card" :class="{ active: activeIndexer === 'builtin' }" @click="openBuiltin">
         <div class="server-body">
           <div class="server-icon">
             <img :src="`/static/img/${BUILTIN_IMG}`" alt="内建索引器" />
@@ -188,6 +188,7 @@ onMounted(load)
         :key="s.type"
         shadow="hover"
         class="server-card"
+        :class="{ active: activeIndexer === s.type }"
         @click="openExternal(s)"
       >
         <div class="server-body">
@@ -256,6 +257,10 @@ onMounted(load)
 }
 .server-card:hover {
   transform: translateY(-2px);
+}
+.server-card.active {
+  border-color: var(--el-color-primary);
+  border-width: 2px;
 }
 .server-body {
   display: flex;
