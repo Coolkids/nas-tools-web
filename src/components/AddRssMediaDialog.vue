@@ -89,7 +89,7 @@ async function loadEditDetail() {
     form.name = d.name || ''
     form.year = d.year || ''
     form.keyword = d.keyword || ''
-    form.season = d.season || ''
+    form.season = (d.season || '').replace(/^S/, '')
     form.fuzzy_match = !!d.fuzzy_match
     form.over_edition = !!d.over_edition
     form.total_ep = String(d.total_ep ?? '')
