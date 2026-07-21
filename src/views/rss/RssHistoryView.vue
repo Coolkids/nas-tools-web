@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { Delete, Refresh, Back, Star, Film } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
-import { getRssHistory, deleteRssHistory, reRssHistory, type RssHistoryItem, type RssType } from '@/api/rss'
+import { getRssHistory, deleteRssHistory, type RssHistoryItem, type RssType } from '@/api/rss'
+import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,6 +17,16 @@ const activeType = ref<RssType | ''>('')
 const page = ref(1)
 const pageSize = ref(30)
 const total = ref(0)
+
+const reRssDialogVisible = ref(false)
+const reRssType = ref<RssType>('MOV')
+const reRssInitial = ref<{ name: string; year: string; season: string; totalEp: string; currentEp: string }>({
+  name: '',
+  year: '',
+  season: '',
+  totalEp: '',
+  currentEp: ''
+})
 
 const tabs = [
   { label: '电影', value: 'MOV' as const },
@@ -84,19 +95,31 @@ async function onDelete(item: RssHistoryItem) {
   }
 }
 
-async function onReRss(item: RssHistoryItem) {
+function onReRss(item: RssHistoryItem) {
   const t = (item.TYPE || activeType.value) as RssType
   if (!t) {
     modal.error('无法确定订阅类型')
     return
   }
-  try {
-    const res = await reRssHistory(item.ID, t)
-    if (res.code === 0) modal.success('重新订阅成功！')
-    else modal.error(`重新订阅失败：${res.msg || '未知错误'}`)
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '重新订阅失败')
+  reRssType.value = t
+  reRssInitial.value = {
+    name: item.NAME || '',
+    year: item.YEAR || '',
+    season: item.SEASON || '',
+    totalEp: item.TOTAL ? String(item.TOTAL) : '',
+    currentEp: item.START ? String(item.START) : ''
   }
+  reRssDialogVisible.value = true
+}
+
+function onReRssSuccess() {
+  modal.success('重新订阅成功！')
+  reRssDialogVisible.value = false
+  load()
+}
+
+function onReRssError(msg: string) {
+  modal.error(`重新订阅失败：${msg}`)
 }
 
 function goBack() {
@@ -175,6 +198,17 @@ function goBack() {
         />
       </div>
     </el-card>
+    <AddRssMediaDialog
+      v-model="reRssDialogVisible"
+      :type="reRssType"
+      :initial-name="reRssInitial.name"
+      :initial-year="reRssInitial.year"
+      :initial-season="reRssInitial.season"
+      :initial-total-ep="reRssInitial.totalEp"
+      :initial-current-ep="reRssInitial.currentEp"
+      @success="onReRssSuccess"
+      @error="onReRssError"
+    />
   </div>
 </template>
 

@@ -11,6 +11,9 @@ const props = defineProps<{
   initialName?: string
   initialYear?: string
   initialKeyword?: string
+  initialSeason?: string
+  initialTotalEp?: string
+  initialCurrentEp?: string
 }>()
 
 const emit = defineEmits<{
@@ -76,6 +79,9 @@ watch(
       if (props.initialName) form.name = props.initialName
       if (props.initialKeyword) form.keyword = props.initialKeyword
       if (props.initialYear) form.year = props.initialYear
+      if (props.initialSeason) form.season = props.initialSeason
+      if (props.initialTotalEp) form.total_ep = props.initialTotalEp
+      if (props.initialCurrentEp) form.current_ep = props.initialCurrentEp
     }
   }
 )
