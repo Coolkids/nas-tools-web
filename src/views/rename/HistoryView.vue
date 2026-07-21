@@ -8,6 +8,7 @@ import {
   reIdentification,
   type TransferHistoryItem
 } from '@/api/rename'
+import { mediaDetail } from '@/api/discovery'
 import { useModalStore } from '@/stores/modal'
 import PageHeader from '@/components/PageHeader.vue'
 
@@ -20,6 +21,7 @@ const currentPage = ref(1)
 const pageSize = ref(30)
 const keyword = ref('')
 const selected = ref<TransferHistoryItem[]>([])
+const posters = ref<Record<string, string>>({})
 
 function goToFileManager(destPath: string) {
   if (!destPath) return
@@ -39,6 +41,7 @@ async function load() {
     if (res.code === 0) {
       list.value = res.result || []
       total.value = res.total || 0
+      loadPosters(list.value)
     } else {
       modal.error(res.msg || '加载失败')
     }
@@ -55,6 +58,30 @@ function doSearch() {
 function pageChange(p: number) {
   currentPage.value = p
   load()
+}
+
+function loadPosters(list: TransferHistoryItem[]) {
+  const tasks = list
+    .filter(item => item.TMDBID && !(String(item.TMDBID) in posters.value))
+    .map(async item => {
+      const key = String(item.TMDBID)
+      try {
+        const type = item.TYPE === '电影' ? 'MOV' : 'TV'
+        const res = await mediaDetail(type, key)
+        posters.value[key] = res.code === 0 && res.data?.image ? res.data.image : ''
+      } catch {
+        posters.value[key] = ''
+      }
+    })
+  Promise.allSettled(tasks)
+}
+
+function posterUrl(row: TransferHistoryItem): string {
+  return row.TMDBID ? posters.value[String(row.TMDBID)] || '' : ''
+}
+
+function onPosterError(row: TransferHistoryItem) {
+  if (row.TMDBID) posters.value[String(row.TMDBID)] = ''
 }
 
 function tmdbUrl(row: TransferHistoryItem) {
@@ -137,13 +164,21 @@ async function remove(flag: 'del_source' | 'del_dest' | 'del_all', rows: Transfe
     <el-card shadow="never">
       <el-table :data="list" stripe @selection-change="(v: TransferHistoryItem[]) => (selected = v)">
         <el-table-column type="selection" width="42" />
-        <el-table-column label="媒体信息" min-width="260">
+        <el-table-column label="媒体信息" min-width="340">
           <template #default="{ row }">
             <div class="media-cell">
-              <el-icon class="media-icon">
-                <Film v-if="row.TYPE === '电影'" />
-                <VideoCamera v-else />
-              </el-icon>
+              <div class="poster-wrap">
+                <img
+                  v-if="posterUrl(row)"
+                  :src="posterUrl(row)"
+                  class="poster"
+                  alt="poster"
+                  @error="onPosterError(row)"
+                />
+                <div v-else class="poster placeholder">
+                  <el-icon :size="20" color="#c8c9cc"><Film v-if="row.TYPE === '电影'" /><VideoCamera v-else /></el-icon>
+                </div>
+              </div>
               <div class="media-info">
                 <div class="media-title">
                   <a v-if="row.TMDBID" :href="tmdbUrl(row)" target="_blank">
@@ -219,7 +254,24 @@ async function remove(flag: 'del_source' | 'del_dest' | 'del_all', rows: Transfe
 .media-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+.poster-wrap {
+  flex-shrink: 0;
+}
+.poster {
+  width: 48px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+.poster.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
 }
 .media-icon {
   font-size: 18px;
