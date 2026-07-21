@@ -474,7 +474,7 @@ onBeforeUnmount(stopTaskPoll)
               stripe
               size="small"
               :scroll-y="{ enabled: true, gt: 20 }"
-              :row-config="{ height: 56 }"
+              :row-config="{ height: 'auto' }"
               :column-config="{ resizable: true }"
             >
               <vxe-column field="site" title="站点" width="90">
