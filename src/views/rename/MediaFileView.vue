@@ -939,6 +939,10 @@ async function deleteSelectedHardlinks() {
 <style scoped>
 .mediafile {
   padding: 16px;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 .path-card {
   margin-bottom: 12px;
@@ -1090,11 +1094,26 @@ async function deleteSelectedHardlinks() {
 .split-layout {
   display: flex;
   gap: 12px;
-  align-items: flex-start;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
 }
 .dir-panel {
   width: 260px;
   flex-shrink: 0;
+  min-height: 0;
+}
+.dir-panel :deep(.el-card),
+.file-panel :deep(.el-card) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.dir-panel :deep(.el-card__body),
+.file-panel :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .dir-card {
 }
@@ -1122,6 +1141,7 @@ async function deleteSelectedHardlinks() {
 .file-panel {
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
 .file-card {
   padding: 12px 14px;
