@@ -6,6 +6,7 @@ import {
   getTransferHistory,
   deleteHistory,
   reIdentification,
+  restoreHistory,
   type TransferHistoryItem
 } from '@/api/rename'
 import { mediaDetail } from '@/api/discovery'
@@ -129,6 +130,50 @@ async function remove(flag: 'del_source' | 'del_dest' | 'del_all', rows: Transfe
     modal.error(res.msg || '删除失败')
   }
 }
+
+function isMoveType(row: TransferHistoryItem) {
+  return row.RMT_MODE === 'move' || row.MODE === 'move' || row.SYNC_MODE === 'move'
+}
+
+async function restore(row: TransferHistoryItem) {
+  const ok = await modal.confirm(`确认恢复 ${row.TITLE} (${row.YEAR}) ${row.SEASON_EPISODE || ''} 的源文件？`)
+  if (!ok) return
+  modal.showLoading('恢复中...')
+  try {
+    const res = await restoreHistory(row.ID)
+    if (res.retcode === 0) {
+      modal.success(res.retmsg || '恢复成功')
+    } else {
+      modal.error(res.retmsg || '恢复失败')
+    }
+    load()
+  } finally {
+    modal.hideLoading()
+  }
+}
+
+async function batchRestore(rows: TransferHistoryItem[]) {
+  const moveRows = rows.filter(isMoveType)
+  if (moveRows.length === 0) {
+    modal.warning('所选记录中没有可恢复的移动类型')
+    return
+  }
+  const name = moveRows.map((r) => `${r.TITLE} (${r.YEAR}) ${r.SEASON_EPISODE || ''}`).join('、')
+  const ok = await modal.confirm(`确认恢复以下 ${moveRows.length} 条记录的源文件？\n${name}`)
+  if (!ok) return
+  modal.showLoading('批量恢复中...')
+  try {
+    for (const row of moveRows) {
+      await restoreHistory(row.ID)
+    }
+    modal.success('批量恢复成功')
+    load()
+  } catch {
+    modal.error('批量恢复失败')
+  } finally {
+    modal.hideLoading()
+  }
+}
 </script>
 
 <template>
@@ -148,6 +193,7 @@ async function remove(flag: 'del_source' | 'del_dest' | 'del_all', rows: Transfe
         </el-input>
         <el-button :icon="Refresh" @click="load">刷新</el-button>
         <el-button type="primary" :icon="Refresh" @click="reIdentify(selected)">重新识别</el-button>
+        <el-button :icon="Delete" @click="batchRestore(selected)">批量恢复</el-button>
         <el-dropdown @command="(c: 'del_source' | 'del_dest' | 'del_all') => remove(c, selected)">
           <el-button type="danger" :icon="Delete">批量删除</el-button>
           <template #dropdown>
@@ -217,15 +263,18 @@ async function remove(flag: 'del_source' | 'del_dest' | 'del_all', rows: Transfe
           <template #default="{ row }">
             <el-dropdown
               trigger="click"
-              @command="(c: string) => c === 're' ? reIdentify([row]) : remove(c as 'del_source' | 'del_dest' | 'del_all', [row])"
+              @command="(c: string) => c === 're' ? reIdentify([row]) : isMoveType(row) ? restore(row) : remove(c as 'del_source' | 'del_dest' | 'del_all', [row])"
             >
               <el-button link>更多</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="re">重新识别</el-dropdown-item>
-                  <el-dropdown-item command="del_source" divided>删除源文件</el-dropdown-item>
-                  <el-dropdown-item command="del_dest">删除媒体库文件</el-dropdown-item>
-                  <el-dropdown-item command="del_all">删除源及媒体库文件</el-dropdown-item>
+                  <el-dropdown-item v-if="isMoveType(row)" command="restore" divided>恢复</el-dropdown-item>
+                  <template v-else>
+                    <el-dropdown-item command="del_source" divided>删除源文件</el-dropdown-item>
+                    <el-dropdown-item command="del_dest">删除媒体库文件</el-dropdown-item>
+                    <el-dropdown-item command="del_all">删除源及媒体库文件</el-dropdown-item>
+                  </template>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>

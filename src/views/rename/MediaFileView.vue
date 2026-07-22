@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Refresh,
@@ -305,10 +305,13 @@ const progressValue = ref(0)
 const progressText = ref('请稍候...')
 const progressTitle = ref('')
 let progressTimer: ReturnType<typeof setTimeout> | null = null
+let pollStopped = false
 
 function startProgressPolling(type: string) {
   stopProgressPolling()
+  pollStopped = false
   async function poll() {
+    if (pollStopped) return
     try {
       const res = await refreshProcess(type)
       if (res.code === 0 && res.value <= 100) {
@@ -318,17 +321,22 @@ function startProgressPolling(type: string) {
     } catch {
       // 忽略轮询错误
     }
-    progressTimer = setTimeout(poll, 200)
+    if (!pollStopped) {
+      progressTimer = setTimeout(poll, 200)
+    }
   }
   poll()
 }
 
 function stopProgressPolling() {
+  pollStopped = true
   if (progressTimer) {
     clearTimeout(progressTimer)
     progressTimer = null
   }
 }
+
+onBeforeUnmount(stopProgressPolling)
 
 function openTransfer(f: FileItem) {
   transferPath.value = f.path
