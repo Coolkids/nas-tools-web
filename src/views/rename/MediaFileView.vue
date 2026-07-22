@@ -603,14 +603,35 @@ function toggleHardlinkSelect(file: string) {
   hardlinkSelected.value = new Set(hardlinkSelected.value)
 }
 
-function selectAllHardlinks() {
-  const all = new Set<string>()
+const allHardlinkFiles = computed(() => {
+  const files: string[] = []
   for (const list of Object.values(hardlinkResults.value)) {
     for (const h of list) {
-      all.add(h.file)
+      files.push(h.file)
     }
   }
-  hardlinkSelected.value = all
+  return files
+})
+
+const allHardlinkSelected = computed(() => {
+  return allHardlinkFiles.value.length > 0 && allHardlinkFiles.value.every(f => hardlinkSelected.value.has(f))
+})
+
+function selectAllHardlinks() {
+  hardlinkSelected.value = new Set(allHardlinkFiles.value)
+}
+
+function unselectAllHardlinks() {
+  hardlinkSelected.value = new Set()
+}
+
+function invertHardlinkSelect() {
+  const current = hardlinkSelected.value
+  const next = new Set<string>()
+  for (const f of allHardlinkFiles.value) {
+    if (!current.has(f)) next.add(f)
+  }
+  hardlinkSelected.value = next
 }
 
 async function deleteSelectedHardlinks() {
@@ -906,25 +927,35 @@ async function deleteSelectedHardlinks() {
     </el-dialog>
 
     <!-- 硬链接查询：结果弹窗 -->
-    <el-dialog v-model="hardlinkVisible" title="硬链接文件" width="700px" destroy-on-close v-loading="hardlinkLoading">
-      <div v-for="(links, file) in hardlinkResults" :key="file" class="hl-group">
-        <div class="hl-file-title">{{ file }}</div>
-        <div v-for="(h, idx) in links" :key="idx" class="hl-item">
-          <el-checkbox
-            :model-value="hardlinkSelected.has(h.file)"
-            @change="() => toggleHardlinkSelect(h.file)"
-          />
-          <div class="hl-info">
-            <div class="hl-name">
-              <el-icon><Link /></el-icon>
-              {{ h.filename }}
+    <el-dialog v-model="hardlinkVisible" title="硬链接文件" width="700px" destroy-on-close>
+      <div v-loading="hardlinkLoading" element-loading-text="正在查询硬链接...">
+        <div v-if="!hardlinkLoading && Object.keys(hardlinkResults).length === 0" style="padding: 40px 0; text-align: center; color: var(--el-text-color-secondary);">
+          暂无数据
+        </div>
+        <div v-for="(links, file) in hardlinkResults" :key="file" class="hl-group">
+          <div class="hl-file-title">{{ file }}</div>
+          <div v-for="(h, idx) in links" :key="idx" class="hl-item">
+            <el-checkbox
+              :model-value="hardlinkSelected.has(h.file)"
+              @change="() => toggleHardlinkSelect(h.file)"
+            />
+            <div class="hl-info">
+              <div class="hl-name">
+                <el-icon><Link /></el-icon>
+                {{ h.filename }}
+              </div>
+              <div class="hl-path">{{ h.filepath }}</div>
             </div>
-            <div class="hl-path">{{ h.filepath }}</div>
           </div>
         </div>
       </div>
       <template #footer>
-        <a class="me-auto" style="cursor: pointer; color: var(--el-color-primary);" @click="selectAllHardlinks">全选</a>
+        <span class="hl-footer-left">
+          <a v-if="allHardlinkSelected" style="cursor: pointer; color: var(--el-color-primary);" @click="unselectAllHardlinks">全不选</a>
+          <a v-else style="cursor: pointer; color: var(--el-color-primary);" @click="selectAllHardlinks">全选</a>
+          <a style="cursor: pointer; color: var(--el-color-primary);" @click="invertHardlinkSelect">反选</a>
+          <span class="hl-selected-count">已选 {{ hardlinkSelected.size }} / {{ allHardlinkFiles.length }} 项</span>
+        </span>
         <el-button type="danger" @click="deleteSelectedHardlinks" :disabled="hardlinkSelected.size === 0">批量删除</el-button>
       </template>
     </el-dialog>
@@ -1038,6 +1069,15 @@ async function deleteSelectedHardlinks() {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   margin-top: 2px;
+}
+.hl-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hl-selected-count {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 .ep-label-row {
   display: flex;
