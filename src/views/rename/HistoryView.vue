@@ -210,7 +210,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
     <el-card shadow="never">
       <el-table :data="list" stripe @selection-change="(v: TransferHistoryItem[]) => (selected = v)">
         <el-table-column type="selection" width="42" />
-        <el-table-column label="媒体信息" min-width="340">
+        <el-table-column label="媒体信息" min-width="220">
           <template #default="{ row }">
             <div class="media-cell">
               <div class="poster-wrap">
@@ -238,7 +238,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="文件信息" min-width="280">
+        <el-table-column label="文件信息" min-width="320">
           <template #default="{ row }">
             <div class="file-line">{{ row.SOURCE_FILENAME || '' }}</div>
             <div v-if="row.DEST_PATH || row.DEST_FILENAME" class="file-line">
@@ -342,9 +342,11 @@ async function batchRestore(rows: TransferHistoryItem[]) {
   color: var(--el-text-color-secondary);
 }
 .file-line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all;
 }
 .arrow {
   color: var(--el-text-color-secondary);
