@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Refresh, Clock, Film, Plus, MoreFilled } from '@element-plus/icons-vue'
+import { Refresh, Clock, Film, Plus, MoreFilled, Search } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api'
@@ -14,6 +14,7 @@ const modal = useModalStore()
 
 const loading = ref(false)
 const items = ref<RssMediaItem[]>([])
+const nameFilter = ref('')
 const addDialogVisible = ref(false)
 const detailDialogVisible = ref(false)
 const selectedItem = ref<RssMediaItem | null>(null)
@@ -67,7 +68,13 @@ async function load() {
   }
 }
 
-const count = computed(() => items.value.length)
+const filteredItems = computed(() => {
+  if (!nameFilter.value.trim()) return items.value
+  const q = nameFilter.value.trim().toLowerCase()
+  return items.value.filter(item => (item.name || '').toLowerCase().includes(q))
+})
+
+const count = computed(() => filteredItems.value.length)
 
 function stateMeta(state?: string) {
   switch (state) {
@@ -128,6 +135,14 @@ function goHistory() {
   <div class="movie-rss">
     <PageHeader title="电影订阅" description="管理已订阅的电影">
       <template #actions>
+        <el-input
+          v-model="nameFilter"
+          placeholder="搜索标题..."
+          :prefix-icon="Search"
+          clearable
+          class="search-input"
+        />
+        <span class="filter-count">共 {{ filteredItems.length }} 条</span>
         <el-button :icon="Plus" type="primary" @click="addDialogVisible = true">新增订阅</el-button>
         <el-button :icon="Clock" @click="goHistory">订阅历史</el-button>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
@@ -135,13 +150,13 @@ function goHistory() {
     </PageHeader>
 
     <el-empty
-      v-if="!loading && count === 0"
+      v-if="!loading && filteredItems.length === 0"
       description="当前没有正在订阅的电影。"
     />
 
       <div v-else v-loading="loading" class="card-grid">
         <el-card
-          v-for="item in items"
+          v-for="item in filteredItems"
           :key="item.id"
           class="rss-card"
           shadow="hover"
@@ -211,6 +226,13 @@ function goHistory() {
 <style scoped>
 .movie-rss {
   padding: 16px;
+}
+.search-input {
+  width: 280px;
+}
+.filter-count {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 .card-grid {
   display: grid;
