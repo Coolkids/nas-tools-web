@@ -40,6 +40,7 @@ interface WordGroup {
   type: number
   seasons: number
   link?: string
+  image?: string
   words: CustomWord[]
   [key: string]: unknown
 }
@@ -399,6 +400,7 @@ function seasonLabel(s: number): string {
         <div class="group-header">
           <div class="group-title" @click="toggleGroup(group.id)">
             <el-icon class="collapse-icon"><component :is="expandedGroups.has(group.id) ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
+            <img v-if="group.image" :src="group.image" class="group-poster" />
             <a v-if="group.link" :href="group.link" target="_blank" class="group-name">{{ group.name }}</a>
             <span v-else class="group-name">{{ group.name }}</span>
           </div>
@@ -690,6 +692,12 @@ function seasonLabel(s: number): string {
   font-size: 14px;
   color: var(--el-text-color-secondary);
   transition: transform 0.2s;
+}
+.group-poster {
+  width: auto;
+  height: 50px;
+  border-radius: 3px;
+  object-fit: cover;
 }
 .group-name {
   font-weight: 600;
