@@ -187,7 +187,7 @@ function goHistory() {
                     <el-tag v-if="item.over_edition" size="small" type="danger" effect="dark">洗版</el-tag>
                   </div>
                   <div class="info-title">
-                    <span class="info-name">{{ item.name }}</span>
+                    <span class="info-name" :title="item.name">{{ item.name }}</span>
                     <span v-if="item.season && item.season !== 'S00'" class="info-season">{{ item.season }}</span>
                   </div>
                   <div v-if="item.filter_team" class="info-line info-team" :title="item.filter_team">{{ item.filter_team }}</div>
