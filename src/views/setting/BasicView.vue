@@ -704,7 +704,10 @@ onMounted(loadData)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="releaseGroupsVisible" title="自定义制作组/字幕组" width="640px" :close-on-click-modal="false">
+    <el-dialog v-model="releaseGroupsVisible" width="640px" :close-on-click-modal="false">
+      <template #header>
+          <span>自定义制作组/字幕组<HelpTip text="多个制作组/字幕组请用;分隔，支持正则表达式，特殊字符注意转义" /></span>
+      </template>
       <el-input v-model="releaseGroups" type="textarea" :rows="6" placeholder="多个制作组/字幕组用;分隔，支持正则表达式" />
       <template #footer>
         <el-button @click="releaseGroupsVisible = false">取消</el-button>
@@ -741,5 +744,11 @@ onMounted(loadData)
 .scraper-section .el-checkbox {
   margin-right: 16px;
   min-width: 120px;
+}
+.my-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 16px;
 }
 </style>
