@@ -1,5 +1,9 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios'
-import NProgress from 'nprogress'
+import {
+  finishRequestProgress,
+  startRequestProgress,
+  updateRequestProgress
+} from '@/services/requestProgress'
 
 /**
  * Flask 后端基地址。
@@ -14,18 +18,46 @@ const instance: AxiosInstance = axios.create({
   withCredentials: true
 })
 
-instance.interceptors.request.use((config) => {
-  NProgress.start()
-  return config
-})
+const requestProgressIds = new WeakMap<object, number>()
+
+function finishProgressForConfig(config: unknown): void {
+  if (!config || typeof config !== 'object') return
+  const requestId = requestProgressIds.get(config)
+  if (requestId !== undefined) finishRequestProgress(requestId)
+}
+
+instance.interceptors.request.use(
+  (config) => {
+    const requestId = startRequestProgress()
+    requestProgressIds.set(config, requestId)
+
+    const onDownloadProgress = config.onDownloadProgress
+    config.onDownloadProgress = (event) => {
+      updateRequestProgress(requestId, event.loaded, event.total)
+      onDownloadProgress?.(event)
+    }
+
+    const onUploadProgress = config.onUploadProgress
+    config.onUploadProgress = (event) => {
+      updateRequestProgress(requestId, event.loaded, event.total)
+      onUploadProgress?.(event)
+    }
+
+    return config
+  },
+  (error) => {
+    finishProgressForConfig(error?.config)
+    return Promise.reject(error)
+  }
+)
 
 instance.interceptors.response.use(
   (response) => {
-    NProgress.done()
+    finishProgressForConfig(response.config)
     return response
   },
   (error) => {
-    NProgress.done()
+    finishProgressForConfig(error?.config)
     return Promise.reject(error)
   }
 )

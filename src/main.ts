@@ -7,14 +7,10 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import VxeUITable from 'vxe-table'
 import 'vxe-table/lib/style.css'
-import NProgress from 'nprogress'
-import 'nprogress/nprogress.css'
 
 import App from './App.vue'
 import router from './router'
 import './styles/index.scss'
-
-NProgress.configure({ showSpinner: false })
 
 const app = createApp(App)
 app.use(createPinia())

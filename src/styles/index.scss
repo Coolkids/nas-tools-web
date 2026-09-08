@@ -91,3 +91,44 @@ a {
   color: #fff;
   gap: 12px;
 }
+
+.request-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 4000;
+  width: 100%;
+  height: 3px;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 160ms ease;
+}
+
+.request-progress.is-active {
+  opacity: 1;
+}
+
+.request-progress__bar {
+  width: 0;
+  height: 100%;
+  border-radius: 0 2px 2px 0;
+  background: var(--el-color-primary);
+  box-shadow: 0 0 8px var(--el-color-primary-light-3);
+  transition: width 120ms linear;
+}
+
+.request-progress__bar.is-indeterminate {
+  width: 35%;
+  animation: request-progress-slide 1.15s ease-in-out infinite;
+}
+
+@keyframes request-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(285%);
+  }
+}
