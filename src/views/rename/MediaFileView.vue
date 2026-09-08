@@ -314,8 +314,10 @@ function startProgressPolling(type: string) {
     if (pollStopped) return
     try {
       const res = await refreshProcess(type)
-      if (res.code === 0 && res.value <= 100) {
-        progressValue.value = res.value
+      if (res.code === 0 && Number.isFinite(res.value)) {
+        // 归一化浮点数，避免后端计算产生的精度误差传给进度条。
+        const value = Math.min(100, Math.max(0, res.value))
+        progressValue.value = Number(value.toFixed(2))
         progressText.value = res.text
       }
     } catch {
