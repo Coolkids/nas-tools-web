@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { Connection, FolderOpened, Refresh, Remove, CirclePlus  } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import { useConfigForm } from '@/composables/useConfigForm'
@@ -148,6 +147,10 @@ function buildItems(): Record<string, unknown> {
   return items
 }
 
+function setTextValue(key: string, value: string | number | FileList | null | undefined) {
+  formValues[key] = value ?? ''
+}
+
 async function handleSave() {
   saving.value = true
   try {
@@ -221,235 +224,21 @@ async function saveSpeed() {
 </script>
 
 <template>
-  <div class="downloader-view" v-loading="loading">
-    <PageHeader title="下载器" description="配置主下载器及连接参数">
-      <template #actions>
-        <el-button :icon="FolderOpened" @click="openDir">下载目录</el-button>
-        <el-button :icon="Refresh" @click="openSpeed">播放限速</el-button>
-      </template>
-    </PageHeader>
-
+  <div class="downloader-view">
+    <PageHeader title="下载器" description="配置主下载器及连接参数"><template #actions><q-btn outline icon="folder" label="下载目录" @click="openDir" /><q-btn outline icon="speed" label="播放限速" @click="openSpeed" /></template></PageHeader>
+    <q-inner-loading :showing="loading"><q-spinner-dots color="primary" size="40px" /></q-inner-loading>
     <div class="downloader-grid">
-      <el-card
-        v-for="d in DOWNLOADERS"
-        :key="d.type"
-        shadow="hover"
-        class="downloader-card"
-        :class="{ active: activeType() === d.type }"
-        @click="openDownloader(d)"
-      >
-<div class="dl-body">
-            <div class="dl-icon">
-              <img :src="`/static/img/${d.img}`" :alt="d.name" />
-            </div>
-            <div class="dl-name">{{ d.name }}</div>
-            <div class="dl-status">
-              <el-tag v-if="activeType() === d.type" type="success" size="small" effect="dark">默认使用</el-tag>
-              <span v-else class="dl-hint">点击配置</span>
-            </div>
-          </div>
-      </el-card>
+      <q-card v-for="d in DOWNLOADERS" :key="d.type" flat bordered class="downloader-card" :class="{ active: activeType() === d.type }" tabindex="0" @click="openDownloader(d)" @keydown.enter="openDownloader(d)"><q-card-section class="dl-body"><div class="dl-icon"><img :src="`/static/img/${d.img}`" :alt="d.name" /></div><div class="dl-name">{{ d.name }}</div><q-badge v-if="activeType() === d.type" color="positive" label="默认使用" /><span v-else class="dl-hint">点击配置</span></q-card-section></q-card>
     </div>
 
-    <el-dialog
-      v-model="dialogVisible"
-      :title="current?.name || '下载器配置'"
-      width="640px"
-      :close-on-click-modal="false"
-    >
-      <el-form label-width="140px">
-        <el-row :gutter="12">
-          <el-col
-            v-for="[key, f] in Object.entries(current?.config || {})"
-            :key="f.id"
-            :span="f.type === 'switch' ? 24 : 12"
-          >
-            <el-form-item :required="f.required">
-              <template #label>{{ f.title }}<HelpTip v-if="f.tooltip" :text="f.tooltip" /></template>
-              <el-switch v-if="f.type === 'switch'" v-model="formValues[key]" />
-              <el-input
-                v-else
-                v-model="formValues[key]"
-                :type="f.type === 'password' ? 'password' : 'text'"
-                :show-password="f.type === 'password'"
-                :placeholder="f.placeholder"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </el-form>
-      <template #footer>
-        <el-button :icon="Connection" :loading="testing" @click="handleTest">测试</el-button>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSave">确定</el-button>
-      </template>
-    </el-dialog>
+    <q-dialog v-model="dialogVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm" persistent><q-card class="config-dialog"><q-card-section class="row items-center no-wrap"><div class="text-h6">{{ current?.name || '下载器配置' }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="dialogVisible = false" /></q-card-section><q-separator /><q-form @submit.prevent="handleSave"><q-card-section class="config-grid"><template v-for="[key, field] in Object.entries(current?.config || {})" :key="field.id"><q-toggle v-if="field.type === 'switch'" v-model="formValues[key]" color="primary" :label="field.title" class="switch-field" /><q-input v-else :model-value="String(formValues[key] ?? '')" outlined dense :label="`${field.title}${field.required ? ' *' : ''}`" :type="field.type === 'password' ? 'password' : 'text'" :placeholder="field.placeholder" @update:model-value="(value) => setTextValue(key, value)"><template #append><HelpTip v-if="field.tooltip" :text="field.tooltip" /></template></q-input></template></q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat icon="wifi" label="测试" :loading="testing" @click="handleTest" /><q-btn flat label="取消" :disable="saving || testing" @click="dialogVisible = false" /><q-btn color="primary" unelevated label="确定" :loading="saving" type="submit" /></q-card-actions></q-form></q-card></q-dialog>
 
-    <el-dialog v-model="dirVisible" title="下载目录配置" width="900px" :close-on-click-modal="false">
-      <div class="dir-help">
-        <HelpTip text="根据类型及二级分类自动选择下载目录，按优先级从前往后依次匹配，直到找到符合条件及空间要求的目录下载；二级分类从基础设置->二级分类策略的配置中读取，如未配置二级分类则无法配置下载目录二级分类" />
-        <span>根据类型及二级分类自动选择下载目录；二级分类来自基础设置中的二级分类策略</span>
-      </div>
-      <div class="dir-list">
-        <div v-for="(d, idx) in dirList" :key="idx" class="dir-row">
-          <el-select v-model="d.type" placeholder="类型" style="width: 110px">
-            <el-option v-for="t in DIR_TYPES" :key="t.value" :value="t.value" :label="t.label" />
-          </el-select>
-          <el-input v-model="d.category" placeholder="二级分类" style="width: 120px" />
-          <el-input v-model="d.save_path" placeholder="下载保存目录" />
-          <el-input v-model="d.container_path" placeholder="访问目录" />
-          <el-input v-model="d.label" placeholder="分类标签" />
-          <el-button :icon="Remove" link type="danger" @click="removeDir(idx)" />
-        </div>
-        <el-button :icon="CirclePlus" @click="addDir">增加目录</el-button>
-      </div>
-      <template #footer>
-        <el-button @click="dirVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveDir">确定</el-button>
-      </template>
-    </el-dialog>
+    <q-dialog v-model="dirVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm" persistent><q-card class="dir-dialog"><q-card-section class="row items-center no-wrap"><div class="text-h6">下载目录配置</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="dirVisible = false" /></q-card-section><q-separator /><q-card-section><q-banner rounded dense class="info-banner"><template #avatar><HelpTip text="根据类型及二级分类按优先级匹配目录，直到找到符合条件及空间要求的目录。二级分类来自基础设置中的策略配置。" /></template>下载目录会根据类型和二级分类自动匹配。</q-banner><div class="dir-list q-mt-md"><div v-for="(d, idx) in dirList" :key="idx" class="dir-row"><q-select v-model="d.type" outlined dense emit-value map-options :options="DIR_TYPES" label="类型" class="dir-type" /><q-input v-model="d.category" outlined dense label="二级分类" class="dir-category" /><q-input v-model="d.save_path" outlined dense label="下载保存目录" class="dir-path" /><q-input v-model="d.container_path" outlined dense label="访问目录" class="dir-path" /><q-input v-model="d.label" outlined dense label="分类标签" class="dir-label" /><q-btn flat round dense color="negative" icon="delete_outline" aria-label="删除目录" @click="removeDir(idx)" /></div><q-btn outline color="primary" icon="add" label="增加目录" @click="addDir" /></div></q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" @click="dirVisible = false" /><q-btn color="primary" unelevated label="确定" @click="saveDir" /></q-card-actions></q-card></q-dialog>
 
-    <el-dialog v-model="speedVisible" title="播放限速设置" width="760px" :close-on-click-modal="false">
-      <el-form v-loading="speedLoading" label-width="160px">
-        <el-row :gutter="12">
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>Qbittorrent上传<HelpTip text="不限速源地址外进行媒体播放时对Qbittorrent下载器进行限速，0或留空不启用" /></template>
-              <el-input v-model="speedForm.qb_upload" placeholder="Kb/s" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>Qbittorrent下载<HelpTip text="不限速源地址外进行媒体播放时对Qbittorrent下载器进行限速，0或留空不启用" /></template>
-              <el-input v-model="speedForm.qb_download" placeholder="Kb/s" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>Transmission上传<HelpTip text="不限速源地址外进行媒体播放时对Transmission下载器进行限速，0或留空不启用" /></template>
-              <el-input v-model="speedForm.tr_upload" placeholder="Kb/s" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="12">
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>Transmission下载<HelpTip text="不限速源地址外进行媒体播放时对Transmission下载器进行限速，0或留空不启用" /></template>
-              <el-input v-model="speedForm.tr_download" placeholder="Kb/s" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>不限速源IPv4<HelpTip text="仅配置的地址范围外进行媒体播放时进行下载器限速，多个地址段用,号分隔，配置为0.0.0.0/0,::/0则不做限制" /></template>
-              <el-input v-model="speedForm.ipv4" placeholder="IPv4 CIDR" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>不限速源IPv6<HelpTip text="仅配置的地址范围外进行媒体播放时进行下载器限速，多个地址段用,号分隔，配置为0.0.0.0/0,::/0则不做限制" /></template>
-              <el-input v-model="speedForm.ipv6" placeholder="IPv6 CIDR" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-divider content-position="left">自动限速设置</el-divider>
-        <el-row :gutter="12">
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>上行带宽<HelpTip text="启用后根据自动限速设置，自动设置上传限制速度" /></template>
-              <el-input v-model="speedForm.bandwidth" placeholder="Mbps" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>剩余比例<HelpTip text="上行带宽扣除播放媒体比特率后，乘以剩余比例为剩余带宽分配给下载器，最大为1" /></template>
-              <el-input v-model="speedForm.residual_ratio" placeholder="0.5" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item>
-              <template #label>分配比例<HelpTip text="Qbittorrent与Transmission下载器分配剩余带宽比例，如Qbittorrent下载器无需上传限速，可设为0:x（x可为任意正整数）" /></template>
-              <el-input v-model="speedForm.allocation" placeholder="1:1" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </el-form>
-      <template #footer>
-        <el-button @click="speedVisible = false">取消</el-button>
-        <el-button type="primary" :loading="speedSaving" @click="saveSpeed">确定</el-button>
-      </template>
-    </el-dialog>
+    <q-dialog v-model="speedVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm" persistent><q-card class="speed-dialog"><q-card-section class="row items-center no-wrap"><div class="text-h6">播放限速设置</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="speedVisible = false" /></q-card-section><q-separator /><q-card-section class="speed-body"><q-inner-loading :showing="speedLoading"><q-spinner-dots color="primary" size="40px" /></q-inner-loading><div class="speed-grid"><q-input v-model="speedForm.qb_upload" outlined dense label="Qbittorrent 上传" placeholder="Kb/s"><template #append><HelpTip text="不限速源地址外播放媒体时的上传限速，0 或留空不启用。" /></template></q-input><q-input v-model="speedForm.qb_download" outlined dense label="Qbittorrent 下载" placeholder="Kb/s"><template #append><HelpTip text="不限速源地址外播放媒体时的下载限速，0 或留空不启用。" /></template></q-input><q-input v-model="speedForm.tr_upload" outlined dense label="Transmission 上传" placeholder="Kb/s" /><q-input v-model="speedForm.tr_download" outlined dense label="Transmission 下载" placeholder="Kb/s" /><q-input v-model="speedForm.ipv4" outlined dense label="不限速源 IPv4" placeholder="IPv4 CIDR" /><q-input v-model="speedForm.ipv6" outlined dense label="不限速源 IPv6" placeholder="IPv6 CIDR" /></div><q-separator class="q-my-lg" /><div class="text-subtitle2 text-weight-medium q-mb-md">自动限速设置</div><div class="speed-grid"><q-input v-model="speedForm.bandwidth" outlined dense label="上行带宽" placeholder="Mbps" /><q-input v-model="speedForm.residual_ratio" outlined dense label="剩余比例" placeholder="0.5" /><q-input v-model="speedForm.allocation" outlined dense label="分配比例" placeholder="1:1" /></div></q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" @click="speedVisible = false" /><q-btn color="primary" unelevated label="确定" :loading="speedSaving" @click="saveSpeed" /></q-card-actions></q-card></q-dialog>
   </div>
 </template>
 
 <style scoped>
-.downloader-view {
-  padding: 16px;
-}
-.downloader-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
-}
-.downloader-card {
-  cursor: pointer;
-  transition: transform 0.15s ease;
-}
-.downloader-card:hover {
-  transform: translateY(-2px);
-}
-.downloader-card.active {
-  border-color: var(--el-color-primary);
-  border-width: 2px;
-}
-.dl-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 0;
-}
-.dl-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  overflow: hidden;
-  background-color: var(--el-fill-color-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.dl-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.dl-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-.dl-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.dir-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.dir-help {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.dir-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.dir-row .el-input {
-  flex: 1;
-}
+.downloader-view { position: relative; }.downloader-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }.downloader-card { cursor: pointer; border-radius: 16px; background: var(--surface); color: var(--text-primary); transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }.downloader-card:hover, .downloader-card:focus-visible { transform: translateY(-2px); border-color: var(--q-primary); outline: none; box-shadow: 0 6px 20px rgba(27, 42, 75, .12); }.downloader-card.active { border: 2px solid var(--q-primary); }.dl-body { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 22px 12px; }.dl-icon { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; overflow: hidden; border-radius: 16px; background: var(--surface-muted); }.dl-icon img { width: 100%; height: 100%; object-fit: contain; }.dl-name { font-size: 16px; font-weight: 600; }.dl-hint { color: var(--text-secondary); font-size: 12px; }.config-dialog, .dir-dialog, .speed-dialog { width: min(700px, calc(100vw - 32px)); max-width: none; border-radius: 16px; background: var(--surface); color: var(--text-primary); }.dir-dialog { width: min(980px, calc(100vw - 32px)); }.speed-dialog { width: min(780px, calc(100vw - 32px)); }.config-grid, .speed-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }.switch-field { min-height: 40px; }.dir-list { display: flex; flex-direction: column; gap: 10px; }.dir-row { display: grid; grid-template-columns: 120px 130px minmax(180px, 1fr) minmax(180px, 1fr) 130px 34px; gap: 8px; align-items: center; }.info-banner { border: 1px solid color-mix(in srgb, var(--q-primary), transparent 70%); background: var(--primary-soft); color: var(--text-primary); }.speed-body { position: relative; }.dialog-actions { gap: 8px; padding: 12px 24px 16px; }@media (max-width: 599px) { .config-dialog, .dir-dialog, .speed-dialog { width: 100%; min-height: 100dvh; border-radius: 0; }.config-grid, .speed-grid { grid-template-columns: 1fr; }.dir-row { grid-template-columns: 1fr 1fr; }.dir-row .dir-path { grid-column: 1 / -1; }.dir-row .dir-label { grid-column: 1 / -1; }.dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); }.dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

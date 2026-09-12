@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Loading } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import MediaCard from '@/components/MediaCard.vue'
 import { personMedias, proxyDoubanImage, type RecommendItem } from '@/api/discovery'
@@ -10,58 +9,65 @@ import { useModalStore } from '@/stores/modal'
 const route = useRoute()
 const router = useRouter()
 const modal = useModalStore()
-
 const personId = computed(() => (route.query.id as string) || (route.query.tmdbid as string) || '')
 const personName = computed(() => (route.query.name as string) || (route.query.title as string) || '人物')
-
-const creditType = ref<'MOV' | 'TV'>(
-  ((route.query.type as string) || 'MOV').toUpperCase() === 'TV' ? 'TV' : 'MOV'
-)
-
+const creditType = ref<'MOV' | 'TV'>(((route.query.type as string) || 'MOV').toUpperCase() === 'TV' ? 'TV' : 'MOV')
 const items = ref<RecommendItem[]>([])
 const page = ref(1)
 const loading = ref(false)
 const noMore = ref(false)
+const loadError = ref('')
+let generation = 0
+let activeLoad: Promise<void> | null = null
 
-function switchType(t: 'MOV' | 'TV') {
-  if (t === creditType.value) return
-  router.replace({
-    path: route.path,
-    query: { ...route.query, type: t }
-  })
+function chooseType(type: 'MOV' | 'TV') {
+  if (type === creditType.value) return
+  creditType.value = type
+  void router.replace({ path: route.path, query: { ...route.query, type } })
 }
 
-async function loadPage() {
+async function loadPage(currentGeneration = generation) {
   if (loading.value || noMore.value || !personId.value) return
   loading.value = true
-  try {
-    const res = await personMedias(personId.value, creditType.value, page.value)
-    if (res.code === 0) {
-      const list = res.data || []
-      if (list.length === 0) {
-        noMore.value = true
+  const request = (async () => {
+    try {
+      const response = await personMedias(personId.value, creditType.value, page.value)
+      if (currentGeneration !== generation) return
+      if (response.code === 0) {
+        const list = response.data || []
+        if (!list.length) noMore.value = true
+        else {
+          items.value.push(...list)
+          page.value += 1
+          if (list.length < 20) noMore.value = true
+        }
+        loadError.value = ''
       } else {
-        items.value.push(...list)
-        page.value += 1
-        if (list.length < 20) noMore.value = true
+        noMore.value = true
+        loadError.value = response.msg || '人物作品加载失败'
       }
-    } else {
-      modal.error(res.msg || '加载失败')
+    } catch (error) {
+      if (currentGeneration !== generation) return
       noMore.value = true
+      loadError.value = error instanceof Error ? error.message : '人物作品加载失败'
     }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '加载失败')
-    noMore.value = true
-  } finally {
+  })()
+  activeLoad = request
+  try { await request } finally {
+    if (activeLoad === request) activeLoad = null
     loading.value = false
   }
 }
 
-function reset() {
+async function reset() {
+  const currentGeneration = ++generation
+  if (activeLoad) await activeLoad
+  if (currentGeneration !== generation) return
   items.value = []
   page.value = 1
   noMore.value = false
-  loadPage()
+  loadError.value = ''
+  await loadPage(currentGeneration)
 }
 
 function onScroll() {
@@ -69,124 +75,53 @@ function onScroll() {
   const scrollTop = document.documentElement.scrollTop || document.body.scrollTop
   const scrollHeight = document.documentElement.scrollHeight
   const clientHeight = document.documentElement.clientHeight
-  if (scrollHeight - clientHeight - scrollTop < 200) {
-    loadPage()
-  }
+  if (scrollHeight - clientHeight - scrollTop < 240) void loadPage()
 }
 
-onMounted(() => {
-  reset()
-  window.addEventListener('scroll', onScroll, { passive: true })
+onMounted(() => { void reset(); window.addEventListener('scroll', onScroll, { passive: true }) })
+onBeforeUnmount(() => { generation += 1; window.removeEventListener('scroll', onScroll) })
+watch([personId, creditType], () => { void reset() })
+watch(() => route.query.type, (value) => {
+  const next = String(value || 'MOV').toUpperCase() === 'TV' ? 'TV' : 'MOV'
+  if (next !== creditType.value) creditType.value = next
 })
-
-onBeforeUnmount(() => {
-  window.removeEventListener('scroll', onScroll)
-})
-
-watch(personId, () => reset())
-watch(creditType, () => reset())
-
-watch(
-  () => route.query.type,
-  (t) => {
-    const next = ((t as string) || 'MOV').toUpperCase() === 'TV' ? 'TV' : 'MOV'
-    if (next !== creditType.value) creditType.value = next
-  }
-)
 </script>
 
 <template>
-  <div class="person-view">
-    <PageHeader title="人物" />
+  <div class="person-page">
+    <PageHeader title="人物作品" :description="personName">
+      <template #actions>
+        <q-btn-toggle :model-value="creditType" unelevated toggle-color="primary" :options="[{ label: '参演电影', value: 'MOV' }, { label: '参演剧集', value: 'TV' }]" @update:model-value="chooseType" />
+      </template>
+    </PageHeader>
 
-    <div class="person-header">
-      <el-avatar :size="88" class="person-avatar">
-        {{ personName.charAt(0) || '?' }}
-      </el-avatar>
-      <div class="person-meta">
-        <h2 class="person-name">{{ personName }}</h2>
-        <el-radio-group :model-value="creditType" size="default" @change="switchType($event as 'MOV' | 'TV')">
-          <el-radio-button value="MOV">参演电影</el-radio-button>
-          <el-radio-button value="TV">参演剧集</el-radio-button>
-        </el-radio-group>
-      </div>
-    </div>
+    <q-card flat bordered class="person-header">
+      <q-avatar color="primary" text-color="white" size="88px" icon="person" />
+      <div class="person-meta"><h2>{{ personName }}</h2><div class="text-caption text-grey-7">{{ creditType === 'MOV' ? '参演电影' : '参演剧集' }}</div></div>
+    </q-card>
+    <q-banner v-if="loadError" rounded class="person-alert q-mb-md" inline-actions><template #avatar><q-icon name="error_outline" color="negative" /></template>{{ loadError }}<template #action><q-btn flat color="negative" label="重试" @click="reset" /></template></q-banner>
 
-    <el-empty
-      v-if="!loading && items.length === 0"
-      description="暂无作品"
-    />
-
+    <div v-if="loading && !items.length" class="loading-state"><q-spinner-orbit color="primary" size="42px" /><span>正在加载作品…</span></div>
+    <div v-else-if="!loading && !items.length && !loadError" class="empty-state"><q-icon name="movie_filter" size="48px" color="grey-5" /><span>暂无作品</span></div>
     <div v-else class="media-grid">
-      <MediaCard
-        v-for="(item, idx) in items"
-        :key="`${item.id}-${idx}`"
-        :tmdb-id="item.id"
-        :title="item.title"
-        :image="proxyDoubanImage(item.image)"
-        :fav="item.fav"
-        :vote="item.vote"
-        :year="item.year"
-        :overview="item.overview"
-        :date="item.date"
-        :media-type="item.type"
-        :res-type="item.media_type"
-        :show-sub="'1'"
-      />
+      <MediaCard v-for="(item, index) in items" :key="`${item.id}-${index}`" :tmdb-id="item.id" :title="item.title" :image="proxyDoubanImage(item.image)" :fav="item.fav" :vote="item.vote" :year="item.year" :overview="item.overview" :date="item.date" :media-type="item.type" :res-type="item.media_type" show-sub="1" />
     </div>
-
-    <div v-if="loading" class="load-tip">
-      <el-icon class="is-loading"><Loading /></el-icon>
-      <span>加载中...</span>
-    </div>
-    <div v-else-if="noMore && items.length > 0" class="load-tip">
-      <span>没有更多了</span>
-    </div>
+    <div v-if="loading && items.length" class="load-tip"><q-spinner-dots color="primary" size="24px" /><span>加载更多…</span></div>
+    <div v-else-if="noMore && items.length" class="load-tip"><q-icon name="done" size="18px" /><span>已经到底了</span></div>
   </div>
 </template>
 
 <style scoped>
-.person-view {
-  padding: 16px;
-}
-.person-header {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 16px;
-  margin-bottom: 24px;
-  background: var(--el-fill-color-light);
-  border-radius: 12px;
-}
-.person-avatar {
-  flex-shrink: 0;
-  background-color: var(--el-color-primary);
-  color: #fff;
-  font-size: 32px;
-  font-weight: 600;
-}
-.person-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.person-name {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-}
-.media-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
-}
-.load-tip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 24px 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
+.person-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.person-alert { color: var(--text-primary); background: color-mix(in srgb, var(--q-negative) 10%, var(--surface)); }
+.person-header { display: flex; align-items: center; gap: 20px; margin-bottom: 16px; padding: 20px; background: var(--surface); border-color: var(--border-subtle); }
+.person-meta { min-width: 0; }
+.person-meta h2 { margin: 0; color: var(--text-primary); font-size: 22px; }
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+.loading-state, .empty-state, .load-tip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-secondary); font-size: 13px; }
+.loading-state { min-height: 320px; }
+.empty-state { min-height: 280px; }
+.load-tip { flex-direction: row; padding: 28px 0 8px; }
+@media (max-width: 1439px) { .person-page { padding-inline: 24px; } }
+@media (max-width: 599px) { .person-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .person-header { padding: 16px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 </style>

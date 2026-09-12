@@ -1,13 +1,18 @@
 import { fileURLToPath, URL } from 'node:url'
+import { join } from 'node:path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { quasar, transformAssetUrls } from '@quasar/vite-plugin'
 
 // 开发时后端 Flask 地址（run.py 默认 3000 端口）
 const FLASK_TARGET = process.env.FLASK_TARGET || 'http://localhost:3000'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue({ template: { transformAssetUrls } }),
+    quasar({ sassVariables: join(import.meta.dirname, 'src/quasar-variables.sass') })
+  ],
   base: '/',
   css: {
     preprocessorOptions: {

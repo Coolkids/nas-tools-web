@@ -1,79 +1,41 @@
 <script setup lang="ts">
-defineProps<{
+import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+
+const props = defineProps<{
   personId?: string | number
   image?: string
   name?: string
   role?: string
 }>()
+
+const router = useRouter()
+const imageFailed = ref(false)
+watch(() => props.image, () => { imageFailed.value = false })
+
+function openPerson() {
+  if (props.personId) void router.push({ path: '/discovery_person', query: { id: String(props.personId), name: props.name } })
+}
 </script>
 
 <template>
-  <div class="person-card">
+  <article class="person-card" :aria-label="name || '人物'" tabindex="0" @click="openPerson" @keyup.enter="openPerson">
     <div class="person-image-wrap">
-      <img
-        v-if="image"
-        :src="image"
-        :alt="name"
-        class="person-image"
-        @error="($event.target as HTMLImageElement).style.display = 'none'"
-      />
-      <div v-else class="person-placeholder">
-        <el-icon :size="28"><User /></el-icon>
-      </div>
+      <q-img v-if="image && !imageFailed" :src="image" :alt="name || '人物头像'" class="person-image" fit="cover" @error="imageFailed = true" />
+      <div v-else class="person-placeholder" aria-hidden="true"><q-icon name="person" size="30px" /></div>
     </div>
-    <h3 class="person-name">{{ name }}</h3>
-    <div class="person-role">{{ role }}</div>
-  </div>
+    <h3 class="person-name">{{ name || '未知人物' }}</h3>
+    <div v-if="role" class="person-role">{{ role }}</div>
+  </article>
 </template>
 
 <style scoped>
-.person-card {
-  text-align: center;
-  padding: 16px 12px;
-  border-radius: 8px;
-  background-color: var(--el-bg-color);
-  cursor: pointer;
-  transition: transform 0.15s;
-}
-.person-card:hover {
-  transform: translateY(-2px);
-}
-.person-image-wrap {
-  width: 80px;
-  height: 80px;
-  margin: 0 auto 12px;
-  border-radius: 50%;
-  overflow: hidden;
-  background-color: var(--el-fill-color-light);
-}
-.person-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.person-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--el-text-color-placeholder);
-}
-.person-name {
-  margin: 0 0 4px;
-  font-size: 14px;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.person-role {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+.person-card { min-width: 0; padding: 16px 12px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface); cursor: pointer; text-align: center; transition: transform .18s ease, box-shadow .18s ease; }
+.person-card:hover, .person-card:focus-within { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(20, 29, 48, .12); }
+.person-image-wrap { width: 80px; height: 80px; margin: 0 auto 12px; overflow: hidden; border-radius: 50%; background: var(--surface-muted); }
+.person-image { width: 100%; height: 100%; }
+.person-placeholder { display: grid; place-items: center; width: 100%; height: 100%; color: var(--text-secondary); }
+.person-name { display: -webkit-box; overflow: hidden; margin: 0 0 4px; color: var(--text-primary); font-size: 14px; line-height: 1.3; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.person-role { display: -webkit-box; overflow: hidden; color: var(--text-secondary); font-size: 12px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+@media (prefers-reduced-motion: reduce) { .person-card { transition: none; } }
 </style>

@@ -45,6 +45,11 @@ function onClose() {
   emit('update:visible', false)
 }
 
+function updateVisible(value: boolean) {
+  if (value) emit('update:visible', true)
+  else onClose()
+}
+
 watch(() => props.visible, (val) => {
   if (val) {
     messages.value = []
@@ -59,75 +64,34 @@ onUnmounted(stopPolling)
 </script>
 
 <template>
-  <el-dialog
-    :model-value="visible"
-    title="消息中心"
-    width="600px"
-    :close-on-click-modal="false"
-    destroy-on-close
-    @close="onClose"
-    @update:model-value="(v: boolean) => emit('update:visible', v)"
-  >
-    <div class="msg-body">
-      <div v-if="messages.length === 0" class="msg-empty">
-        <div class="msg-empty-icon">📬</div>
-        <div class="msg-empty-text">暂无消息</div>
-      </div>
-      <div v-for="(msg, i) in messages" :key="i" class="msg-item" v-html="msg"></div>
-    </div>
-  </el-dialog>
+  <q-dialog :model-value="visible" :maximized="$q.screen.lt.sm" persistent @update:model-value="updateVisible">
+    <q-card class="msg-dialog">
+      <q-card-section class="row items-center no-wrap dialog-header">
+        <div class="text-h6 text-weight-medium">消息中心</div>
+        <q-space />
+        <q-btn flat round dense icon="close" aria-label="关闭" @click="onClose" />
+      </q-card-section>
+      <q-separator />
+      <q-card-section class="msg-body">
+        <div v-if="messages.length === 0" class="msg-empty">
+          <q-icon name="mark_email_unread" size="48px" color="grey-5" />
+          <div class="msg-empty-text">暂无消息</div>
+        </div>
+        <div v-for="(msg, i) in messages" :key="i" class="msg-item" v-html="msg" />
+      </q-card-section>
+    </q-card>
+  </q-dialog>
 </template>
 
 <style scoped>
-.msg-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 4px 0;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-.msg-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 0;
-  color: var(--el-text-color-placeholder);
-}
-.msg-empty-icon {
-  font-size: 40px;
-  margin-bottom: 12px;
-  opacity: 0.5;
-}
-.msg-empty-text {
-  font-size: 14px;
-}
-.msg-item {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--el-fill-color-light);
-  border-left: 3px solid var(--el-color-primary-light-3);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--el-text-color-regular);
-  word-break: break-word;
-  transition: background 0.15s;
-}
-.msg-item:hover {
-  background: var(--el-fill-color);
-}
-.msg-item:first-child {
-  margin-top: 4px;
-}
-
-.msg-item :deep(.time) {
-  display: block;
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 4px;
-}
-.msg-item :deep(.text) {
-  display: block;
-}
+.msg-dialog { width: min(600px, calc(100vw - 32px)); max-width: none; border-radius: 16px; background: var(--surface); color: var(--text-primary); }
+.dialog-header { min-height: 60px; padding: 14px 20px; }
+.msg-body { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; padding: 16px 20px 20px; }
+.msg-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px; color: var(--text-secondary); }
+.msg-empty-text { margin-top: 12px; font-size: 14px; }
+.msg-item { padding: 10px 12px; border: 1px solid var(--border-subtle); border-left: 3px solid var(--q-primary); border-radius: 8px; background: var(--surface-raised); color: var(--text-primary); font-size: 13px; line-height: 1.6; word-break: break-word; transition: background .15s; }
+.msg-item:hover { background: var(--surface-muted); }
+.msg-item :deep(.time) { display: block; margin-bottom: 4px; color: var(--text-secondary); font-size: 11px; }
+.msg-item :deep(.text) { display: block; }
+@media (max-width: 599px) { .msg-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .msg-body { max-height: none; padding: 16px; } }
 </style>

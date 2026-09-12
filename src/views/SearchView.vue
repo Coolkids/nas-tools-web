@@ -1,315 +1,275 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Search, Loading, Refresh, Plus, Delete, Link } from '@element-plus/icons-vue'
+import type { QTableProps } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import AddDownloadDialog from '@/components/AddDownloadDialog.vue'
 import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
-import { search, getSearchTaskList, getSearchTaskResult, searchTaskDelete, type SearchTaskItem, type SearchTaskResultItem, type TaskTmdbInfo } from '@/api/media'
+import { search, getSearchTaskList, getSearchTaskResult, searchTaskDelete, type SearchParams, type SearchTaskItem, type SearchTaskResultItem, type TaskTmdbInfo } from '@/api/media'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
-import { ElMessageBox } from 'element-plus'
 
 const route = useRoute()
 const modal = useModalStore()
 
 const keyword = ref((route.query.q as string) || '')
 const searching = ref(false)
-
 const tasks = ref<SearchTaskItem[]>([])
 const selectedTask = ref<SearchTaskItem | null>(null)
 const taskResults = ref<SearchTaskResultItem[]>([])
 const loadingResults = ref(false)
+const resultError = ref('')
+const taskError = ref('')
 const tmdbInfo = ref<TaskTmdbInfo | null>(null)
-
 const siteFilter = ref<string[]>([])
 const nameFilter = ref('')
-
 const showResultsDialog = ref(false)
-const vxeTableRef = ref()
-const tableHeight = ref(400)
+const taskListLoading = ref(false)
+const taskListInFlight = ref(false)
+let taskPollTimer: ReturnType<typeof setTimeout> | null = null
+let resultRequestToken = 0
+let pollActive = false
 
-function recalcTable() {
-  nextTick(() => {
-    const rightPanel = document.querySelector('.result-dialog .right-panel') as HTMLElement | null
-    if (!rightPanel) return
-    const filterBar = rightPanel.querySelector('.filter-bar') as HTMLElement | null
-    let used = 0
-    if (filterBar) used += filterBar.offsetHeight + 12
-    tableHeight.value = Math.max(500, rightPanel.clientHeight - used - 8)
-    vxeTableRef.value?.recalculate()
-  })
-}
+const taskColumns: QTableProps['columns'] = [
+  { name: 'keyword', label: '搜索关键词', field: 'keyword', align: 'left' },
+  { name: 'status', label: '状态', field: 'status', align: 'center' },
+  { name: 'start', label: '开始时间', field: 'start_time', align: 'left' },
+  { name: 'end', label: '结束时间', field: 'end_time', align: 'left' },
+  { name: 'message', label: '备注', field: 'message', align: 'left' },
+  { name: 'actions', label: '操作', field: 'keyword', align: 'right' }
+]
 
-let taskPollTimer: ReturnType<typeof setInterval> | null = null
+const resultColumns: QTableProps['columns'] = [
+  { name: 'site', label: '站点', field: 'site', align: 'left' },
+  { name: 'torrent', label: '种子名称', field: 'torrent_name', align: 'left' },
+  { name: 'size', label: '大小', field: 'size', align: 'left' },
+  { name: 'seeders', label: '做种', field: 'seeders', align: 'center' },
+  { name: 'actions', label: '操作', field: 'id', align: 'right' }
+]
 
-const uniqueSites = computed(() => {
-  const sites = new Set(taskResults.value.map(r => r.site).filter(Boolean))
-  return Array.from(sites).sort()
-})
-
+const uniqueSites = computed(() => Array.from(new Set(taskResults.value.map((item) => item.site).filter(Boolean))).sort())
 const filteredResults = computed(() => {
   let results = taskResults.value
-  if (siteFilter.value.length > 0) {
-    results = results.filter(r => siteFilter.value.includes(r.site))
-  }
-  if (nameFilter.value.trim()) {
-    const q = nameFilter.value.trim().toLowerCase()
-    results = results.filter(r => (r.torrent_name || '').toLowerCase().includes(q))
-  }
+  if (siteFilter.value.length) results = results.filter((item) => siteFilter.value.includes(item.site))
+  const query = nameFilter.value.trim().toLowerCase()
+  if (query) results = results.filter((item) => (item.torrent_name || '').toLowerCase().includes(query))
   return results
 })
 
-function statusTag(status: string): { type: 'success' | 'warning' | 'info' | 'danger'; text: string } {
+function statusMeta(status: string): { color: 'positive' | 'warning' | 'info' | 'negative' | 'grey-7'; label: string } {
   switch (status) {
-    case 'running': return { type: 'warning', text: '运行中' }
-    case 'queued': return { type: 'info', text: '排队中' }
-    case 'success': return { type: 'success', text: '完成' }
-    case 'failed': return { type: 'danger', text: '失败' }
-    default: return { type: 'info', text: status }
+    case 'running': return { color: 'warning', label: '运行中' }
+    case 'queued': return { color: 'info', label: '排队中' }
+    case 'success': return { color: 'positive', label: '完成' }
+    case 'failed': return { color: 'negative', label: '失败' }
+    default: return { color: 'grey-7', label: status || '未知' }
   }
 }
 
-function formatTime(t: string): string {
-  if (!t) return '-'
-  return t
+function formatTime(value: string) {
+  return value || '—'
 }
 
-async function fetchTaskList() {
+async function fetchTaskList(options: { notify?: boolean } = {}) {
+  if (taskListInFlight.value) return
+  taskListInFlight.value = true
+  taskListLoading.value = true
   try {
-    const res = await getSearchTaskList()
-    if (res.code === 0) {
-      tasks.value = res.tasks || []
-    }
-  } catch {
-    // ignore
-  }
-}
-
-async function doSearch() {
-  const q = keyword.value.trim()
-  if (!q) {
-    modal.warning('请输入搜索关键字')
-    return
-  }
-  searching.value = true
-  try {
-    const res = await search({ search_word: q })
-    if (res.code !== 0 && res.msg) {
-      modal.error(res.msg)
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '搜索请求失败')
-  }
-  await fetchTaskList()
-  searching.value = false
-}
-
-async function deleteTask(task: SearchTaskItem) {
-  try {
-    const res = await searchTaskDelete(task.keyword)
-    if (res.code === 0) {
-      modal.success(`任务「${task.keyword}」已删除`)
-      if (selectedTask.value?.keyword === task.keyword) {
-        selectedTask.value = null
-        taskResults.value = []
-        tmdbInfo.value = null
+    const response = await getSearchTaskList()
+    if (response.code === 0) {
+      tasks.value = response.tasks || []
+      taskError.value = ''
+      if (selectedTask.value) {
+        const previousStatus = selectedTask.value.status
+        const latest = tasks.value.find((task) => task.keyword === selectedTask.value?.keyword)
+        if (latest) {
+          selectedTask.value = latest
+          const finished = latest.status === 'success' || latest.status === 'failed'
+          if (showResultsDialog.value && finished && previousStatus !== latest.status) void loadTaskResult(latest.keyword)
+        }
       }
-      await fetchTaskList()
     } else {
-      modal.error(res.msg || '删除失败')
+      taskError.value = '搜索任务加载失败，可点击刷新重试。'
+      if (options.notify) modal.error(taskError.value)
     }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '删除请求失败')
+  } catch (error) {
+    taskError.value = '搜索任务加载失败，可点击刷新重试。'
+    if (options.notify) modal.error(error instanceof Error ? error.message : taskError.value)
+  } finally {
+    taskListLoading.value = false
+    taskListInFlight.value = false
   }
 }
 
-async function selectTask(task: SearchTaskItem) {
-  selectedTask.value = task
-  showResultsDialog.value = true
-  siteFilter.value = []
-  nameFilter.value = ''
-  if (task.status === 'success' || task.status === 'failed') {
-    await loadTaskResult(task.keyword)
-  }
+function scheduleTaskPoll(delay = 5000) {
+  if (taskPollTimer) clearTimeout(taskPollTimer)
+  taskPollTimer = setTimeout(async () => {
+    if (!pollActive) return
+    if (document.visibilityState === 'visible') await fetchTaskList()
+    if (pollActive) scheduleTaskPoll(5000)
+  }, delay)
 }
 
-async function loadTaskResult(kw: string) {
-  loadingResults.value = true
-  tmdbInfo.value = null
-  try {
-    const res = await getSearchTaskResult(kw)
-    if (res.code === 0) {
-      taskResults.value = res.results || []
-      selectedTask.value = res.task as SearchTaskItem
-      if (res.tmdb_info && (res.tmdb_info.poster || res.tmdb_info.overview)) {
-        tmdbInfo.value = res.tmdb_info
-      }
-    }
-  } catch {
-    // ignore
-  }
-  loadingResults.value = false
-  recalcTable()
-}
-
-function startTaskPoll() {
-  if (taskPollTimer) return
-  taskPollTimer = setInterval(async () => {
-    await fetchTaskList()
-  }, 5000)
-}
-
-function stopTaskPoll() {
-  if (taskPollTimer) {
-    clearInterval(taskPollTimer)
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    void fetchTaskList()
+    scheduleTaskPoll()
+  } else if (taskPollTimer) {
+    clearTimeout(taskPollTimer)
     taskPollTimer = null
   }
 }
 
-function selectRunningTask(task: SearchTaskItem) {
-  selectTask(task)
-  startTaskPoll()
+async function runSearch(params: SearchParams) {
+  if (searching.value) return
+  searching.value = true
+  try {
+    const response = await search(params)
+    if (response.code !== 0) {
+      modal.error(response.msg || '搜索请求失败')
+      return
+    }
+    await fetchTaskList()
+  } catch (error) {
+    modal.error(error instanceof Error ? error.message : '搜索请求失败')
+  } finally {
+    searching.value = false
+  }
 }
 
-function freeText(t: SearchTaskResultItem): { text: string; type: 'success' | 'info' } | null {
-  if (t.download_volume_factor === 0) return { text: 'FREE', type: 'success' }
-  if (t.download_volume_factor !== 1) return { text: `${Math.round(t.download_volume_factor * 100)}%DL`, type: 'info' }
-  return null
-}
-
-function uploadText(t: SearchTaskResultItem): { text: string; type: 'warning' | 'info' } | null {
-  if (t.upload_volume_factor !== 1) return { text: `${Math.round(t.upload_volume_factor * 100)}%UL`, type: 'warning' }
-  return null
-}
-
-function openTorrent(t: SearchTaskResultItem) {
-  if (!t.id) {
-    modal.info('无可用下载链接')
+function doSearch() {
+  const query = keyword.value.trim()
+  if (!query) {
+    modal.warning('请输入搜索关键字')
     return
   }
-  downloadDialogVisible.value = true
-  pendingTorrent.value = t
+  void runSearch({ search_word: query })
 }
 
-function openPage(url: string) {
-  if (url) window.open(url, '_blank')
+async function deleteTask(task: SearchTaskItem) {
+  try {
+    const response = await searchTaskDelete(task.keyword)
+    if (response.code !== 0) {
+      modal.error(response.msg || '删除失败')
+      return
+    }
+    modal.success(`任务「${task.keyword}」已删除`)
+    if (selectedTask.value?.keyword === task.keyword) {
+      selectedTask.value = null
+      taskResults.value = []
+      tmdbInfo.value = null
+      showResultsDialog.value = false
+    }
+    await fetchTaskList()
+  } catch (error) {
+    modal.error(error instanceof Error ? error.message : '删除请求失败')
+  }
+}
+
+async function loadTaskResult(keywordValue: string) {
+  const token = ++resultRequestToken
+  loadingResults.value = true
+  resultError.value = ''
+  tmdbInfo.value = null
+  try {
+    const response = await getSearchTaskResult(keywordValue)
+    if (token !== resultRequestToken) return
+    if (response.code !== 0) {
+      resultError.value = '搜索结果加载失败，可关闭后重试。'
+      return
+    }
+    taskResults.value = response.results || []
+    selectedTask.value = response.task || selectedTask.value
+    if (response.tmdb_info && (response.tmdb_info.poster || response.tmdb_info.overview)) tmdbInfo.value = response.tmdb_info
+  } catch (error) {
+    if (token === resultRequestToken) resultError.value = error instanceof Error ? error.message : '搜索结果加载失败'
+  } finally {
+    if (token === resultRequestToken) loadingResults.value = false
+  }
+}
+
+function selectTask(task: SearchTaskItem) {
+  selectedTask.value = task
+  taskResults.value = []
+  tmdbInfo.value = null
+  resultError.value = ''
+  siteFilter.value = []
+  nameFilter.value = ''
+  showResultsDialog.value = true
+  if (task.status === 'success' || task.status === 'failed') void loadTaskResult(task.keyword)
+}
+
+function freeText(task: SearchTaskResultItem): string | null {
+  if (task.download_volume_factor === 0) return 'FREE'
+  if (task.download_volume_factor !== 1) return `${Math.round(task.download_volume_factor * 100)}%DL`
+  return null
+}
+
+function uploadText(task: SearchTaskResultItem): string | null {
+  if (task.upload_volume_factor !== 1) return `${Math.round(task.upload_volume_factor * 100)}%UL`
+  return null
 }
 
 const downloadDialogVisible = ref(false)
 const pendingTorrent = ref<SearchTaskResultItem | null>(null)
+function openTorrent(task: SearchTaskResultItem) {
+  if (!task.id) {
+    modal.info('无可用下载链接')
+    return
+  }
+  pendingTorrent.value = task
+  downloadDialogVisible.value = true
+}
+
+function openPage(url: string) {
+  if (url) window.open(url, '_blank', 'noopener,noreferrer')
+}
 
 const rssDialogVisible = ref(false)
+const rssTypePickerVisible = ref(false)
 const rssKeyword = ref('')
 const rssType = ref<'MOV' | 'TV'>('MOV')
+const pendingRssTask = ref<SearchTaskItem | null>(null)
 
-async function openRssSubscribe(task: SearchTaskItem) {
-  try {
-    await ElMessageBox.confirm('', '选择订阅类型', {
-      confirmButtonText: '电影',
-      cancelButtonText: '电视剧',
-      distinguishCancelAndClose: true,
-      type: 'info',
-      message: '请选择需要订阅的媒体类型'
-    })
-    rssType.value = 'MOV'
-  } catch (action: any) {
-    if (action === 'cancel') {
-      rssType.value = 'TV'
-    } else {
-      return
-    }
-  }
-  rssKeyword.value = task.keyword
+function openRssSubscribe(task: SearchTaskItem) {
+  pendingRssTask.value = task
+  rssTypePickerVisible.value = true
+}
+
+function chooseRssType(type: 'MOV' | 'TV') {
+  rssType.value = type
+  rssKeyword.value = pendingRssTask.value?.keyword || ''
+  rssTypePickerVisible.value = false
   rssDialogVisible.value = true
 }
 
 function onDownloadSuccess() {
   modal.success(`${pendingTorrent.value?.site || ''} ${pendingTorrent.value?.torrent_name || ''} 添加下载成功！`)
+  downloadDialogVisible.value = false
 }
 
-function onDownloadError(msg: string) {
-  modal.error(`添加下载失败：${msg}`)
-}
+function onDownloadError(message: string) { modal.error(`添加下载失败：${message}`) }
+function onRssSuccess() { modal.success('添加订阅成功'); rssDialogVisible.value = false }
+function onRssError(message: string) { modal.error(message || '添加订阅失败') }
 
-function onRssSuccess() {
-  modal.success('添加订阅成功')
-  rssDialogVisible.value = false
-}
-
-function onRssError(msg: string) {
-  modal.error(msg || '添加订阅失败')
-}
-
-// ---- 高级搜索 ----
 const showAdvanced = ref(false)
-const advancedForm = reactive({
-  type: '',
-  name: '',
-  year: '',
-  season: '',
-  restype: '',
-  pix: '',
-  sp_state: '* *',
-  rule: ''
-})
-
-const restypeDict: Record<string, string> = {
-  BLURAY: 'BluRay',
-  REMUX: 'REMUX',
-  DOLBY: 'Dolby',
-  WEB: 'WEB-DL',
-  HDTV: 'HDTV',
-  UHD: 'UHD',
-  HDR: 'HDR',
-  '3D': '3D'
-}
-
-const pixDict: Record<string, string> = {
-  '8k': '8K',
-  '4k': '4K',
-  '1080p': '1080p',
-  '720p': '720p'
-}
-
+const advancedForm = reactive({ type: '', name: '', year: '', season: '', restype: '', pix: '', sp_state: '* *', rule: '' as string | number })
+const restypeDict: Record<string, string> = { BLURAY: 'BluRay', REMUX: 'REMUX', DOLBY: 'Dolby', WEB: 'WEB-DL', HDTV: 'HDTV', UHD: 'UHD', HDR: 'HDR', '3D': '3D' }
+const pixDict: Record<string, string> = { '8k': '8K', '4k': '4K', '1080p': '1080p', '720p': '720p' }
 const spStates = [
-  { value: '* *', label: '全部' },
-  { value: '1.0 1.0', label: '普通' },
-  { value: '1.0 0.0', label: '免费' },
-  { value: '2.0 1.0', label: '2X' },
-  { value: '2.0 0.0', label: '2X免费' },
-  { value: '1.0 0.5', label: '50%' },
-  { value: '2.0 0.5', label: '2X 50%' },
-  { value: '1.0 0.7', label: '70%' },
-  { value: '1.0 0.3', label: '30%' }
+  { value: '* *', label: '全部' }, { value: '1.0 1.0', label: '普通' }, { value: '1.0 0.0', label: '免费' },
+  { value: '2.0 1.0', label: '2X' }, { value: '2.0 0.0', label: '2X免费' }, { value: '1.0 0.5', label: '50%' },
+  { value: '2.0 0.5', label: '2X 50%' }, { value: '1.0 0.7', label: '70%' }, { value: '1.0 0.3', label: '30%' }
 ]
-
-const seasonOptions = computed(() => {
-  const options = [{ value: '', label: '全部' }]
-  for (let i = 1; i <= 20; i++) {
-    options.push({ value: `S${i.toString().padStart(2, '0')}`, label: `第${i}季` })
-  }
-  return options
-})
-
-interface RuleOption {
-  id: number
-  name: string
-}
-
-const filterRules = ref<RuleOption[]>([])
+const seasonOptions = computed(() => [{ value: '', label: '全部' }, ...Array.from({ length: 20 }, (_, index) => ({ value: `S${String(index + 1).padStart(2, '0')}`, label: `第${index + 1}季` }))])
+const filterRules = ref<Array<{ id: number; name: string }>>([])
 
 async function loadFilterRules() {
   try {
-    const res: any = await doAction('get_filterrules', {})
-    if (res.code === 0) {
-      filterRules.value = (res.ruleGroups || []).map((g: any) => ({
-        id: g.id,
-        name: g.name
-      }))
-    }
+    const response = await doAction<{ code: number; ruleGroups?: Array<{ id: number; name: string }> }>('get_filterrules', {})
+    if (response.code === 0) filterRules.value = response.ruleGroups || []
   } catch {
-    // ignore
+    filterRules.value = []
   }
 }
 
@@ -322,462 +282,247 @@ function openAdvancedDialog() {
   advancedForm.pix = ''
   advancedForm.sp_state = '* *'
   advancedForm.rule = ''
-  loadFilterRules()
+  void loadFilterRules()
   showAdvanced.value = true
 }
 
-async function doAdvancedSearch() {
+function doAdvancedSearch() {
   const name = advancedForm.name.trim()
   if (!name) {
     modal.warning('请输入电影/电视剧名称')
     return
   }
-  let kw = name
-  if (advancedForm.type) {
-    kw = advancedForm.type + ' ' + name
-  }
-  if (advancedForm.year) {
-    kw = kw + ' ' + advancedForm.year
-  }
-  if (advancedForm.season) {
-    kw = kw + ' ' + advancedForm.season
-  }
-  const filters: Record<string, string> = {}
+  let query = name
+  if (advancedForm.type) query += ` ${advancedForm.type}`
+  if (advancedForm.year) query += ` ${advancedForm.year}`
+  if (advancedForm.season) query += ` ${advancedForm.season}`
+  const filters: Record<string, unknown> = {}
   if (advancedForm.restype) filters.restype = advancedForm.restype
   if (advancedForm.pix) filters.pix = advancedForm.pix
-  if (advancedForm.sp_state && advancedForm.sp_state !== '* *') filters.sp_state = advancedForm.sp_state
+  if (advancedForm.sp_state !== '* *') filters.sp_state = advancedForm.sp_state
   if (advancedForm.rule) filters.rule = advancedForm.rule
   showAdvanced.value = false
-  keyword.value = kw
-  searching.value = true
-  try {
-    const res = await search({ search_word: kw, filters, unident: true })
-    if (res.code !== 0 && res.msg) {
-      modal.error(res.msg)
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '搜索请求失败')
+  keyword.value = query
+  void runSearch({ search_word: query, filters, unident: true })
+}
+
+function readInitialSearch(): SearchParams | null {
+  const query = keyword.value.trim()
+  if (!query) return null
+  let filters: Record<string, unknown> | undefined
+  if (typeof route.query.filters === 'string') {
+    try { filters = JSON.parse(route.query.filters) as Record<string, unknown> } catch { filters = undefined }
   }
-  await fetchTaskList()
-  searching.value = false
+  return { search_word: query, filters, unident: route.query.unident === 'true' }
 }
 
 onMounted(() => {
-  fetchTaskList()
-  startTaskPoll()
-  if (keyword.value) {
-    doSearch()
-  }
+  pollActive = true
+  void fetchTaskList()
+  scheduleTaskPoll()
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  const initialSearch = readInitialSearch()
+  if (initialSearch) void runSearch(initialSearch)
 })
 
-onBeforeUnmount(stopTaskPoll)
+onBeforeUnmount(() => {
+  pollActive = false
+  if (taskPollTimer) clearTimeout(taskPollTimer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  resultRequestToken += 1
+})
 </script>
 
 <template>
-  <div class="search-view">
+  <div class="search-page">
     <PageHeader title="资源搜索" :description="`共 ${tasks.length} 个任务`">
       <template #actions>
-        <el-input
-          v-model="keyword"
-          placeholder="输入电影/电视剧名称..."
-          clearable
-          style="width: 320px"
-          @keyup.enter="doSearch"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-button type="primary" :icon="Search" :loading="searching" @click="doSearch">
-          {{ searching ? '搜索中' : '搜索' }}
-        </el-button>
-        <el-button :icon="Refresh" @click="fetchTaskList">刷新</el-button>
-        <el-button @click="openAdvancedDialog">高级搜索</el-button>
+        <q-input v-model="keyword" outlined dense clearable class="search-input" placeholder="输入电影 / 电视剧名称" @keyup.enter="doSearch">
+          <template #prepend><q-icon name="search" /></template>
+        </q-input>
+        <q-btn color="primary" unelevated icon="search" :label="searching ? '搜索中' : '搜索'" :loading="searching" @click="doSearch" />
+        <q-btn outline icon="refresh" label="刷新" :loading="taskListLoading" @click="fetchTaskList({ notify: true })" />
+        <q-btn flat icon="tune" label="高级搜索" @click="openAdvancedDialog" />
       </template>
     </PageHeader>
 
-    <el-table :data="tasks" stripe size="small" @row-click="selectTask" highlight-current-row max-height="200" class="tasks-table">
-      <el-table-column label="搜索关键词" min-width="200">
-        <template #default="{ row }">
-          <span class="keyword-cell">{{ row.keyword }}</span>
+    <q-banner v-if="taskError" rounded class="search-alert q-mb-md" inline-actions>
+      <template #avatar><q-icon name="error_outline" color="negative" /></template>
+      {{ taskError }}
+      <template #action><q-btn flat color="negative" label="重试" @click="fetchTaskList({ notify: true })" /></template>
+    </q-banner>
+
+    <q-card flat bordered class="task-card">
+      <q-table
+        v-if="$q.screen.gt.xs"
+        flat
+        :rows="tasks"
+        :columns="taskColumns"
+        row-key="keyword"
+        :loading="taskListLoading || searching"
+        :rows-per-page-options="[0]"
+        hide-pagination
+        class="task-table"
+        @row-click="(_, row) => selectTask(row)"
+      >
+        <template #body-cell-keyword="props"><q-td :props="props"><span class="keyword-cell">{{ props.row.keyword }}</span></q-td></template>
+        <template #body-cell-status="props"><q-td :props="props"><q-badge rounded :color="statusMeta(props.row.status).color" :label="statusMeta(props.row.status).label" /></q-td></template>
+        <template #body-cell-start="props"><q-td :props="props">{{ formatTime(props.row.start_time) }}</q-td></template>
+        <template #body-cell-end="props"><q-td :props="props">{{ formatTime(props.row.end_time) }}</q-td></template>
+        <template #body-cell-message="props"><q-td :props="props">{{ props.row.message || '—' }}</q-td></template>
+        <template #body-cell-actions="props">
+          <q-td :props="props">
+            <q-btn flat round color="primary" icon="subscriptions" aria-label="订阅" @click.stop="openRssSubscribe(props.row)" />
+            <q-btn v-if="props.row.status === 'success' || props.row.status === 'failed'" flat round color="negative" icon="delete" aria-label="删除" @click.stop="deleteTask(props.row)" />
+          </q-td>
         </template>
-      </el-table-column>
-      <el-table-column label="状态" width="100" align="center">
-        <template #default="{ row }">
-          <el-tag :type="statusTag(row.status).type" size="small" effect="plain">
-            {{ statusTag(row.status).text }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="开始时间" width="180">
-        <template #default="{ row }">{{ formatTime(row.start_time) }}</template>
-      </el-table-column>
-      <el-table-column label="结束时间" width="180">
-        <template #default="{ row }">{{ formatTime(row.end_time) }}</template>
-      </el-table-column>
-      <el-table-column label="备注" min-width="150">
-        <template #default="{ row }">{{ row.message || '-' }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="180" align="center">
-        <template #default="{ row }">
-          <el-button size="small" type="success" :icon="Plus" @click.stop="openRssSubscribe(row)">
-            订阅
-          </el-button>
-          <el-button
-            v-if="row.status === 'success' || row.status === 'failed'"
-            size="small" type="danger" :icon="Delete"
-            @click.stop="deleteTask(row)"
-          />
-        </template>
-      </el-table-column>
-    </el-table>
+        <template #no-data><div class="empty-state"><q-icon name="search_off" size="38px" color="grey-5" /><span>暂无搜索任务</span></div></template>
+      </q-table>
 
-    <el-dialog
-      v-model="showResultsDialog"
-      :title="selectedTask ? `搜索结果：${selectedTask.keyword}` : '搜索结果'"
-      width="90%"
-      top="3vh"
-      class="result-dialog"
-      destroy-on-close
-      :close-on-click-modal="false"
-      @opened="recalcTable"
-    >
-      <div class="dialog-body">
-        <div v-if="tmdbInfo" class="left-panel">
-          <img v-if="tmdbInfo.poster" :src="tmdbInfo.poster" class="tmdb-poster" alt="poster">
-          <div class="tmdb-meta">
-            <div class="tmdb-title">{{ tmdbInfo.title }}<span v-if="tmdbInfo.year" class="tmdb-year"> ({{ tmdbInfo.year }})</span></div>
-            <div v-if="tmdbInfo.overview" class="tmdb-overview">{{ tmdbInfo.overview }}</div>
-          </div>
-        </div>
-
-        <div class="right-panel">
-          <div v-if="loadingResults" class="loading-tip">
-            <el-icon class="is-loading"><Loading /></el-icon>
-            <span>加载中...</span>
-          </div>
-
-          <template v-else-if="taskResults.length > 0">
-            <div class="filter-bar">
-              <el-select v-model="siteFilter" multiple placeholder="站点筛选" clearable collapse-tags style="width: 200px">
-                <el-option v-for="s in uniqueSites" :key="s" :label="s" :value="s" />
-              </el-select>
-              <el-input v-model="nameFilter" placeholder="名称过滤..." clearable style="width: 240px" />
-              <span class="filter-count">共 {{ filteredResults.length }} 条结果</span>
-            </div>
-
-            <vxe-table
-              ref="vxeTableRef"
-              :data="filteredResults"
-              :height="tableHeight"
-              border
-              stripe
-              size="small"
-              :virtual-y-config="{ enabled: true, gt: 0 }"
-              :column-config="{ resizable: true }"
-            >
-              <vxe-column field="site" title="站点" width="90">
-                <template #default="{ row }">
-                  <span class="site-cell">{{ row.site }}</span>
-                </template>
-              </vxe-column>
-              <vxe-column field="torrent_name" title="种子名称" min-width="400">
-                <template #default="{ row }">
-                  <div class="torrent-name">{{ row.torrent_name }}</div>
-                  <div v-if="row.description" class="torrent-desc">{{ row.description }}</div>
-                  <div class="torrent-badges">
-                    <el-tag v-if="row.title" size="small" type="primary">{{ row.title }}</el-tag>
-                    <el-tag v-if="row.type === 'MOV'" size="small" type="success">电影</el-tag>
-                    <el-tag v-else-if="row.type === 'TV'" size="small" type="warning">电视剧</el-tag>
-                    <el-tag v-if="row.size" size="small" type="info">{{ row.size }}</el-tag>
-                    <el-tag v-if="uploadText(row)" size="small" :type="uploadText(row)!.type">{{ uploadText(row)!.text }}</el-tag>
-                    <el-tag v-if="freeText(row)" size="small" :type="freeText(row)!.type">{{ freeText(row)!.text }}</el-tag>
-                  </div>
-                </template>
-              </vxe-column>
-              <vxe-column field="size" title="大小" width="90" />
-              <vxe-column field="seeders" title="做种" width="70" align="center">
-                <template #default="{ row }">
-                  <span v-if="row.seeders">{{ row.seeders }}↑</span>
-                </template>
-              </vxe-column>
-              <vxe-column title="操作" width="140" align="center">
-                <template #default="{ row }">
-                  <el-button size="small" type="primary" @click="openTorrent(row)">下载</el-button>
-                  <el-button v-if="row.pageurl" size="small" @click="openPage(row.pageurl)">
-                    <el-icon><Link /></el-icon>
-                  </el-button>
-                </template>
-              </vxe-column>
-            </vxe-table>
-          </template>
-
-          <el-empty v-else description="暂无搜索结果" />
-        </div>
+      <div v-else class="mobile-task-list">
+        <q-card v-for="task in tasks" :key="task.keyword" flat bordered class="mobile-task" @click="selectTask(task)">
+          <q-card-section class="row items-center no-wrap">
+            <div class="task-copy"><div class="keyword-cell">{{ task.keyword }}</div><div class="task-time">{{ formatTime(task.start_time) }}</div></div>
+            <q-space /><q-badge rounded :color="statusMeta(task.status).color" :label="statusMeta(task.status).label" />
+          </q-card-section>
+          <q-card-actions align="right" class="q-pt-none">
+            <q-btn flat color="primary" icon="subscriptions" label="订阅" @click.stop="openRssSubscribe(task)" />
+            <q-btn v-if="task.status === 'success' || task.status === 'failed'" flat color="negative" icon="delete" label="删除" @click.stop="deleteTask(task)" />
+          </q-card-actions>
+        </q-card>
+        <div v-if="!tasks.length && !taskListLoading" class="empty-state"><q-icon name="search_off" size="38px" color="grey-5" /><span>暂无搜索任务</span></div>
       </div>
-    </el-dialog>
+    </q-card>
 
-    <AddDownloadDialog
-      v-model="downloadDialogVisible"
-      mode="search"
-      :torrent-id="pendingTorrent?.id"
-      :title="pendingTorrent ? `添加下载 【${pendingTorrent.site}】${pendingTorrent.torrent_name}` : '添加下载'"
-      @success="onDownloadSuccess"
-      @error="onDownloadError"
-    />
+    <q-dialog v-model="showResultsDialog" :maximized="$q.screen.lt.sm" :full-width="$q.screen.gt.xs" :full-height="$q.screen.gt.xs">
+      <q-card class="result-dialog-card">
+        <q-card-section class="row items-center q-pb-sm">
+          <div class="text-h6 ellipsis">{{ selectedTask ? `搜索结果：${selectedTask.keyword}` : '搜索结果' }}</div>
+          <q-space /><q-btn flat round icon="close" aria-label="关闭" v-close-popup />
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="result-dialog-body">
+          <aside v-if="tmdbInfo" class="result-media">
+            <q-img v-if="tmdbInfo.poster" :src="tmdbInfo.poster" ratio=".67" class="tmdb-poster" />
+            <div class="tmdb-title">{{ tmdbInfo.title }}<span v-if="tmdbInfo.year">（{{ tmdbInfo.year }}）</span></div>
+            <div v-if="tmdbInfo.overview" class="tmdb-overview">{{ tmdbInfo.overview }}</div>
+          </aside>
+          <section class="result-list-panel">
+            <q-banner v-if="selectedTask && selectedTask.status !== 'success' && selectedTask.status !== 'failed'" rounded class="result-status-banner q-mb-md">
+              <template #avatar><q-icon name="hourglass_top" color="warning" /></template>
+              搜索任务{{ statusMeta(selectedTask.status).label }}，完成后会自动更新结果。
+            </q-banner>
+            <q-inner-loading :showing="loadingResults"><q-spinner-orbit color="primary" size="42px" /></q-inner-loading>
+            <q-banner v-if="resultError" rounded class="search-alert q-mb-md" inline-actions>
+              <template #avatar><q-icon name="error_outline" color="negative" /></template>{{ resultError }}
+              <template #action><q-btn v-if="selectedTask" flat color="negative" label="重试" @click="loadTaskResult(selectedTask.keyword)" /></template>
+            </q-banner>
+            <template v-else-if="taskResults.length">
+              <div class="filter-bar">
+                <q-select v-model="siteFilter" outlined dense multiple clearable use-chips emit-value map-options :options="uniqueSites" label="站点筛选" class="site-filter" />
+                <q-input v-model="nameFilter" outlined dense clearable label="名称过滤" class="name-filter" />
+                <span class="filter-count">共 {{ filteredResults.length }} 条结果</span>
+              </div>
+              <q-table v-if="$q.screen.gt.xs" flat bordered :rows="filteredResults" :columns="resultColumns" row-key="id" :rows-per-page-options="[20, 50, 100]" class="result-table">
+                <template #body-cell-site="props"><q-td :props="props"><q-badge color="grey-7" :label="props.row.site" /></q-td></template>
+                <template #body-cell-torrent="props"><q-td :props="props"><div class="torrent-name">{{ props.row.torrent_name }}</div><div v-if="props.row.description" class="torrent-desc">{{ props.row.description }}</div><div class="torrent-badges"><q-chip v-if="props.row.title" dense color="primary" text-color="white" :label="props.row.title" /><q-chip v-if="props.row.type === 'MOV'" dense color="positive" text-color="white" label="电影" /><q-chip v-else-if="props.row.type === 'TV'" dense color="warning" text-color="white" label="电视剧" /><q-chip v-if="uploadText(props.row)" dense color="warning" text-color="white" :label="uploadText(props.row) || ''" /><q-chip v-if="freeText(props.row)" dense color="positive" text-color="white" :label="freeText(props.row) || ''" /></div></q-td></template>
+                <template #body-cell-seeders="props"><q-td :props="props">{{ props.row.seeders || 0 }} ↑</q-td></template>
+                <template #body-cell-actions="props"><q-td :props="props"><q-btn color="primary" unelevated dense label="下载" @click="openTorrent(props.row)" /><q-btn v-if="props.row.pageurl" flat round icon="open_in_new" aria-label="打开站点" @click="openPage(props.row.pageurl)" /></q-td></template>
+              </q-table>
+              <div v-else class="mobile-result-list">
+                <q-card v-for="item in filteredResults" :key="item.id" flat bordered class="mobile-result-card">
+                  <q-card-section><div class="row items-center q-gutter-sm"><q-badge color="grey-7" :label="item.site" /><q-chip v-if="item.type === 'MOV'" dense color="positive" text-color="white" label="电影" /><q-chip v-else-if="item.type === 'TV'" dense color="warning" text-color="white" label="电视剧" /></div><div class="torrent-name q-mt-sm">{{ item.torrent_name }}</div><div v-if="item.description" class="torrent-desc">{{ item.description }}</div><div class="torrent-badges"><q-chip v-if="item.size" dense outline :label="item.size" /><q-chip v-if="item.title" dense outline :label="item.title" /><q-chip v-if="uploadText(item)" dense color="warning" text-color="white" :label="uploadText(item) || ''" /><q-chip v-if="freeText(item)" dense color="positive" text-color="white" :label="freeText(item) || ''" /></div></q-card-section>
+                  <q-card-actions align="right"><span class="seeders-text">{{ item.seeders || 0 }} ↑</span><q-btn color="primary" unelevated label="下载" @click="openTorrent(item)" /><q-btn v-if="item.pageurl" flat round icon="open_in_new" aria-label="打开站点" @click="openPage(item.pageurl)" /></q-card-actions>
+                </q-card>
+              </div>
+            </template>
+            <div v-else-if="!loadingResults" class="empty-state result-empty"><q-icon name="inventory_2" size="42px" color="grey-5" /><span>暂无搜索结果</span></div>
+          </section>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
 
-    <AddRssMediaDialog
-      v-model="rssDialogVisible"
-      :type="rssType"
-      :initial-name="rssKeyword"
-      :initial-keyword="rssKeyword"
-      @success="onRssSuccess"
-      @error="onRssError"
-    />
+    <AddDownloadDialog v-model="downloadDialogVisible" mode="search" :torrent-id="pendingTorrent?.id" :title="pendingTorrent ? `添加下载【${pendingTorrent.site}】${pendingTorrent.torrent_name}` : '添加下载'" @success="onDownloadSuccess" @error="onDownloadError" />
+    <AddRssMediaDialog v-model="rssDialogVisible" :type="rssType" :initial-name="rssKeyword" :initial-keyword="rssKeyword" @success="onRssSuccess" @error="onRssError" />
 
-    <el-dialog v-model="showAdvanced" title="高级搜索" width="750px" destroy-on-close>
-      <el-form label-width="60px">
-        <el-row :gutter="16">
-          <el-col :span="6">
-            <el-form-item label="类型">
-              <el-select v-model="advancedForm.type" style="width: 100%">
-                <el-option label="全部" value="" />
-                <el-option label="电影" value="电影" />
-                <el-option label="电视剧" value="电视剧" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="10">
-            <el-form-item label="名称">
-              <el-input v-model="advancedForm.name" placeholder="电影/电视剧名称" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="16">
-          <el-col :span="8">
-            <el-form-item label="年份">
-              <el-input v-model="advancedForm.year" placeholder="20xx" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="季">
-              <el-select v-model="advancedForm.season" style="width: 100%">
-                <el-option
-                  v-for="opt in seasonOptions"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="16">
-          <el-col :span="8">
-            <el-form-item label="质量">
-              <el-select v-model="advancedForm.restype" style="width: 100%">
-                <el-option label="全部" value="" />
-                <el-option
-                  v-for="(label, key) in restypeDict"
-                  :key="key"
-                  :label="label"
-                  :value="key"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="分辨率">
-              <el-select v-model="advancedForm.pix" style="width: 100%">
-                <el-option label="全部" value="" />
-                <el-option
-                  v-for="(label, key) in pixDict"
-                  :key="key"
-                  :label="label"
-                  :value="key"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="促销">
-              <el-select v-model="advancedForm.sp_state" style="width: 100%">
-                <el-option
-                  v-for="s in spStates"
-                  :key="s.value"
-                  :label="s.label"
-                  :value="s.value"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="16">
-          <el-col :span="24">
-            <el-form-item label="规则">
-              <el-select v-model="advancedForm.rule" style="width: 100%">
-                <el-option label="全部" value="" />
-                <el-option
-                  v-for="r in filterRules"
-                  :key="r.id"
-                  :label="r.name"
-                  :value="r.id"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </el-form>
-      <template #footer>
-        <el-button @click="showAdvanced = false">取消</el-button>
-        <el-button type="primary" @click="doAdvancedSearch">开始搜索</el-button>
-      </template>
-    </el-dialog>
+    <q-dialog v-model="rssTypePickerVisible">
+      <q-card class="type-picker-card"><q-card-section><div class="text-h6">选择订阅类型</div><div class="text-body2 text-grey-7 q-mt-sm">请选择要订阅的媒体类型</div></q-card-section><q-card-actions align="right"><q-btn flat label="取消" v-close-popup /><q-btn outline color="primary" label="电视剧" @click="chooseRssType('TV')" /><q-btn color="primary" unelevated label="电影" @click="chooseRssType('MOV')" /></q-card-actions></q-card>
+    </q-dialog>
+
+    <q-dialog v-model="showAdvanced" :maximized="$q.screen.lt.sm">
+      <q-card class="advanced-card">
+        <q-card-section class="row items-center"><div class="text-h6">高级搜索</div><q-space /><q-btn flat round icon="close" aria-label="关闭" v-close-popup /></q-card-section>
+        <q-separator />
+        <q-form @submit.prevent="doAdvancedSearch">
+          <q-card-section class="advanced-form">
+            <q-select v-model="advancedForm.type" outlined label="类型" :options="[{ label: '全部', value: '' }, { label: '电影', value: '电影' }, { label: '电视剧', value: '电视剧' }]" emit-value map-options />
+            <q-input v-model="advancedForm.name" outlined label="名称" placeholder="电影 / 电视剧名称" />
+            <q-input v-model="advancedForm.year" outlined label="年份" placeholder="20xx" inputmode="numeric" />
+            <q-select v-model="advancedForm.season" outlined label="季" :options="seasonOptions" emit-value map-options />
+            <q-select v-model="advancedForm.restype" outlined label="质量" :options="[{ label: '全部', value: '' }, ...Object.entries(restypeDict).map(([value, label]) => ({ label, value }))]" emit-value map-options />
+            <q-select v-model="advancedForm.pix" outlined label="分辨率" :options="[{ label: '全部', value: '' }, ...Object.entries(pixDict).map(([value, label]) => ({ label, value }))]" emit-value map-options />
+            <q-select v-model="advancedForm.sp_state" outlined label="促销" :options="spStates" emit-value map-options />
+            <q-select v-model="advancedForm.rule" outlined label="规则" :options="[{ id: '', name: '全部' }, ...filterRules]" option-label="name" option-value="id" emit-value map-options />
+          </q-card-section>
+          <q-card-actions align="right"><q-btn flat label="取消" v-close-popup /><q-btn color="primary" unelevated type="submit" label="开始搜索" :loading="searching" /></q-card-actions>
+        </q-form>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
 <style scoped>
-.search-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  padding: 16px;
+.search-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.search-input { width: min(320px, 100%); }
+.search-alert { color: var(--text-primary); background: color-mix(in srgb, var(--q-negative) 10%, var(--surface)); }
+.task-card { overflow: hidden; background: var(--surface); border-color: var(--border-subtle); }
+.task-table :deep(th), .result-table :deep(th) { color: var(--text-secondary); font-weight: 500; }
+.task-table :deep(tbody tr) { cursor: pointer; }
+.keyword-cell { color: var(--text-primary); font-weight: 600; }
+.mobile-task-list { display: grid; gap: 8px; padding: 8px; }
+.mobile-task { background: var(--surface); border-color: var(--border-subtle); }
+.task-copy { min-width: 0; }
+.task-time { margin-top: 5px; color: var(--text-secondary); font-size: 12px; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 180px; color: var(--text-secondary); font-size: 13px; }
+.result-dialog-card { width: min(1280px, calc(100vw - 32px)); max-width: none; max-height: 92vh; border-radius: 16px; }
+.result-dialog-body { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; min-height: min(68vh, 720px); overflow: hidden; }
+.result-media { min-width: 0; overflow: auto; }
+.tmdb-poster { display: block; width: 100%; border-radius: 10px; background: var(--surface-muted); }
+.tmdb-title { margin-top: 12px; color: var(--text-primary); font-size: 17px; font-weight: 650; }
+.tmdb-title span { color: var(--text-secondary); font-size: 13px; font-weight: 400; }
+.tmdb-overview { margin-top: 8px; color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
+.result-list-panel { position: relative; min-width: 0; min-height: 0; overflow: auto; }
+.result-status-banner { color: var(--text-primary); background: color-mix(in srgb, var(--q-warning) 12%, var(--surface)); }
+.filter-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.site-filter { width: 210px; }
+.name-filter { width: 240px; }
+.filter-count { margin-left: auto; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.torrent-name { color: var(--text-primary); font-size: 14px; line-height: 1.45; word-break: break-word; }
+.torrent-desc { margin-top: 3px; overflow: hidden; color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.torrent-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.torrent-badges :deep(.q-chip) { margin: 0; }
+.mobile-result-list { display: grid; gap: 8px; }
+.mobile-result-card { background: var(--surface); border-color: var(--border-subtle); }
+.seeders-text { margin-right: auto; color: var(--text-secondary); font-size: 12px; }
+.result-empty { min-height: 280px; }
+.type-picker-card { width: min(440px, calc(100vw - 32px)); border-radius: 16px; }
+.advanced-card { width: min(760px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
+.advanced-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 1439px) { .search-page { padding-inline: 24px; } }
+@media (max-width: 1023px) { .result-dialog-body { grid-template-columns: 180px minmax(0, 1fr); } }
+@media (max-width: 599px) {
+  .search-page { padding: 16px 16px calc(32px + var(--safe-bottom)); }
+  .search-input { width: 100%; }
+  .result-dialog-card { width: 100%; max-height: none; border-radius: 0; }
+  .result-dialog-body { display: flex; flex-direction: column; min-height: 0; overflow: auto; padding: 12px 16px 24px; }
+  .result-media { display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; max-height: 140px; }
+  .tmdb-poster { grid-row: span 2; width: 84px; height: 124px; }
+  .tmdb-title { margin-top: 0; }
+  .tmdb-overview { margin-top: 4px; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+  .filter-bar { flex-wrap: wrap; }
+  .site-filter, .name-filter { width: 100%; }
+  .filter-count { width: 100%; margin-left: 0; }
+  .advanced-card { width: 100%; min-height: 100dvh; border-radius: 0; }
+  .advanced-form { grid-template-columns: 1fr; overflow: auto; }
 }
-.tasks-table {
-  flex-shrink: 0;
-}
-.keyword-cell {
-  font-weight: 600;
-  cursor: pointer;
-}
-.result-dialog :deep(.el-dialog) {
-  max-height: 92vh;
-  display: flex;
-  flex-direction: column;
-}
-.result-dialog :deep(.el-dialog__body) {
-  height: 75vh;
-  padding: 16px 20px;
-  overflow: hidden;
-  flex: 1;
-}
-.dialog-body {
-  display: flex;
-  gap: 20px;
-  height: 100%;
-}
-.left-panel {
-  width: 240px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-}
-.left-panel .tmdb-poster {
-  width: 100%;
-  border-radius: 6px;
-  object-fit: cover;
-}
-.left-panel .tmdb-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.left-panel .tmdb-title {
-  font-size: 16px;
-  font-weight: 700;
-}
-.left-panel .tmdb-year {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  font-weight: 400;
-}
-.left-panel .tmdb-overview {
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--el-text-color-secondary);
-}
-.right-panel {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.loading-tip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--el-text-color-secondary);
-  padding: 40px 0;
-  justify-content: center;
-}
-.site-cell {
-  font-weight: 600;
-}
-.torrent-name {
-  font-size: 13px;
-  word-break: break-all;
-}
-.torrent-desc {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 2px;
-}
-.torrent-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-.filter-bar {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 12px;
-  flex-shrink: 0;
-}
-.filter-count {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-/* ---- responsive ---- */
-@media (max-width: 1200px) {
-  .left-panel {
-    width: 200px;
-  }
-}
-@media (max-width: 768px) {
-  .result-dialog :deep(.el-dialog__body) {
-    height: 80vh;
-  }
-  .dialog-body {
-    flex-direction: column;
-    gap: 12px;
-  }
-  .left-panel {
-    width: 100%;
-    flex-direction: row;
-    align-items: flex-start;
-    max-height: 140px;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  .left-panel .tmdb-poster {
-    width: 90px;
-    min-height: 120px;
-    flex-shrink: 0;
-  }
-  .left-panel .tmdb-overview {
-    display: -webkit-box;
-    -webkit-line-clamp: 4;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-}
-
 </style>

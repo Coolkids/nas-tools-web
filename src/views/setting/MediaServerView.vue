@@ -1,219 +1,67 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Connection } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { useConfigForm } from '@/composables/useConfigForm'
 import { useModalStore } from '@/stores/modal'
 import { testConnection } from '@/api/config'
 
 type ServerKeyType = 'emby' | 'jellyfin' | 'plex'
-
-interface ServerField {
-  key: string
-  label: string
-  placeholder?: string
-  inputType?: 'text' | 'password'
-  required?: boolean
-}
-
-interface ServerType {
-  type: ServerKeyType
-  name: string
-  img: string
-  testCommand: string
-  fields: ServerField[]
-}
-
-const SERVERS: ServerType[] = [
-  {
-    type: 'emby',
-    name: 'Emby',
-    img: 'emby.png',
-    testCommand: 'app.mediaserver.client.emby|Emby',
-    fields: [
-      { key: 'host', label: '服务器地址', placeholder: 'http://127.0.0.1:8096', required: true },
-      { key: 'api_key', label: 'Api Key', required: true }
-    ]
-  },
-  {
-    type: 'jellyfin',
-    name: 'Jellyfin',
-    img: 'jellyfin.jpg',
-    testCommand: 'app.mediaserver.client.jellyfin|Jellyfin',
-    fields: [
-      { key: 'host', label: '服务器地址', placeholder: 'http://127.0.0.1:8096', required: true },
-      { key: 'api_key', label: 'Api Key', required: true }
-    ]
-  },
-  {
-    type: 'plex',
-    name: 'Plex',
-    img: 'plex.png',
-    testCommand: 'app.mediaserver.client.plex|Plex',
-    fields: [
-      { key: 'host', label: '服务器地址', placeholder: 'http://127.0.0.1:32400', required: true },
-      { key: 'token', label: 'X-Plex-Token' },
-      { key: 'servername', label: '服务器名称' },
-      { key: 'username', label: '用户名' },
-      { key: 'password', label: '密码', inputType: 'password' }
-    ]
-  }
+interface ServerField { key: string; label: string; placeholder?: string; inputType?: 'text' | 'password'; required?: boolean }
+interface ServerType { type: ServerKeyType; name: string; img: string; testCommand: string; fields: ServerField[]; description: string }
+const servers: ServerType[] = [
+  { type: 'emby', name: 'Emby', img: 'emby.png', testCommand: 'app.mediaserver.client.emby|Emby', description: '媒体库与播放状态同步', fields: [{ key: 'host', label: '服务器地址', placeholder: 'http://127.0.0.1:8096', required: true }, { key: 'api_key', label: 'API Key', inputType: 'password', required: true }] },
+  { type: 'jellyfin', name: 'Jellyfin', img: 'jellyfin.jpg', testCommand: 'app.mediaserver.client.jellyfin|Jellyfin', description: '开源媒体服务器', fields: [{ key: 'host', label: '服务器地址', placeholder: 'http://127.0.0.1:8096', required: true }, { key: 'api_key', label: 'API Key', inputType: 'password', required: true }] },
+  { type: 'plex', name: 'Plex', img: 'plex.png', testCommand: 'app.mediaserver.client.plex|Plex', description: '多设备媒体管理', fields: [{ key: 'host', label: '服务器地址', placeholder: 'http://127.0.0.1:32400', required: true }, { key: 'token', label: 'X-Plex-Token', inputType: 'password' }, { key: 'servername', label: '服务器名称' }, { key: 'username', label: '用户名' }, { key: 'password', label: '密码', inputType: 'password' }] }
 ]
-
-const { config, loading, load, save } = useConfigForm()
+const { config, loading, saving, load, save } = useConfigForm()
 const modal = useModalStore()
-
 const dialogVisible = ref(false)
 const currentServer = ref<ServerType | null>(null)
 const form = reactive<Record<string, string>>({})
 const testing = ref(false)
+const activeType = computed(() => (config.value.media as Record<string, unknown> | undefined)?.media_server as string | undefined)
 
-const activeType = computed(() => {
-  const media = config.value.media as Record<string, unknown> | undefined
-  return media?.media_server as string | undefined
-})
-
-function serverConfig(type: string): Record<string, unknown> | undefined {
-  return config.value[type] as Record<string, unknown> | undefined
-}
-
-function openDialog(server: ServerType) {
-  currentServer.value = server
-  const cfg = serverConfig(server.type) || {}
-  server.fields.forEach((f) => {
-    form[f.key] = (cfg[f.key] as string) || ''
-  })
-  dialogVisible.value = true
-}
-
-function buildItems(): Record<string, unknown> {
-  const items: Record<string, unknown> = {
-    'media.media_server': currentServer.value!.type
-  }
-  currentServer.value!.fields.forEach((f) => {
-    items[`${currentServer.value!.type}.${f.key}`] = form[f.key] ?? ''
-  })
-  return items
-}
-
-async function handleSave() {
-  const ok = await save(buildItems())
-  if (ok) dialogVisible.value = false
-}
-
-async function handleTest() {
-  testing.value = true
-  try {
-    const applied = await save(buildItems(), true)
-    if (!applied) return
-    const res = await testConnection(currentServer.value!.testCommand)
-    if (res.code === 0) modal.success('测试成功')
-    else modal.error(res.msg || '测试失败')
-  } finally {
-    testing.value = false
-  }
-}
-
+function serverConfig(type: string) { return config.value[type] as Record<string, unknown> | undefined }
+function openDialog(server: ServerType) { currentServer.value = server; const configValue = serverConfig(server.type) || {}; server.fields.forEach((field) => { form[field.key] = String(configValue[field.key] || '') }); dialogVisible.value = true }
+function buildItems() { const items: Record<string, unknown> = { 'media.media_server': currentServer.value!.type }; currentServer.value!.fields.forEach((field) => { items[`${currentServer.value!.type}.${field.key}`] = form[field.key] ?? '' }); return items }
+function validateForm() { const field = currentServer.value?.fields.find((item) => item.required && !String(form[item.key] || '').trim()); if (field) { modal.warning(`请输入${field.label}`); return false } return true }
+async function handleSave() { if (!validateForm()) return; if (await save(buildItems())) dialogVisible.value = false }
+async function handleTest() { if (!validateForm() || !currentServer.value) return; testing.value = true; try { if (!await save(buildItems(), true)) return; const response = await testConnection(currentServer.value.testCommand); response.code === 0 ? modal.success('测试成功') : modal.error(response.msg || '测试失败') } catch (error) { modal.error(error instanceof Error ? error.message : '测试失败') } finally { testing.value = false } }
 onMounted(load)
 </script>
 
 <template>
-  <div v-loading="loading" class="media-server-view">
+  <div class="page-shell media-server-view">
     <PageHeader title="媒体服务器" description="选择并配置媒体服务器，用于媒体库展示与状态同步" />
+    <q-inner-loading :showing="loading"><q-spinner-dots color="primary" size="40px" /></q-inner-loading>
     <div class="server-grid">
-      <el-card
-        v-for="s in SERVERS"
-        :key="s.type"
-        shadow="hover"
-        class="server-card"
-        :class="{ active: activeType === s.type }"
-        @click="openDialog(s)"
-      >
-        <div class="server-body">
-          <div class="server-icon">
-            <img :src="`/static/img/${s.img}`" :alt="s.name" />
-          </div>
-          <div class="server-name">{{ s.name }}</div>
-          <div class="server-status">
-            <el-tag v-if="activeType === s.type" type="success" size="small" effect="dark">
-              正在使用
-            </el-tag>
-            <span v-else class="server-hint">点击配置</span>
-          </div>
-        </div>
-      </el-card>
+      <q-card v-for="server in servers" :key="server.type" flat bordered class="server-card" :class="{ active: activeType === server.type }" tabindex="0" role="button" @click="openDialog(server)" @keyup.enter="openDialog(server)">
+        <q-card-section class="server-body"><div class="server-icon"><q-img :src="`/static/img/${server.img}`" fit="contain"><template #error><q-icon name="dns" color="primary" size="34px" /></template></q-img></div><div class="server-name">{{ server.name }}</div><div class="server-description">{{ server.description }}</div><q-badge v-if="activeType === server.type" color="positive" label="正在使用" /><span v-else class="server-hint">点击配置</span></q-card-section>
+      </q-card>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="currentServer?.name" width="560px">
-      <el-form v-if="currentServer" label-width="110px">
-        <el-form-item
-          v-for="f in currentServer.fields"
-          :key="f.key"
-          :label="f.label"
-          :required="f.required"
-        >
-          <el-input
-            v-model="form[f.key]"
-            :type="f.inputType || 'text'"
-            :placeholder="f.placeholder"
-            :show-password="f.inputType === 'password'"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button :icon="Connection" :loading="testing" @click="handleTest">测试</el-button>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSave">确定</el-button>
-      </template>
-    </el-dialog>
+    <q-dialog v-model="dialogVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm">
+      <q-card class="editor-dialog"><q-card-section class="row items-center"><div class="text-h6">{{ currentServer?.name }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator />
+        <q-card-section v-if="currentServer" class="editor-form"><q-input v-for="field in currentServer.fields" :key="field.key" v-model="form[field.key]" outlined :type="field.inputType || 'text'" :label="field.label" :placeholder="field.placeholder" :disable="saving || testing" :rules="field.required ? [(value: string) => !!value || `请输入${field.label}`] : undefined" lazy-rules /></q-card-section><q-separator />
+        <q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="saving || testing" v-close-popup /><q-btn outline icon="lan" label="测试" :loading="testing" :disable="saving" @click="handleTest" /><q-btn color="primary" unelevated label="保存" :loading="saving" :disable="testing" @click="handleSave" /></q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
 <style scoped>
-.server-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 16px;
-}
-.server-card {
-  cursor: pointer;
-  transition: transform 0.15s ease;
-}
-.server-card:hover {
-  transform: translateY(-2px);
-}
-.server-card.active {
-  border-color: var(--el-color-primary);
-  border-width: 2px;
-}
-.server-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-}
-.server-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  overflow: hidden;
-  background-color: var(--el-fill-color-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.server-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.server-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-.server-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
+.media-server-view { position: relative; max-width: 1440px; margin: 0 auto; }
+.server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.server-card { overflow: hidden; cursor: pointer; border-radius: 12px; transition: transform .18s ease, border-color .18s ease; }
+.server-card:hover, .server-card:focus-visible { transform: translateY(-2px); border-color: var(--q-primary); outline: none; }
+.server-card.active { border: 2px solid var(--q-primary); }
+.server-body { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 16px 24px; }
+.server-icon { display: grid; width: 76px; height: 76px; place-items: center; border-radius: 50%; background: var(--surface-muted); }
+.server-icon :deep(.q-img) { width: 100%; height: 100%; padding: 12px; }
+.server-name { color: var(--text-primary); font-size: 16px; font-weight: 650; }
+.server-description, .server-hint { color: var(--text-secondary); font-size: 12px; }
+.editor-dialog { width: min(560px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
+.editor-form { display: grid; gap: 16px; }
+.dialog-actions { gap: 8px; }
+@media (max-width: 599px) { .media-server-view { padding-bottom: 8px; } .editor-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

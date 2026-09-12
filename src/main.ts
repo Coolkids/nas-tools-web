@@ -1,12 +1,9 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
-import 'element-plus/theme-chalk/dark/css-vars.css'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
-import VxeUITable from 'vxe-table'
-import 'vxe-table/lib/style.css'
+import { Dialog, Notify, Quasar } from 'quasar'
+import quasarLang from 'quasar/lang/zh-CN'
+import '@quasar/extras/material-icons/material-icons.css'
+import 'quasar/src/css/index.sass'
 
 import App from './App.vue'
 import router from './router'
@@ -15,9 +12,17 @@ import './styles/index.scss'
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
-app.use(ElementPlus, { locale: zhCn })
-app.use(VxeUITable)
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
-}
+app.use(Quasar, {
+  plugins: { Dialog, Notify },
+  lang: quasarLang,
+  config: {
+    brand: {
+      primary: '#315BD6',
+      positive: '#187348',
+      negative: '#BE303A',
+      warning: '#8A5700',
+      info: '#176B9A'
+    }
+  }
+})
 app.mount('#app')

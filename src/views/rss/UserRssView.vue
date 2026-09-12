@@ -1,273 +1,51 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Refresh, Edit, Delete, Lightning, View, Menu as MenuIcon, Download, Check, Close } from '@element-plus/icons-vue'
+import type { QTableColumn } from 'quasar'
 import { doAction } from '@/api'
 import PageHeader from '@/components/PageHeader.vue'
-import HelpTip from '@/components/HelpTip.vue'
 import { useModalStore } from '@/stores/modal'
-import {
-  getUserRssTasks,
-  getUserRssTaskDetail,
-  updateUserRssTask,
-  deleteUserRssTask,
-  runUserRss,
-  listRssArticles,
-  rssArticlesDownload,
-  rssArticlesCheck,
-  rssArticleTest,
-  listRssHistory,
-  getRssParserList,
-  getRssSites,
-  getIndexers,
-  type RssSiteItem,
-  type IndexerItem,
-  type UserRssTask,
-  type UserRssArticle,
-  type UserRssHistory,
-  type UpdateUserRssTaskParams,
-  type RssParser
-} from '@/api/rss'
+import { getUserRssTasks, getUserRssTaskDetail, updateUserRssTask, deleteUserRssTask, runUserRss, listRssArticles, rssArticlesDownload, rssArticlesCheck, rssArticleTest, listRssHistory, getRssParserList, getRssSites, getIndexers, type RssSiteItem, type IndexerItem, type UserRssTask, type UserRssArticle, type UserRssHistory, type UpdateUserRssTaskParams, type RssParser } from '@/api/rss'
 
 const router = useRouter()
 const modal = useModalStore()
-
 const loading = ref(false)
+const loadError = ref('')
 const list = ref<UserRssTask[]>([])
 const parsers = ref<RssParser[]>([])
 const rssSites = ref<RssSiteItem[]>([])
-const searchSites = ref<IndexerItem[]>([])
+const searchSites = ref<Array<IndexerItem & { id: string }>>([])
 const ruleGroups = ref<Array<{ id: number | string; name: string }>>([])
 const downloadSettings = ref<Array<{ id: number | string; name: string }>>([])
-
-onMounted(load)
-
-async function load() {
-  loading.value = true
-  try {
-    const res = await getUserRssTasks()
-    if (res.code === 0) {
-      const detail = res.detail
-      list.value = Array.isArray(detail) ? detail : detail ? [detail] : []
-    } else {
-      modal.error('获取订阅任务失败')
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '获取订阅任务失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-const count = computed(() => list.value.length)
-
 const expandedIds = ref<Set<number>>(new Set())
-function toggleDetail(id: number) {
-  if (expandedIds.value.has(id)) expandedIds.value.delete(id)
-  else expandedIds.value.add(id)
-}
+const count = computed(() => list.value.length)
+const parserOptions = computed(() => parsers.value.map((parser) => ({ label: parser.name, value: parser.id })))
+const ruleOptions = computed(() => ruleGroups.value.map((rule) => ({ label: rule.name, value: rule.id })))
+const downloadOptions = computed(() => [{ label: '默认', value: '' }, ...downloadSettings.value.map((setting) => ({ label: setting.name, value: setting.id }))])
+const restypeOptions = ['BLURAY', 'REMUX', 'DOLBY', 'WEB', 'HDTV', 'UHD', 'HDR', '3D']
+const pixOptions = ['8k', '4k', '1080p', '720p']
 
-async function onRun(row: UserRssTask) {
-  try {
-    const res = await runUserRss(row.id)
-    if (res.code === 0) modal.success('任务运行完成')
-    else modal.error(res.msg || '运行失败')
-    load()
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '运行失败')
-  }
-}
-
-async function onDelete(row: UserRssTask) {
-  const ok = await modal.confirm(`确认删除订阅任务「${row.name}」？`, '删除任务')
-  if (!ok) return
-  try {
-    const res = await deleteUserRssTask(row.id)
-    if (res.code === 0) {
-      modal.success('删除成功')
-      load()
-    } else {
-      modal.error(res.msg || '删除失败')
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '删除失败')
-  }
-}
-
-function addressOnly(addr?: string) {
-  if (!addr) return ''
-  return addr.split('?')[0]
-}
+async function load() { if (loading.value) return; loading.value = true; loadError.value = ''; try { const response = await getUserRssTasks(); if (response.code === 0) { const detail = response.detail; list.value = Array.isArray(detail) ? detail : detail ? [detail] : [] } else loadError.value = '获取订阅任务失败' } catch (error) { loadError.value = error instanceof Error ? error.message : '获取订阅任务失败' } finally { loading.value = false } }
+function toggleDetail(id: number) { const next = new Set(expandedIds.value); next.has(id) ? next.delete(id) : next.add(id); expandedIds.value = next }
+async function onRun(row: UserRssTask) { try { const response = await runUserRss(row.id); response.code === 0 ? modal.success('任务运行完成') : modal.error(response.msg || '运行失败'); await load() } catch (error) { modal.error(error instanceof Error ? error.message : '运行失败') } }
+async function onDelete(row: UserRssTask) { if (!await modal.confirm(`确认删除订阅任务「${row.name}」？`, '删除任务')) return; try { const response = await deleteUserRssTask(row.id); if (response.code === 0) { modal.success('删除成功'); await load() } else modal.error(response.msg || '删除失败') } catch (error) { modal.error(error instanceof Error ? error.message : '删除失败') } }
+function addressOnly(address?: string) { return address ? address.split('?')[0] : '' }
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增订阅')
 const submitting = ref(false)
-
 const rssSitesSelected = ref<string[]>([])
 const searchSitesSelected = ref<string[]>([])
+const allRssSelected = computed(() => rssSites.value.length > 0 && rssSitesSelected.value.length === rssSites.value.length)
+const allSearchSelected = computed(() => searchSites.value.length > 0 && searchSitesSelected.value.length === searchSites.value.length)
+function toggleRssSites() { rssSitesSelected.value = allRssSelected.value ? [] : rssSites.value.map((site) => site.name) }
+function toggleSearchSites() { searchSitesSelected.value = allSearchSelected.value ? [] : searchSites.value.map((site) => site.name) }
+const form = reactive({ id: '' as string | number, name: '', state: 'N', interval: '' as string | number, address: '', parser: '' as string | number, uses: 'D' as 'D' | 'R', include: '', exclude: '', rule: '' as string | number, save_path: '', download_setting: '' as string | number, recognization: 'Y', restype: '', pix: '', team: '', over_edition: '0' })
 
-const allRssSelected = computed(() => rssSitesSelected.value.length === rssSites.value.length)
-const allSearchSelected = computed(() => searchSitesSelected.value.length === searchSites.value.length)
-
-function toggleRssSites() {
-  rssSitesSelected.value = allRssSelected.value ? [] : rssSites.value.map(s => s.name)
-}
-function toggleSearchSites() {
-  searchSitesSelected.value = allSearchSelected.value ? [] : searchSites.value.map(s => s.name)
-}
-
-const form = reactive({
-  id: '' as string | number,
-  name: '',
-  state: 'N',
-  interval: '' as string | number,
-  address: '',
-  parser: '' as string | number,
-  uses: 'D' as 'D' | 'R',
-  include: '',
-  exclude: '',
-  rule: '' as string | number,
-  save_path: '',
-  download_setting: '' as string | number,
-  recognization: 'Y',
-  restype: '',
-  pix: '',
-  team: '',
-  over_edition: '0',
-  rss_sites: [] as Array<string | number>,
-  search_sites: [] as Array<string | number>
-})
-
-const RESTYPE_OPTIONS = ['BLURAY', 'REMUX', 'DOLBY', 'WEB', 'HDTV', 'UHD', 'HDR', '3D']
-const PIX_OPTIONS = ['8k', '4k', '1080p', '720p']
-
-function resetForm() {
-  form.id = ''
-  form.name = ''
-  form.state = 'N'
-  form.interval = ''
-  form.address = ''
-  form.parser = parsers.value[0]?.id ?? ''
-  form.uses = 'D'
-  form.include = ''
-  form.exclude = ''
-  form.rule = ''
-  form.save_path = ''
-  form.download_setting = ''
-  form.recognization = 'Y'
-  form.restype = ''
-  form.pix = ''
-  form.team = ''
-  form.over_edition = '0'
-  form.rss_sites = []
-  form.search_sites = []
-  rssSitesSelected.value = rssSites.value.map((s) => s.name)
-  searchSitesSelected.value = searchSites.value.map((s) => s.name)
-}
-
-function openAdd() {
-  resetForm()
-  dialogTitle.value = '新增订阅'
-  dialogVisible.value = true
-}
-
-async function openEdit(row: UserRssTask) {
-  try {
-    const res = await getUserRssTaskDetail(row.id)
-    if (res.code !== 0) {
-      modal.error('获取任务详情失败')
-      return
-    }
-    const d = res.detail as UserRssTask
-    resetForm()
-    form.id = d.id
-    form.name = d.name
-    form.state = d.state || 'N'
-    form.interval = d.interval ?? ''
-    form.address = d.address || ''
-    form.parser = d.parser ?? ''
-    form.uses = (d.uses as 'D' | 'R') || 'D'
-    form.include = d.include || ''
-    form.exclude = d.exclude || ''
-    form.rule = d.filter ?? ''
-    form.save_path = d.save_path || ''
-    form.download_setting = d.download_setting ?? ''
-    form.recognization = d.recognization || 'Y'
-    form.over_edition = String(d.over_edition ?? '0')
-    const fargs = d.filter_args || {}
-    form.restype = fargs.restype || ''
-    form.pix = fargs.pix || ''
-    form.team = fargs.team || ''
-    const sites = d.sites || { rss_sites: [], search_sites: [] }
-    form.rss_sites = sites.rss_sites || []
-    form.search_sites = sites.search_sites || []
-    rssSitesSelected.value = (sites.rss_sites as string[])?.length ? (sites.rss_sites as string[]) : rssSites.value.map((s) => s.name)
-    searchSitesSelected.value = (sites.search_sites as string[])?.length ? (sites.search_sites as string[]) : searchSites.value.map((s) => s.name)
-    dialogTitle.value = '编辑订阅'
-    dialogVisible.value = true
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '获取任务详情失败')
-  }
-}
-
-async function submit() {
-  if (!form.name) {
-    modal.warning('请输入名称')
-    return
-  }
-  if (!form.interval || isNaN(Number(form.interval))) {
-    modal.warning('请输入有效的刷新间隔')
-    return
-  }
-  if (!form.address) {
-    modal.warning('请输入RSS地址')
-    return
-  }
-  if (!form.parser) {
-    modal.warning('请选择解析器')
-    return
-  }
-  const params: UpdateUserRssTaskParams = {
-    id: form.id || undefined,
-    name: form.name,
-    address: form.address,
-    parser: form.parser,
-    interval: form.interval,
-    uses: form.uses,
-    state: form.state,
-    include: form.include,
-    exclude: form.exclude,
-    rule: form.rule,
-    save_path: form.save_path,
-    download_setting: form.download_setting
-  }
-  if (form.uses === 'D') {
-    params.recognization = form.recognization
-  } else {
-    const allRss = rssSitesSelected.value.length === rssSites.value.length
-    const allSearch = searchSitesSelected.value.length === searchSites.value.length
-    params.over_edition = form.over_edition
-    params.sites = { rss_sites: allRss ? [] : rssSitesSelected.value, search_sites: allSearch ? [] : searchSitesSelected.value }
-    params.restype = form.restype
-    params.pix = form.pix
-    params.team = form.team
-  }
-  submitting.value = true
-  try {
-    const res = await updateUserRssTask(params)
-    if (res.code === 0) {
-      modal.success(form.id ? '保存成功' : '新增成功')
-      dialogVisible.value = false
-      load()
-    } else {
-      modal.error(res.msg || '保存失败')
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '保存失败')
-  } finally {
-    submitting.value = false
-  }
-}
+function resetForm() { Object.assign(form, { id: '', name: '', state: 'N', interval: '', address: '', parser: parsers.value[0]?.id ?? '', uses: 'D', include: '', exclude: '', rule: '', save_path: '', download_setting: '', recognization: 'Y', restype: '', pix: '', team: '', over_edition: '0' }); rssSitesSelected.value = rssSites.value.map((site) => site.name); searchSitesSelected.value = searchSites.value.map((site) => site.name) }
+function openAdd() { resetForm(); dialogTitle.value = '新增订阅'; dialogVisible.value = true }
+async function openEdit(row: UserRssTask) { try { const response = await getUserRssTaskDetail(row.id); if (response.code !== 0) { modal.error('获取任务详情失败'); return }; const detail = response.detail as UserRssTask; resetForm(); Object.assign(form, { id: detail.id, name: detail.name, state: detail.state || 'N', interval: detail.interval ?? '', address: detail.address || '', parser: detail.parser ?? '', uses: (detail.uses as 'D' | 'R') || 'D', include: detail.include || '', exclude: detail.exclude || '', rule: detail.filter ?? '', save_path: detail.save_path || '', download_setting: detail.download_setting ?? '', recognization: detail.recognization || 'Y', over_edition: String(detail.over_edition ?? '0') }); const filterArgs = detail.filter_args || {}; form.restype = filterArgs.restype || ''; form.pix = filterArgs.pix || ''; form.team = filterArgs.team || ''; const sites = detail.sites || { rss_sites: [], search_sites: [] }; rssSitesSelected.value = sites.rss_sites?.length ? sites.rss_sites.map(String) : rssSites.value.map((site) => site.name); searchSitesSelected.value = sites.search_sites?.length ? sites.search_sites.map(String) : searchSites.value.map((site) => site.name); dialogTitle.value = '编辑订阅'; dialogVisible.value = true } catch (error) { modal.error(error instanceof Error ? error.message : '获取任务详情失败') } }
+async function submit() { if (!form.name.trim()) { modal.warning('请输入名称'); return }; if (!form.interval || isNaN(Number(form.interval))) { modal.warning('请输入有效的刷新间隔'); return }; if (!form.address.trim()) { modal.warning('请输入 RSS 地址'); return }; if (!form.parser) { modal.warning('请选择解析器'); return }; const params: UpdateUserRssTaskParams = { id: form.id || undefined, name: form.name.trim(), address: form.address.trim(), parser: form.parser, interval: form.interval, uses: form.uses, state: form.state, include: form.include, exclude: form.exclude, rule: form.rule, save_path: form.save_path, download_setting: form.download_setting }; if (form.uses === 'D') params.recognization = form.recognization; else { params.over_edition = form.over_edition; params.sites = { rss_sites: allRssSelected.value ? [] : rssSitesSelected.value, search_sites: allSearchSelected.value ? [] : searchSitesSelected.value }; params.restype = form.restype; params.pix = form.pix; params.team = form.team }; submitting.value = true; try { const response = await updateUserRssTask(params); if (response.code === 0) { modal.success(form.id ? '保存成功' : '新增成功'); dialogVisible.value = false; await load() } else modal.error(response.msg || '保存失败') } catch (error) { modal.error(error instanceof Error ? error.message : '保存失败') } finally { submitting.value = false } }
 
 const articlesDialogVisible = ref(false)
 const articlesLoading = ref(false)
@@ -276,610 +54,75 @@ const articlesUses = ref('D')
 const articlesTaskId = ref<string | number>('')
 const articlesTitle = ref('订阅预览')
 const selectedArticles = ref<UserRssArticle[]>([])
-
-function articlesSelection(rows: UserRssArticle[]) {
-  selectedArticles.value = rows
-}
-
-async function openArticles(row: UserRssTask) {
-  articlesTitle.value = `订阅预览 - ${row.name}`
-  articlesTaskId.value = row.id
-  articlesDialogVisible.value = true
-  articlesLoading.value = true
-  articlesList.value = []
-  selectedArticles.value = []
-  try {
-    const res = await listRssArticles(row.id)
-    if (res.code === 0) {
-      articlesList.value = res.data || []
-      articlesUses.value = res.uses || 'D'
-    } else {
-      modal.warning(res.msg || '未获取到报文')
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '获取报文失败')
-  } finally {
-    articlesLoading.value = false
-  }
-}
-
-async function batchDownload() {
-  if (selectedArticles.value.length === 0) {
-    modal.warning('请先选择文章')
-    return
-  }
-  const articles = selectedArticles.value.map((a) => ({ title: a.title, enclosure: a.enclosure || '' }))
-  try {
-    const res = await rssArticlesDownload(articlesTaskId.value, articles)
-    if (res.code === 0) modal.success('添加下载成功')
-    else modal.error('添加下载失败')
-    openArticles({ id: articlesTaskId.value, name: '' } as UserRssTask)
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '下载失败')
-  }
-}
-
-async function batchCheck(flag: 'set_finished' | 'set_unfinish') {
-  if (selectedArticles.value.length === 0) {
-    modal.warning('请先选择文章')
-    return
-  }
-  const articles = selectedArticles.value.map((a) => ({ title: a.title, enclosure: a.enclosure || '' }))
-  try {
-    const res = await rssArticlesCheck(flag, articles)
-    if (res.code === 0) {
-      modal.success('处理成功')
-      openArticles({ id: articlesTaskId.value, name: '' } as UserRssTask)
-    } else {
-      modal.error('处理失败')
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '处理失败')
-  }
-}
-
-async function singleDownload(article: UserRssArticle) {
-  try {
-    const res = await rssArticlesDownload(articlesTaskId.value, [{ title: article.title, enclosure: article.enclosure || '' }])
-    if (res.code === 0) modal.success('添加下载成功')
-    else modal.error('添加下载失败')
-    openArticles({ id: articlesTaskId.value, name: '' } as UserRssTask)
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '下载失败')
-  }
-}
-
-async function testArticle(article: UserRssArticle) {
-  try {
-    const res = await rssArticleTest(articlesTaskId.value, article.title)
-    if (res.code === 0 && res.data) {
-      const data = res.data
-      const name = (data.name as string) || (data.title as string) || '无法识别'
-      const parts: string[] = [name]
-      if (data.match_flag) parts.push('匹配')
-      else parts.push('不匹配')
-      if (data.exist_flag) parts.push('本地已存在')
-      else parts.push('本地不存在')
-      modal.info(parts.join(' / '))
-    } else {
-      modal.warning('无法识别')
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '测试失败')
-  }
-}
+const articleColumns: QTableColumn<UserRssArticle>[] = [{ name: 'title', label: '标题', field: 'title', align: 'left' }, { name: 'state', label: '状态', field: 'finish_flag', align: 'left' }, { name: 'date', label: '发布时间', field: 'date', align: 'left' }, { name: 'actions', label: '操作', field: 'title', align: 'right' }]
+const historyColumns: QTableColumn<UserRssHistory>[] = [{ name: 'title', label: '标题', field: 'title', align: 'left' }, { name: 'downloader', label: '下载器', field: 'downloader', align: 'left' }, { name: 'date', label: '下载时间', field: 'date', align: 'left' }]
+function articleSelected(article: UserRssArticle) { return selectedArticles.value.some((item) => item.title === article.title && item.enclosure === article.enclosure) }
+function toggleArticle(article: UserRssArticle) { selectedArticles.value = articleSelected(article) ? selectedArticles.value.filter((item) => item !== article) : [...selectedArticles.value, article] }
+async function openArticles(row: UserRssTask) { articlesTitle.value = `订阅预览 - ${row.name}`; articlesTaskId.value = row.id; articlesDialogVisible.value = true; articlesLoading.value = true; articlesList.value = []; selectedArticles.value = []; try { const response = await listRssArticles(row.id); if (response.code === 0) { articlesList.value = response.data || []; articlesUses.value = response.uses || 'D' } else modal.warning(response.msg || '未获取到报文') } catch (error) { modal.error(error instanceof Error ? error.message : '获取报文失败') } finally { articlesLoading.value = false } }
+function selectedArticlePayload() { return selectedArticles.value.map((article) => ({ title: article.title, enclosure: article.enclosure || '' })) }
+async function batchDownload() { if (!selectedArticles.value.length) { modal.warning('请先选择文章'); return }; try { const response = await rssArticlesDownload(articlesTaskId.value, selectedArticlePayload()); response.code === 0 ? modal.success('添加下载成功') : modal.error('添加下载失败'); await openArticles({ id: articlesTaskId.value, name: '' } as UserRssTask) } catch (error) { modal.error(error instanceof Error ? error.message : '下载失败') } }
+async function batchCheck(flag: 'set_finished' | 'set_unfinish') { if (!selectedArticles.value.length) { modal.warning('请先选择文章'); return }; try { const response = await rssArticlesCheck(flag, selectedArticlePayload()); if (response.code === 0) { modal.success('处理成功'); await openArticles({ id: articlesTaskId.value, name: '' } as UserRssTask) } else modal.error('处理失败') } catch (error) { modal.error(error instanceof Error ? error.message : '处理失败') } }
+async function singleDownload(article: UserRssArticle) { try { const response = await rssArticlesDownload(articlesTaskId.value, [{ title: article.title, enclosure: article.enclosure || '' }]); response.code === 0 ? modal.success('添加下载成功') : modal.error('添加下载失败'); await openArticles({ id: articlesTaskId.value, name: '' } as UserRssTask) } catch (error) { modal.error(error instanceof Error ? error.message : '下载失败') } }
+async function testArticle(article: UserRssArticle) { try { const response = await rssArticleTest(articlesTaskId.value, article.title); if (response.code === 0 && response.data) { const data = response.data; modal.info(`${(data.name as string) || (data.title as string) || '无法识别'} / ${data.match_flag ? '匹配' : '不匹配'} / ${data.exist_flag ? '本地已存在' : '本地不存在'}`) } else modal.warning('无法识别') } catch (error) { modal.error(error instanceof Error ? error.message : '测试失败') } }
 
 const historyDialogVisible = ref(false)
 const historyLoading = ref(false)
 const historyList = ref<UserRssHistory[]>([])
 const historyTitle = ref('订阅下载历史')
-
-async function openHistory(row: UserRssTask) {
-  historyTitle.value = `订阅下载历史 - ${row.name}`
-  historyDialogVisible.value = true
-  historyLoading.value = true
-  historyList.value = []
-  try {
-    const res = await listRssHistory(row.id)
-    if (res.code === 0) historyList.value = res.data || []
-    else modal.warning(res.msg || '无下载记录')
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '获取历史失败')
-  } finally {
-    historyLoading.value = false
-  }
-}
-
-function goParser() {
-  router.push('/rss_parser')
-}
-
-async function loadOptions() {
-  try {
-    const [parserRes, ruleRes, dsRes, rssRes, idxRes] = await Promise.all([
-      getRssParserList(),
-      doAction<{ code: number; ruleGroups?: Array<{ id: number; name: string }> }>('get_filterrules', {}),
-      doAction<{ code: number; data?: Array<{ id: number | string; name: string }> }>('get_download_setting', {}),
-      getRssSites(),
-      getIndexers()
-    ])
-    if (parserRes.code === 0) parsers.value = parserRes.detail || []
-    if (ruleRes.code === 0) ruleGroups.value = ruleRes.ruleGroups || []
-    if (dsRes.code === 0) downloadSettings.value = dsRes.data || []
-    if (rssRes.code === 0) rssSites.value = rssRes.sites || []
-    if (idxRes.code === 0) searchSites.value = idxRes.indexers || []
-  } catch {
-    /* ignore */
-  }
-}
-
+async function openHistory(row: UserRssTask) { historyTitle.value = `订阅下载历史 - ${row.name}`; historyDialogVisible.value = true; historyLoading.value = true; historyList.value = []; try { const response = await listRssHistory(row.id); if (response.code === 0) historyList.value = response.data || []; else modal.warning(response.msg || '无下载记录') } catch (error) { modal.error(error instanceof Error ? error.message : '获取历史失败') } finally { historyLoading.value = false } }
+function goParser() { router.push('/rss_parser') }
+async function loadOptions() { try { const [parserRes, ruleRes, settingRes, rssRes, indexerRes] = await Promise.all([getRssParserList(), doAction<{ code: number; ruleGroups?: Array<{ id: number; name: string }> }>('get_filterrules', {}), doAction<{ code: number; data?: Array<{ id: number | string; name: string }> }>('get_download_setting', {}), getRssSites(), getIndexers()]); if (parserRes.code === 0) parsers.value = parserRes.detail || []; if (ruleRes.code === 0) ruleGroups.value = ruleRes.ruleGroups || []; if (settingRes.code === 0) downloadSettings.value = settingRes.data || []; if (rssRes.code === 0) rssSites.value = rssRes.sites || []; if (indexerRes.code === 0) searchSites.value = indexerRes.indexers.map((site, index) => ({ ...site, id: site.name || String(index) })) } catch { /* optional form options can be retried by reloading the page */ } }
+onMounted(load)
 onMounted(loadOptions)
 </script>
 
 <template>
-  <div class="user-rss" v-loading="loading">
-    <PageHeader title="自定义订阅" description="管理自定义RSS订阅任务">
-      <template #actions>
-        <el-button :icon="Plus" type="primary" @click="openAdd">新建订阅任务</el-button>
-        <el-button :icon="MenuIcon" @click="goParser">RSS解析器</el-button>
-        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      </template>
-    </PageHeader>
+  <div class="page-shell user-rss">
+    <PageHeader title="自定义订阅" description="管理自定义 RSS 订阅任务"><template #actions><q-btn color="primary" unelevated icon="add" label="新建订阅任务" @click="openAdd" /><q-btn outline icon="account_tree" label="RSS 解析器" @click="goParser" /><q-btn outline icon="refresh" label="刷新" :loading="loading" @click="load" /></template></PageHeader>
+    <q-banner v-if="loadError" class="q-mb-md" rounded inline-actions dense><template #avatar><q-icon name="error_outline" color="negative" /></template>{{ loadError }}<template #action><q-btn flat color="primary" label="重试" @click="load" /></template></q-banner>
+    <q-card v-if="!loading && !count" flat bordered class="empty-card"><q-card-section class="column items-center q-pa-xl text-secondary"><q-icon name="rss_feed" size="44px" /><div class="q-mt-sm">当前没有自定义订阅内容</div><q-btn class="q-mt-md" color="primary" unelevated label="新建订阅任务" @click="openAdd" /></q-card-section></q-card>
+    <div v-else class="task-list"><q-card v-for="task in list" :key="task.id" flat bordered class="task-card"><q-card-section class="task-header"><div class="row items-center no-wrap min-width-0"><span class="state-dot" :class="task.state === 'Y' ? 'on' : 'off'" /><div class="task-name ellipsis">{{ task.name }}</div><q-btn flat round dense color="primary" icon="bolt" aria-label="立即运行" @click="onRun(task)" /></div><q-space /><div class="row items-center q-gutter-xs"><q-badge v-if="task.uses === 'D' && task.recognization === 'Y'" color="primary" label="TMDB" /><q-badge :color="task.uses === 'D' ? 'primary' : 'positive'" :label="task.uses_text || (task.uses === 'D' ? '下载' : '订阅')" /></div><div class="row q-gutter-xs q-ml-sm"><q-btn flat round dense icon="unfold_more" aria-label="展开详情" @click="toggleDetail(task.id)" /><q-btn flat round dense icon="visibility" aria-label="预览报文" @click="openArticles(task)" /><q-btn flat round dense icon="edit" aria-label="编辑" @click="openEdit(task)" /><q-btn flat round dense color="negative" icon="delete" aria-label="删除" @click="onDelete(task)" /></div></q-card-section><q-separator /><q-slide-transition><q-card-section v-show="expandedIds.has(task.id)" class="detail-grid"><div class="detail-item detail-wide"><div class="detail-label">地址</div><div class="detail-value small break">{{ addressOnly(task.address) }}</div></div><div class="detail-item"><div class="detail-label">解析器</div><div class="detail-value">{{ task.parser_name || task.parser }}</div></div><div class="detail-item"><div class="detail-label">刷新间隔</div><div class="detail-value">{{ task.interval }} 分钟</div></div><div class="detail-item"><div class="detail-label">动作</div><div class="detail-value"><q-badge :color="task.uses === 'D' ? 'primary' : 'positive'" :label="task.uses_text || task.uses" /></div></div><div v-if="task.uses === 'D'" class="detail-item"><div class="detail-label">包含 / 排除</div><div class="detail-value small">{{ task.include || '—' }} / {{ task.exclude || '—' }}</div></div><div v-if="task.uses === 'D'" class="detail-item"><div class="detail-label">过滤规则</div><div class="detail-value">{{ task.filter_name || '—' }}</div></div><div v-if="task.uses === 'D'" class="detail-item"><div class="detail-label">保存路径</div><div class="detail-value small">{{ task.save_path || '自动' }}</div></div><div class="detail-item"><div class="detail-label">状态</div><div class="detail-value"><q-badge :color="task.state === 'Y' ? 'positive' : 'negative'" :label="task.state === 'Y' ? '正在运行' : '已停用'" /></div></div><div class="detail-item"><div class="detail-label">已处理数量</div><div class="detail-value"><q-btn v-if="task.uses === 'D'" flat dense color="primary" :label="String(task.counter || 0)" @click="openHistory(task)" /><span v-else>{{ task.counter || 0 }}</span></div></div><div class="detail-item"><div class="detail-label">最后更新时间</div><div class="detail-value small">{{ task.update_time || '—' }}</div></div><div v-if="task.uses === 'D'" class="detail-item"><div class="detail-label">下载设置</div><div class="detail-value"><q-badge :color="task.download_setting ? 'warning' : 'grey-6'" :label="task.download_setting ? (downloadSettings.find((setting) => String(setting.id) === String(task.download_setting))?.name || '默认') : '默认'" /></div></div></q-card-section></q-slide-transition></q-card></div>
 
-    <el-empty v-if="!loading && count === 0" description="当前没有自定义订阅任何内容。" />
+    <q-dialog v-model="dialogVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm"><q-card class="editor-dialog"><q-card-section class="row items-center"><div class="text-h6">{{ dialogTitle }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator /><q-card-section class="editor-form"><div class="form-section"><div class="section-title">基础设置</div><div class="form-grid form-grid-three"><q-input v-model="form.name" outlined label="名称" placeholder="别名" :disable="submitting" /><q-select v-model="form.state" outlined label="状态" :options="[{ label: '正常', value: 'Y' }, { label: '停用', value: 'N' }]" emit-value map-options :disable="submitting" /><q-input v-model="form.interval" outlined type="number" label="刷新间隔（分钟）" placeholder="30" :disable="submitting" /></div><div class="form-grid form-grid-wide"><q-input v-model="form.address" outlined label="RSS 地址" placeholder="RSS 地址" :disable="submitting" /><q-select v-model="form.parser" outlined label="解析器" :options="parserOptions" emit-value map-options :disable="submitting" /></div><q-option-group v-model="form.uses" :options="[{ label: '下载', value: 'D' }, { label: '订阅', value: 'R' }]" type="radio" inline color="primary" :disable="submitting" /></div><div class="form-section"><div class="section-title">匹配规则</div><div class="form-grid"><q-input v-model="form.include" outlined label="包含" placeholder="关键字 / 正则" :disable="submitting" /><q-input v-model="form.exclude" outlined label="排除" placeholder="关键字 / 正则" :disable="submitting" /></div><template v-if="form.uses === 'D'"><div class="form-grid form-grid-three"><q-select v-model="form.rule" outlined clearable label="过滤规则" :options="ruleOptions" emit-value map-options :disable="submitting" /><q-select v-model="form.download_setting" outlined clearable label="下载设置" :options="downloadOptions" emit-value map-options :disable="submitting" /><q-input v-model="form.save_path" outlined label="保存路径" placeholder="留空自动选择" :disable="submitting" /></div><q-select v-model="form.recognization" outlined label="识别媒体" :options="[{ label: '是', value: 'Y' }, { label: '否', value: 'N' }]" emit-value map-options :disable="submitting" /></template><template v-else><div class="form-grid"><q-select v-model="form.restype" outlined clearable label="质量" :options="restypeOptions" :disable="submitting" /><q-select v-model="form.pix" outlined clearable label="分辨率" :options="pixOptions" :disable="submitting" /></div><div class="form-grid"><q-input v-model="form.team" outlined label="制作组" placeholder="支持正则" :disable="submitting" /><q-select v-model="form.rule" outlined clearable label="过滤规则" :options="[{ label: '站点规则', value: '' }, ...ruleOptions]" emit-value map-options :disable="submitting" /></div><div class="form-grid"><q-select v-model="form.download_setting" outlined clearable label="下载设置" :options="[{ label: '站点设置', value: '' }, ...downloadSettings.map((setting) => ({ label: setting.name, value: setting.id }))]" emit-value map-options :disable="submitting" /><q-input v-model="form.save_path" outlined label="保存路径" placeholder="留空使用默认" :disable="submitting" /></div><q-select v-model="form.over_edition" outlined label="洗版" :options="[{ label: '否', value: '0' }, { label: '是', value: '1' }]" emit-value map-options :disable="submitting" /></template></div><div v-if="form.uses === 'R'" class="form-section"><div class="section-title row items-center">订阅站点<q-space /><q-btn flat dense color="primary" :label="allRssSelected ? '全不选' : '全选'" @click="toggleRssSites" /></div><div v-if="rssSites.length" class="site-grid"><q-checkbox v-for="site in rssSites" :key="site.name" v-model="rssSitesSelected" :val="site.name" :label="site.name" :disable="submitting" /></div><div v-else class="text-caption text-secondary">暂无可用订阅站点</div><div class="section-title row items-center q-mt-sm">搜索站点<q-space /><q-btn flat dense color="primary" :label="allSearchSelected ? '全不选' : '全选'" @click="toggleSearchSites" /></div><div v-if="searchSites.length" class="site-grid"><q-checkbox v-for="site in searchSites" :key="site.id" v-model="searchSitesSelected" :val="site.name" :label="site.name" :disable="submitting" /></div><div v-else class="text-caption text-secondary">暂无可用搜索站点</div></div></q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="submitting" v-close-popup /><q-btn color="primary" unelevated label="保存" :loading="submitting" @click="submit" /></q-card-actions></q-card></q-dialog>
 
-    <div v-else class="task-list">
-      <el-card v-for="task in list" :key="task.id" shadow="hover" class="task-card">
-        <template #header>
-          <div class="card-header">
-            <div class="header-left" @click="toggleDetail(task.id)">
-              <span class="state-dot" :class="task.state === 'Y' ? 'on' : 'off'" />
-              <h3 class="task-name">{{ task.name }}</h3>
-              <el-button :icon="Lightning" link type="primary" @click.stop="onRun(task)" title="立即运行" />
-            </div>
-            <div class="header-meta">
-              <el-tag v-if="task.uses === 'D' && task.recognization === 'Y'" size="small" type="primary">TMDB</el-tag>
-              <el-tag size="small" :type="task.uses === 'D' ? 'primary' : 'success'">{{ task.uses_text || (task.uses === 'D' ? '下载' : '订阅') }}</el-tag>
-            </div>
-            <div class="header-actions">
-              <el-tooltip content="展开/折叠">
-                <el-button :icon="MenuIcon" link @click="toggleDetail(task.id)" />
-              </el-tooltip>
-              <el-tooltip content="预览报文">
-                <el-button :icon="View" link @click="openArticles(task)" />
-              </el-tooltip>
-              <el-tooltip content="编辑">
-                <el-button :icon="Edit" link @click="openEdit(task)" />
-              </el-tooltip>
-              <el-tooltip content="删除">
-                <el-button :icon="Delete" link type="danger" @click="onDelete(task)" />
-              </el-tooltip>
-            </div>
-          </div>
-        </template>
-        <el-collapse-transition>
-          <div v-show="expandedIds.has(task.id)" class="detail-grid">
-            <div class="detail-item detail-item-wide">
-              <div class="detail-title">地址</div>
-              <div class="detail-content small break">{{ addressOnly(task.address) }}</div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-title">解析器</div>
-              <div class="detail-content">{{ task.parser_name || task.parser }}</div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-title">刷新间隔</div>
-              <div class="detail-content">{{ task.interval }} 分钟</div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-title">动作</div>
-              <div class="detail-content">
-                <el-tag size="small" :type="task.uses === 'D' ? 'primary' : 'success'">{{ task.uses_text || task.uses }}</el-tag>
-              </div>
-            </div>
-            <template v-if="task.uses === 'D'">
-              <div class="detail-item">
-                <div class="detail-title">包含</div>
-                <div class="detail-content small">{{ task.include || '—' }}</div>
-              </div>
-              <div class="detail-item">
-                <div class="detail-title">排除</div>
-                <div class="detail-content small">{{ task.exclude || '—' }}</div>
-              </div>
-              <div class="detail-item">
-                <div class="detail-title">过滤规则</div>
-                <div class="detail-content">{{ task.filter_name || '—' }}</div>
-              </div>
-              <div class="detail-item">
-                <div class="detail-title">保存路径</div>
-                <div class="detail-content small">{{ task.save_path || '自动' }}</div>
-              </div>
-            </template>
-            <div class="detail-item">
-              <div class="detail-title">状态</div>
-              <div class="detail-content">
-                <el-tag size="small" :type="task.state === 'Y' ? 'success' : 'danger'">
-                  {{ task.state === 'Y' ? '正在运行' : '已停用' }}
-                </el-tag>
-              </div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-title">已处理数量</div>
-              <div class="detail-content">
-                <el-button v-if="task.uses === 'D'" link type="primary" @click="openHistory(task)">{{ task.counter || 0 }}</el-button>
-                <span v-else>{{ task.counter || 0 }}</span>
-              </div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-title">最后更新时间</div>
-              <div class="detail-content small">{{ task.update_time || '—' }}</div>
-            </div>
-            <div v-if="task.uses === 'D'" class="detail-item">
-              <div class="detail-title">下载设置</div>
-              <div class="detail-content">
-                <el-tag v-if="task.download_setting" size="small" type="warning">
-                  {{ downloadSettings.find((d) => String(d.id) === String(task.download_setting))?.name || '默认' }}
-                </el-tag>
-                <el-tag v-else size="small" type="danger">默认</el-tag>
-              </div>
-            </div>
-          </div>
-        </el-collapse-transition>
-      </el-card>
-    </div>
-
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogTitle"
-      width="820px"
-      :close-on-click-modal="false"
-      destroy-on-close
-      top="5vh"
-    >
-      <el-form :model="form" label-width="120px" label-position="left">
-        <el-row :gutter="16">
-          <el-col :span="8">
-            <el-form-item label="名称" required>
-              <el-input v-model="form.name" placeholder="别名" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="状态" required>
-              <el-select v-model="form.state" style="width: 100%">
-                <el-option label="正常" value="Y" />
-                <el-option label="停用" value="N" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item required label-width="auto">
-              <template #label>刷新间隔(分钟)<HelpTip text="检查RSS更新的间隔时间" /></template>
-              <el-input v-model="form.interval" placeholder="30" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="16">
-          <el-col :span="16">
-            <el-form-item required>
-              <template #label>地址<HelpTip text="RSS订阅的链接地址" /></template>
-              <el-input v-model="form.address" placeholder="RSS地址" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item required>
-              <template #label>解析器<HelpTip text="使用RSS解析器中配置的解析格式解析RSS报文" /></template>
-              <el-select v-model="form.parser" style="width: 100%">
-                <el-option v-for="p in parsers" :key="p.id" :label="p.name" :value="p.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="动作" required>
-          <el-radio-group v-model="form.uses">
-            <el-radio-button value="D">下载</el-radio-button>
-            <el-radio-button value="R">订阅</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-
-        <div v-if="form.uses === 'D'">
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item>
-                <template #label>包含<HelpTip text="RSS报文中title符合包括规则的才会被处理" /></template>
-                <el-input v-model="form.include" placeholder="关键字/正则" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item>
-                <template #label>排除<HelpTip text="RSS报文中title符合排除规则的则不会被处理" /></template>
-                <el-input v-model="form.exclude" placeholder="关键字/正则" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="16">
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>过滤规则<HelpTip text="只有符合过滤规则的才会被处理" /></template>
-                <el-select v-model="form.rule" style="width: 100%" clearable>
-                  <el-option v-for="r in ruleGroups" :key="r.id" :label="r.name" :value="r.id" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item label="下载设置">
-                <el-select v-model="form.download_setting" style="width: 100%" clearable>
-                  <el-option label="默认" value="" />
-                  <el-option v-for="d in downloadSettings" :key="d.id" :label="d.name" :value="d.id" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item label="保存路径">
-                <el-input v-model="form.save_path" placeholder="留空自动选择" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="16">
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>识别<HelpTip text="RSS报文中title能识别到媒体信息的才会被处理" /></template>
-                <el-select v-model="form.recognization" style="width: 100%">
-                  <el-option label="是" value="Y" />
-                  <el-option label="否" value="N" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </div>
-
-        <div v-else>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item>
-                <template #label>包含<HelpTip text="RSS报文中title符合包括规则的才会被处理" /></template>
-                <el-input v-model="form.include" placeholder="关键字/正则" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item>
-                <template #label>排除<HelpTip text="RSS报文中title符合排除规则的则不会被处理" /></template>
-                <el-input v-model="form.exclude" placeholder="关键字/正则" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-divider content-position="left">订阅设置 <HelpTip text="订阅设置将在添加电影/电视剧订阅时同步" /></el-divider>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="质量">
-                <el-select v-model="form.restype" style="width: 100%" clearable>
-                  <el-option v-for="r in RESTYPE_OPTIONS" :key="r" :label="r" :value="r" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="分辨率">
-                <el-select v-model="form.pix" style="width: 100%" clearable>
-                  <el-option v-for="p in PIX_OPTIONS" :key="p" :label="p" :value="p" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="制作组">
-                <el-input v-model="form.team" placeholder="支持正则" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item>
-                <template #label>过滤规则<HelpTip text="质量、分辨率与过滤规则为『与』的关系" /></template>
-                <el-select v-model="form.rule" style="width: 100%" clearable>
-                  <el-option label="站点规则" value="" />
-                  <el-option v-for="r in ruleGroups" :key="r.id" :label="r.name" :value="r.id" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="下载设置">
-                <el-select v-model="form.download_setting" style="width: 100%" clearable>
-                  <el-option label="站点设置" value="" />
-                  <el-option v-for="d in downloadSettings" :key="d.id" :label="d.name" :value="d.id" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="保存路径">
-                <el-input v-model="form.save_path" placeholder="留空使用默认" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item>
-                <template #label>洗版<HelpTip text="开启后RSS不检查媒体库是否已存在，命中即会下载" /></template>
-                <el-select v-model="form.over_edition" style="width: 100%">
-                  <el-option label="否" value="0" />
-                  <el-option label="是" value="1" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-form-item v-if="rssSites.length > 0">
-            <template #label>
-              <span style="display:flex;justify-content:space-between;width:100%;">
-                订阅站点
-                <el-button link size="small" @click="toggleRssSites">{{ allRssSelected ? '全不选' : '全选' }}</el-button>
-              </span>
-            </template>
-            <el-checkbox-group v-model="rssSitesSelected" style="width: 100%">
-              <el-checkbox v-for="s in rssSites" :key="s.name" :value="s.name">{{ s.name }}</el-checkbox>
-            </el-checkbox-group>
-          </el-form-item>
-          <el-form-item v-if="searchSites.length > 0">
-            <template #label>
-              <span style="display:flex;justify-content:space-between;width:100%;">
-                搜索站点
-                <el-button link size="small" @click="toggleSearchSites">{{ allSearchSelected ? '全不选' : '全选' }}</el-button>
-              </span>
-            </template>
-            <el-checkbox-group v-model="searchSitesSelected" style="width: 100%">
-              <el-checkbox v-for="s in searchSites" :key="s.name" :value="s.name">{{ s.name }}</el-checkbox>
-            </el-checkbox-group>
-          </el-form-item>
-        </div>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="articlesDialogVisible" :title="articlesTitle" width="900px" destroy-on-close>
-      <el-table
-        :data="articlesList"
-        v-loading="articlesLoading"
-        stripe
-        max-height="440"
-        @selection-change="articlesSelection"
-      >
-        <el-table-column type="selection" width="42" />
-        <el-table-column label="标题" min-width="280">
-          <template #default="{ row }">
-            <a v-if="row.link" :href="row.link" target="_blank" class="article-title">{{ row.title }}</a>
-            <span v-else class="article-title">{{ row.title }}</span>
-            <el-tag v-if="row.size" size="small" type="success" style="margin-left: 6px">{{ row.size }}</el-tag>
-            <el-button link size="small" @click="testArticle(row)" style="margin-left: 6px">识别</el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag size="small" :type="row.finish_flag ? 'primary' : 'warning'">
-              {{ row.finish_flag ? '已处理' : '未处理' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="发布时间" prop="date" width="160" />
-        <el-table-column label="操作" width="90" v-if="articlesUses === 'D'">
-          <template #default="{ row }">
-            <el-button :icon="Download" link @click="singleDownload(row)" />
-          </template>
-        </el-table-column>
-      </el-table>
-      <template #footer>
-        <div class="articles-footer">
-          <el-button v-if="articlesUses === 'D'" type="primary" :icon="Download" @click="batchDownload">批量下载</el-button>
-          <el-button type="success" :icon="Check" @click="batchCheck('set_finished')">已处理</el-button>
-          <el-button type="warning" :icon="Close" @click="batchCheck('set_unfinish')">未处理</el-button>
-          <el-button @click="articlesDialogVisible = false">关闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="historyDialogVisible" :title="historyTitle" width="800px" destroy-on-close>
-      <el-table :data="historyList" v-loading="historyLoading" stripe max-height="440">
-        <el-table-column label="标题" prop="title" min-width="280" show-overflow-tooltip />
-        <el-table-column label="下载器" prop="downloader" width="160">
-          <template #default="{ row }">
-            <el-tag v-if="row.downloader" size="small">{{ row.downloader }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="下载时间" prop="date" width="180" />
-      </el-table>
-    </el-dialog>
+    <q-dialog v-model="articlesDialogVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm"><q-card class="articles-dialog"><q-card-section class="row items-center"><div class="text-h6 ellipsis">{{ articlesTitle }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator /><q-card-section><q-table v-if="!$q.screen.lt.sm" v-model:selected="selectedArticles" flat selection="multiple" :rows="articlesList" :columns="articleColumns" row-key="title" :loading="articlesLoading" hide-pagination :rows-per-page-options="[0]" no-data-label="暂无报文"><template #body-cell-title="slotProps"><q-td :props="slotProps"><a v-if="slotProps.row.link" :href="slotProps.row.link" target="_blank" rel="noreferrer" class="article-link">{{ slotProps.row.title }}</a><span v-else>{{ slotProps.row.title }}</span><q-badge v-if="slotProps.row.size" class="q-ml-sm" color="positive" :label="slotProps.row.size" /><q-btn flat dense color="primary" label="识别" @click="testArticle(slotProps.row)" /></q-td></template><template #body-cell-state="slotProps"><q-td :props="slotProps"><q-badge :color="slotProps.row.finish_flag ? 'primary' : 'warning'" :label="slotProps.row.finish_flag ? '已处理' : '未处理'" /></q-td></template><template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn v-if="articlesUses === 'D'" flat dense icon="download" color="primary" label="下载" @click="singleDownload(slotProps.row)" /></q-td></template></q-table><div v-else class="article-mobile-list"><q-card v-for="article in articlesList" :key="article.title" flat bordered class="article-item"><q-card-section class="row no-wrap q-gutter-sm"><q-checkbox :model-value="articleSelected(article)" @update:model-value="toggleArticle(article)" /><div class="col min-width-0"><a v-if="article.link" :href="article.link" target="_blank" rel="noreferrer" class="article-link ellipsis-2-lines">{{ article.title }}</a><div v-else class="article-link ellipsis-2-lines">{{ article.title }}</div><div class="row items-center q-gutter-xs q-mt-xs"><q-badge :color="article.finish_flag ? 'primary' : 'warning'" :label="article.finish_flag ? '已处理' : '未处理'" /><span v-if="article.size" class="text-caption text-secondary">{{ article.size }}</span><span class="text-caption text-secondary">{{ article.date }}</span></div></div></q-card-section><q-card-actions align="right"><q-btn flat color="primary" label="识别" @click="testArticle(article)" /><q-btn v-if="articlesUses === 'D'" flat color="primary" icon="download" label="下载" @click="singleDownload(article)" /></q-card-actions></q-card><q-item v-if="!articlesLoading && !articlesList.length"><q-item-section class="text-center text-secondary q-py-xl">暂无报文</q-item-section></q-item></div></q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn v-if="articlesUses === 'D'" outline icon="download" label="批量下载" @click="batchDownload" /><q-btn color="positive" flat label="标记已处理" @click="batchCheck('set_finished')" /><q-btn color="warning" flat label="标记未处理" @click="batchCheck('set_unfinish')" /><q-btn flat label="关闭" v-close-popup /></q-card-actions></q-card></q-dialog>
+    <q-dialog v-model="historyDialogVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm"><q-card class="history-dialog"><q-card-section class="row items-center"><div class="text-h6 ellipsis">{{ historyTitle }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator /><q-card-section><q-table flat :rows="historyList" :columns="historyColumns" row-key="date" :loading="historyLoading" hide-pagination :rows-per-page-options="[0]" no-data-label="暂无下载记录"><template #body-cell-downloader="slotProps"><q-td :props="slotProps"><q-badge v-if="slotProps.row.downloader" outline color="primary" :label="slotProps.row.downloader" /></q-td></template></q-table></q-card-section></q-card></q-dialog>
   </div>
 </template>
 
 <style scoped>
-.user-rss {
-  padding: 16px;
-}
-.task-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.task-card :deep(.el-card__header) {
-  padding: 12px 16px;
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-.state-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-}
-.state-dot.on {
-  background: var(--el-color-success);
-}
-.state-dot.off {
-  background: var(--el-color-danger);
-}
-.task-name {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-.header-meta {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-}
-.header-actions {
-  display: flex;
-  gap: 4px;
-}
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px 16px;
-}
-.detail-item {
-  min-width: 0;
-}
-.detail-item-wide {
-  grid-column: 1 / -1;
-}
-.detail-title {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 4px;
-}
-.detail-content {
-  font-size: 13px;
-  word-break: break-all;
-}
-.detail-content.small {
-  font-size: 12px;
-  color: var(--el-text-color-regular);
-}
-.detail-content.break {
-  word-break: break-all;
-}
-.article-title {
-  color: var(--el-color-primary);
-  text-decoration: none;
-  word-break: break-all;
-}
-.article-title:hover {
-  text-decoration: underline;
-}
-.articles-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
+.user-rss { max-width: 1440px; margin: 0 auto; }
+.task-list { display: grid; gap: 12px; }
+.task-card { overflow: hidden; border-radius: 12px; }
+.task-header { display: flex; align-items: center; gap: 8px; min-height: 64px; }
+.state-dot { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; }
+.state-dot.on { background: var(--q-positive); box-shadow: 0 0 0 4px color-mix(in srgb, var(--q-positive) 15%, transparent); }
+.state-dot.off { background: var(--q-negative); }
+.task-name { color: var(--text-primary); font-size: 16px; font-weight: 650; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.detail-wide { grid-column: 1 / -1; }
+.detail-item { min-width: 0; }
+.detail-label { margin-bottom: 4px; color: var(--text-secondary); font-size: 12px; }
+.detail-value { color: var(--text-primary); font-size: 13px; word-break: break-word; }
+.detail-value.small { color: var(--text-secondary); font-size: 12px; }
+.break { word-break: break-all; }
+.empty-card { border-radius: 12px; }
+.editor-dialog, .articles-dialog, .history-dialog { width: min(820px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
+.articles-dialog { width: min(980px, calc(100vw - 32px)); }
+.history-dialog { width: min(800px, calc(100vw - 32px)); }
+.editor-form { display: grid; gap: 22px; }
+.form-section { display: grid; gap: 14px; }
+.section-title { padding-bottom: 5px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); font-size: 14px; font-weight: 650; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.form-grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.form-grid-wide { grid-template-columns: 2fr 1fr; }
+.site-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; max-height: 260px; overflow-y: auto; }
+.dialog-actions { gap: 8px; }
+.article-link { color: var(--q-primary); text-decoration: none; word-break: break-all; }
+.article-link:hover { text-decoration: underline; }
+.article-mobile-list { display: grid; gap: 10px; }
+.article-item { border-radius: 10px; }
+.min-width-0 { min-width: 0; }
+@media (max-width: 900px) { .form-grid-three { grid-template-columns: repeat(2, minmax(0, 1fr)); } .site-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 599px) { .user-rss { padding-bottom: 8px; } .task-header { flex-wrap: wrap; } .task-header > .q-space { display: none; } .task-header > .row:last-child { margin-left: auto; } .detail-grid { grid-template-columns: 1fr 1fr; gap: 12px; } .form-grid, .form-grid-three, .form-grid-wide, .site-grid { grid-template-columns: 1fr; } .editor-dialog, .articles-dialog, .history-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-actions { position: sticky; bottom: 0; flex-wrap: wrap; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

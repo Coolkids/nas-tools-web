@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { doAction } from '@/api'
 import { useModalStore } from '@/stores/modal'
 import PageHeader from '@/components/PageHeader.vue'
@@ -43,6 +42,15 @@ const form = reactive({
   rename: true,
   enabled: true
 })
+
+const tableColumns = [
+  { name: 'from', label: '源目录', field: 'from', align: 'left' as const },
+  { name: 'to', label: '目的目录', field: 'to', align: 'left' as const },
+  { name: 'syncmod', label: '同步方式', field: 'syncmod_name', align: 'left' as const },
+  { name: 'rename', label: '识别重命名', field: 'rename', align: 'center' as const },
+  { name: 'enabled', label: '状态', field: 'enabled', align: 'center' as const },
+  { name: 'actions', label: '操作', field: 'actions', align: 'right' as const }
+]
 
 onMounted(load)
 
@@ -145,100 +153,48 @@ async function toggle(row: SyncPath, flag: 'rename' | 'enable', checked: boolean
 </script>
 
 <template>
-  <div class="directory-sync" v-loading="loading">
+  <div class="directory-sync">
     <PageHeader title="目录同步" description="配置源目录到目的目录的自动同步策略">
-      <template #actions>
-        <el-button type="primary" :icon="Plus" @click="openAdd">新增同步目录</el-button>
-      </template>
+      <template #actions><q-btn color="primary" unelevated icon="add" label="新增同步目录" @click="openAdd" /></template>
     </PageHeader>
 
-    <el-card shadow="never">
-      <el-table :data="list" stripe>
-        <el-table-column label="源目录" prop="from" min-width="200" show-overflow-tooltip />
-        <el-table-column label="目的目录" min-width="200" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span>{{ row.to || '-' }}</span>
-            <div v-if="row.unknown && row.rename" class="unknown-tip">未识别：{{ row.unknown }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="同步方式" width="120">
-          <template #default="{ row }">
-            <el-tag size="small">{{ row.syncmod_name || modeLabel(row.syncmod) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="识别重命名" width="110" align="center">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.rename === 1"
-              @change="(v: boolean) => toggle(row, 'rename', v)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.enabled === 1"
-              @change="(v: boolean) => toggle(row, 'enable', v)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" align="center">
-          <template #default="{ row }">
-            <el-button :icon="Edit" link @click="openEdit(row)">编辑</el-button>
-            <el-button :icon="Delete" link type="danger" @click="remove(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <q-card flat bordered class="sync-card">
+      <q-inner-loading :showing="loading"><q-spinner-dots color="primary" size="40px" /></q-inner-loading>
+      <q-table v-if="!$q.screen.lt.sm" flat :rows="list" :columns="tableColumns" row-key="id" hide-pagination :rows-per-page-options="[0]" no-data-label="没有同步目录">
+        <template #body-cell-to="slotProps"><q-td :props="slotProps"><span>{{ slotProps.row.to || '-' }}</span><div v-if="slotProps.row.unknown && slotProps.row.rename" class="unknown-tip">未识别：{{ slotProps.row.unknown }}</div></q-td></template>
+        <template #body-cell-syncmod="slotProps"><q-td :props="slotProps"><q-badge outline color="primary" :label="slotProps.row.syncmod_name || modeLabel(slotProps.row.syncmod)" /></q-td></template>
+        <template #body-cell-rename="slotProps"><q-td :props="slotProps"><q-toggle :model-value="slotProps.row.rename === 1" color="primary" @update:model-value="(value) => toggle(slotProps.row, 'rename', value)" /></q-td></template>
+        <template #body-cell-enabled="slotProps"><q-td :props="slotProps"><q-toggle :model-value="slotProps.row.enabled === 1" color="positive" @update:model-value="(value) => toggle(slotProps.row, 'enable', value)" /></q-td></template>
+        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><div class="row justify-end q-gutter-xs"><q-btn flat dense color="primary" icon="edit" label="编辑" @click="openEdit(slotProps.row)" /><q-btn flat dense color="negative" icon="delete" label="删除" @click="remove(slotProps.row)" /></div></q-td></template>
+      </q-table>
+      <div v-else class="sync-mobile-list">
+        <q-card v-for="row in list" :key="row.id" flat bordered class="sync-item">
+          <q-card-section><div class="row items-start no-wrap"><div class="col min-width-0"><div class="path-title ellipsis">{{ row.from }}</div><div class="path-destination">目的：{{ row.to || '自动分类到媒体库' }}</div><div v-if="row.unknown && row.rename" class="unknown-tip">未识别：{{ row.unknown }}</div></div><q-badge outline color="primary" :label="row.syncmod_name || modeLabel(row.syncmod)" /></div><div class="row items-center q-gutter-md q-mt-sm"><q-toggle :model-value="row.rename === 1" color="primary" label="识别重命名" @update:model-value="(value) => toggle(row, 'rename', value)" /><q-toggle :model-value="row.enabled === 1" color="positive" label="已启用" @update:model-value="(value) => toggle(row, 'enable', value)" /></div></q-card-section>
+          <q-card-actions align="right"><q-btn flat color="primary" icon="edit" label="编辑" @click="openEdit(row)" /><q-btn flat color="negative" icon="delete" label="删除" @click="remove(row)" /></q-card-actions>
+        </q-card>
+        <div v-if="!loading && !list.length" class="empty-state"><q-icon name="sync_disabled" size="44px" color="grey-5" />没有同步目录</div>
+      </div>
+    </q-card>
 
-    <el-dialog
-      v-model="dialogVisible"
-      :title="form.sid ? '编辑同步目录' : '新增同步目录'"
-      width="720px"
-      :close-on-click-modal="false"
-    >
-      <el-form label-width="110px">
-        <el-form-item>
-          <template #label>同步目录<HelpTip text="源目录为需要同步的目录，目的目录为识别和改名后存放的目录，未识别目录为无法识别时转移的目录；只有源目录必须配置；目的目录未配置时将自动识别分类并转移到媒体库对应目录中；未识别目录下产生的文件程序不会主动清理，建议不配置，未识别记录可在媒体整理->手动识别功能下处理" /></template>
-          <div class="path-row">
-            <el-input v-model="form.from" placeholder="源目录" />
-            <el-input v-model="form.to" placeholder="目的目录" />
-            <el-input v-model="form.unknown" placeholder="未识别目录" />
-          </div>
-        </el-form-item>
-        <el-form-item>
-          <template #label>同步方式<HelpTip text="目录同步使用的文件转移方式，根据不同的程序版本可选项会有所不同。硬链接模式要求源目录和目的目录或媒体库目录在一个磁盘分区或者存储空间/共享文件夹，Docker运行时需要直接映射源目录和目的目录或媒体库目录的上级目录，否则docker仍然会认为是跨盘；移动模式会直接移动原文件，会影响做种，请谨慎使用；Rclone针对网盘场景，需要自行映射rclone配置目录到容器中（/root/.config/rclone）或在容器内使用rclone config完成rclone配置，网盘配置名称必须为：NASTOOL；Minio针对S3/云原生场景，需要自行在容器内使用mc alias set NASTOOL完成minio配置(alias的名称必须为NASTOOL)，并在minio控制台增加一个名为data的bucket(名称必须为data)" /></template>
-          <el-select v-model="form.syncmod" placeholder="选择同步方式">
-            <el-option v-for="m in SYNC_MODES" :key="m.value" :label="m.label" :value="m.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="选项">
-          <el-switch v-model="form.rename" active-text="识别并重命名" />
-          <el-switch v-model="form.enabled" active-text="开启同步" style="margin-left: 24px" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">确定</el-button>
-      </template>
-    </el-dialog>
+    <q-dialog v-model="dialogVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm" persistent>
+      <q-card class="sync-dialog">
+        <q-card-section class="row items-center no-wrap"><div class="text-h6">{{ form.sid ? '编辑同步目录' : '新增同步目录' }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="dialogVisible = false" /></q-card-section>
+        <q-separator />
+        <q-form @submit.prevent="submit"><q-card-section class="dialog-body">
+          <q-banner rounded dense class="info-banner"><template #avatar><q-icon name="info_outline" color="primary" /></template>源目录必须配置；目的目录留空时会根据媒体库自动分类。移动模式会影响做种，请谨慎使用。</q-banner>
+          <div class="path-grid q-mt-md"><q-input v-model="form.from" outlined dense label="源目录 *" placeholder="需要同步的目录" /><q-input v-model="form.to" outlined dense label="目的目录" placeholder="识别后存放目录" /><q-input v-model="form.unknown" outlined dense label="未识别目录" placeholder="无法识别时存放" /></div>
+          <q-select v-model="form.syncmod" outlined dense emit-value map-options label="同步方式" :options="SYNC_MODES" class="q-mt-md"><template #append><HelpTip text="硬链接要求源目录和目的目录在同一分区；移动模式会影响做种。Rclone 和 Minio 需要预先完成容器内配置。" /></template></q-select>
+          <div class="toggle-grid q-mt-md"><q-toggle v-model="form.rename" color="primary" label="识别并重命名" /><q-toggle v-model="form.enabled" color="positive" label="开启同步" /></div>
+        </q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="saving" @click="dialogVisible = false" /><q-btn color="primary" unelevated label="确定" :loading="saving" type="submit" /></q-card-actions></q-form>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
 <style scoped>
-.directory-sync {
-  padding: 16px;
-}
-.unknown-tip {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.path-row {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-}
-.path-row .el-input {
-  flex: 1;
-}
+.sync-card { border-radius: 16px; background: var(--surface); color: var(--text-primary); }
+.unknown-tip, .path-destination { margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
+.sync-mobile-list { display: flex; flex-direction: column; gap: 12px; padding: 12px; }.sync-item { border-radius: 12px; background: var(--surface-raised); }.path-title { font-size: 14px; font-weight: 600; }.empty-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 0; color: var(--text-secondary); }
+.sync-dialog { width: min(720px, calc(100vw - 32px)); max-width: none; border-radius: 16px; background: var(--surface); color: var(--text-primary); }.dialog-body { padding: 20px 24px; }.info-banner { border: 1px solid color-mix(in srgb, var(--q-primary), transparent 70%); background: var(--primary-soft); color: var(--text-primary); }.path-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }.toggle-grid { display: flex; gap: 24px; }.dialog-actions { gap: 8px; padding: 12px 24px 16px; }
+@media (max-width: 599px) { .sync-dialog { width: 100%; min-height: 100dvh; border-radius: 0; }.dialog-body { padding: 16px; }.path-grid { grid-template-columns: 1fr; }.dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); }.dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

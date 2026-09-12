@@ -13,7 +13,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <GlobalRequestProgress />
-  <RouterView v-if="route.meta?.public" />
-  <DefaultLayout v-else />
+  <q-app class="app-root">
+    <GlobalRequestProgress />
+    <RouterView v-if="route.meta?.public" />
+    <DefaultLayout v-else />
+  </q-app>
 </template>

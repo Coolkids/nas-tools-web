@@ -1,26 +1,15 @@
 import { defineStore } from 'pinia'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { Dialog, Notify } from 'quasar'
 
 interface ModalState {
-  /** 全屏等待遮罩 */
   loading: boolean
   loadingText: string
-  /** 进度对话框 */
   progressVisible: boolean
   progressValue: number
   progressText: string
 }
 
-/**
- * 全局弹窗/遮罩状态管理。
- *
- * 用于替代旧 navigation.html 中的全局 Modal：
- * - show_wait_modal   → showLoading
- * - show_success_modal → success
- * - show_fail_modal    → error
- * - show_confirm_modal → confirm
- * - 进度框             → showProgress / setProgress / hideProgress
- */
+/** 全局业务反馈状态。展示层使用 Quasar，调用方继续使用稳定的 Promise API。 */
 export const useModalStore = defineStore('modal', {
   state: (): ModalState => ({
     loading: false,
@@ -52,32 +41,40 @@ export const useModalStore = defineStore('modal', {
       this.progressValue = 0
       this.progressText = ''
     },
-    success(msg: string) {
-      ElMessage.success(msg)
+    success(message: string) {
+      Notify.create({ type: 'positive', message, position: 'top-right', timeout: 2800 })
     },
-    error(msg: string) {
-      ElMessage.error(msg)
+    error(message: string) {
+      Notify.create({ type: 'negative', message, position: 'top-right', timeout: 5200 })
     },
-    warning(msg: string) {
-      ElMessage.warning(msg)
+    warning(message: string) {
+      Notify.create({ type: 'warning', message, position: 'top-right', timeout: 4200 })
     },
-    info(msg: string) {
-      ElMessage.info(msg)
+    info(message: string) {
+      Notify.create({ type: 'info', message, position: 'top-right', timeout: 3200 })
     },
-    async confirm(msg: string, title = '确认操作'): Promise<boolean> {
-      try {
-        await ElMessageBox.confirm(msg, title, {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-        return true
-      } catch {
-        return false
-      }
+    confirm(message: string, title = '确认操作'): Promise<boolean> {
+      return new Promise((resolve) => {
+        let settled = false
+        const finish = (value: boolean) => {
+          if (settled) return
+          settled = true
+          resolve(value)
+        }
+        Dialog.create({
+          title,
+          message,
+          ok: { label: '确定', color: 'primary', unelevated: true },
+          cancel: { label: '取消', flat: true },
+          focus: 'cancel'
+        }).onOk(() => finish(true)).onCancel(() => finish(false)).onDismiss(() => finish(false))
+      })
     },
-    async alert(msg: string, title = '提示'): Promise<void> {
-      await ElMessageBox.alert(msg, title, { type: 'info' })
+    alert(message: string, title = '提示'): Promise<void> {
+      return new Promise((resolve) => {
+        Dialog.create({ title, message, ok: { label: '知道了', color: 'primary', unelevated: true } })
+          .onDismiss(() => resolve())
+      })
     }
   }
 })

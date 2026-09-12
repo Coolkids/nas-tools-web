@@ -1,13 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import {
-  Plus,
-  Edit,
-  Delete,
-  Promotion,
-  Connection,
-  ArrowDown
-} from '@element-plus/icons-vue'
 import { doAction } from '@/api'
 import { useModalStore } from '@/stores/modal'
 import PageHeader from '@/components/PageHeader.vue'
@@ -186,6 +178,14 @@ const customSending = ref(false)
 const customForm = reactive({ title: '', image: '', text: '' })
 
 const currentChannel = computed(() => CHANNELS.find((c) => c.id === form.type) || CHANNELS[0])
+const tableColumns = [
+  { name: 'type', label: '类型', field: 'type', align: 'left' as const },
+  { name: 'name', label: '名称', field: 'name', align: 'left' as const },
+  { name: 'switchs', label: '推送内容', field: 'switchs', align: 'left' as const },
+  { name: 'interactive', label: '交互', field: 'interactive', align: 'center' as const },
+  { name: 'enabled', label: '启用', field: 'enabled', align: 'center' as const },
+  { name: 'actions', label: '操作', field: 'actions', align: 'right' as const }
+]
 
 onMounted(load)
 
@@ -253,6 +253,10 @@ function openEdit(row: MessageClient) {
 
 function onTypeChange() {
   resetConfigFields()
+}
+
+function setConfigValue(key: string, value: string | number | boolean | null | undefined) {
+  form.config[key] = value ?? ''
 }
 
 function buildParams() {
@@ -371,307 +375,21 @@ async function sendCustom() {
 </script>
 
 <template>
-  <div class="notification-view" v-loading="loading">
-    <PageHeader title="消息通知" description="管理消息推送渠道与通知开关">
-      <template #actions>
-        <el-button :icon="Promotion" @click="openCustom">发送自定义消息</el-button>
-        <el-button type="primary" :icon="Plus" @click="openAdd">新增消息通知</el-button>
-      </template>
-    </PageHeader>
+  <div class="notification-view">
+    <PageHeader title="消息通知" description="管理消息推送渠道与通知开关"><template #actions><q-btn outline icon="campaign" label="发送自定义消息" @click="openCustom" /><q-btn color="primary" unelevated icon="add" label="新增消息通知" @click="openAdd" /></template></PageHeader>
+    <q-card flat bordered class="notification-card"><q-inner-loading :showing="loading"><q-spinner-dots color="primary" size="40px" /></q-inner-loading>
+      <q-table v-if="!$q.screen.lt.sm" flat :rows="list" :columns="tableColumns" row-key="id" hide-pagination :rows-per-page-options="[0]" no-data-label="没有消息通知"><template #body-cell-type="slotProps"><q-td :props="slotProps"><span class="type-cell"><img v-if="channelImg(slotProps.row.type)" class="type-icon-img" :src="channelImg(slotProps.row.type)" :alt="channelName(slotProps.row.type)" /><span>{{ channelName(slotProps.row.type) }}</span></span></q-td></template><template #body-cell-switchs="slotProps"><q-td :props="slotProps"><q-badge v-for="name in switchNames(slotProps.row.switchs)" :key="name" outline color="primary" class="switch-tag" :label="name" /></q-td></template><template #body-cell-interactive="slotProps"><q-td :props="slotProps"><q-toggle v-if="CHANNELS.find((channel) => channel.id === slotProps.row.type)?.search_type" :model-value="slotProps.row.interactive === 1" color="primary" @update:model-value="(value) => toggle(slotProps.row, 'interactive', value)" /></q-td></template><template #body-cell-enabled="slotProps"><q-td :props="slotProps"><q-toggle :model-value="slotProps.row.enabled === 1" color="positive" @update:model-value="(value) => toggle(slotProps.row, 'enable', value)" /></q-td></template><template #body-cell-actions="slotProps"><q-td :props="slotProps"><div class="row justify-end q-gutter-xs"><q-btn flat dense color="primary" icon="edit" label="编辑" @click="openEdit(slotProps.row)" /><q-btn flat dense color="negative" icon="delete" label="删除" @click="remove(slotProps.row)" /></div></q-td></template></q-table>
+      <div v-else class="notification-mobile-list"><q-card v-for="row in list" :key="row.id" flat bordered class="notification-item"><q-card-section><div class="row items-center no-wrap"><span class="type-cell"><img v-if="channelImg(row.type)" class="type-icon-img" :src="channelImg(row.type)" :alt="channelName(row.type)" /><span class="text-weight-medium">{{ row.name }}</span></span><q-space /><q-badge outline color="primary" :label="channelName(row.type)" /></div><div class="switch-list q-mt-sm"><q-badge v-for="name in switchNames(row.switchs)" :key="name" outline color="primary" :label="name" /></div><div class="row items-center q-gutter-md q-mt-sm"><q-toggle v-if="CHANNELS.find((channel) => channel.id === row.type)?.search_type" :model-value="row.interactive === 1" color="primary" label="交互" @update:model-value="(value) => toggle(row, 'interactive', value)" /><q-toggle :model-value="row.enabled === 1" color="positive" label="启用" @update:model-value="(value) => toggle(row, 'enable', value)" /></div></q-card-section><q-card-actions align="right"><q-btn flat color="primary" icon="edit" label="编辑" @click="openEdit(row)" /><q-btn flat color="negative" icon="delete" label="删除" @click="remove(row)" /></q-card-actions></q-card><div v-if="!loading && !list.length" class="empty-state"><q-icon name="notifications_off" size="42px" color="grey-5" />没有消息通知</div></div>
+    </q-card>
 
-    <el-card shadow="never">
-      <el-table :data="list" stripe>
-        <el-table-column label="类型" width="140">
-          <template #default="{ row }">
-            <span class="type-cell">
-              <img v-if="channelImg(row.type)" class="type-icon-img" :src="channelImg(row.type)" :alt="channelName(row.type)" />
-              <span>{{ channelName(row.type) }}</span>
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="名称" prop="name" width="140" />
-        <el-table-column label="推送内容" min-width="280">
-          <template #default="{ row }">
-            <el-tag
-              v-for="s in switchNames(row.switchs)"
-              :key="s"
-              size="small"
-              type="info"
-              class="switch-tag"
-            >{{ s }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="交互" width="80" align="center">
-          <template #default="{ row }">
-            <el-switch
-              v-if="CHANNELS.find((c) => c.id === row.type)?.search_type"
-              :model-value="row.interactive === 1"
-              @change="(v: boolean) => toggle(row, 'interactive', v)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="启用" width="80" align="center">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.enabled === 1"
-              @change="(v: boolean) => toggle(row, 'enable', v)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" align="center">
-          <template #default="{ row }">
-            <el-button :icon="Edit" link @click="openEdit(row)">编辑</el-button>
-            <el-button :icon="Delete" link type="danger" @click="remove(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <q-dialog v-model="dialogVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm" persistent><q-card class="notify-dialog"><q-card-section class="row items-center no-wrap"><div class="text-h6">{{ form.cid ? '编辑消息通知' : '新增消息通知' }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="dialogVisible = false" /></q-card-section><q-separator /><q-form @submit.prevent="submit"><q-card-section class="dialog-body"><div class="form-grid"><q-input v-model="form.name" outlined dense label="名称 *" placeholder="别名" /><q-select v-model="form.enabled" outlined dense emit-value map-options label="状态" :options="[{ value: 1, label: '启用' }, { value: 0, label: '停用' }]" /><q-select v-if="currentChannel.search_type" v-model="form.interactive" outlined dense emit-value map-options label="交互" :options="[{ value: 1, label: '是' }, { value: 0, label: '否' }]" /></div><div class="field-title">类型 *</div><div class="channel-grid"><div v-for="channel in CHANNELS" :key="channel.id" class="channel-item" :class="{ active: form.type === channel.id }" role="radio" :aria-checked="form.type === channel.id" tabindex="0" @click="form.type = channel.id; onTypeChange()" @keydown.enter.prevent="form.type = channel.id; onTypeChange()"><img v-if="channelImg(channel.id)" class="channel-icon-img" :src="channelImg(channel.id)" :alt="channel.name" /><span class="channel-name">{{ channel.name }}</span><q-icon v-if="form.type === channel.id" name="check_circle" color="primary" class="channel-check" /></div></div><div class="config-grid"><template v-for="[key, field] in Object.entries(currentChannel.config)" :key="field.id"><q-toggle v-if="field.type === 'switch'" :model-value="Boolean(form.config[key])" color="primary" :label="field.title" class="switch-field" @update:model-value="(value) => setConfigValue(key, value)" /><q-select v-else-if="field.type === 'select'" :model-value="String(form.config[key] ?? field.default ?? '')" outlined dense emit-value map-options :label="`${field.title}${field.required ? ' *' : ''}`" :options="Object.entries(field.options || {}).map(([value, label]) => ({ value, label }))" @update:model-value="(value) => setConfigValue(key, value)"><template #append><HelpTip v-if="field.tooltip" :text="field.tooltip" /></template></q-select><q-input v-else :model-value="String(form.config[key] ?? '')" outlined dense :label="`${field.title}${field.required ? ' *' : ''}`" :type="field.type === 'password' ? 'password' : 'text'" :placeholder="field.placeholder" @update:model-value="(value) => setConfigValue(key, value)"><template #append><HelpTip v-if="field.tooltip" :text="field.tooltip" /></template></q-input></template></div><div class="collapse-head"><q-btn flat dense color="primary" :icon="pushCollapsed ? 'expand_more' : 'expand_less'" label="推送设置" @click="pushCollapsed = !pushCollapsed" /><div class="collapse-actions"><q-btn flat dense color="primary" size="sm" label="全选" @click="selectAllSwitchs(true)" /><q-btn flat dense color="primary" size="sm" label="全不选" @click="selectAllSwitchs(false)" /><q-btn flat dense color="primary" size="sm" label="反选" @click="invertSwitchs" /></div></div><q-slide-transition><div v-show="!pushCollapsed" class="collapse-body"><div class="switch-group"><q-checkbox v-for="item in SWITCHS" :key="item.id" v-model="form.switchs" :val="item.id" :label="item.name" color="primary" /></div></div></q-slide-transition></q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat icon="wifi" label="测试" :loading="testing" @click="test" /><q-btn flat label="取消" :disable="saving || testing" @click="dialogVisible = false" /><q-btn color="primary" unelevated label="确定" :loading="saving" type="submit" /></q-card-actions></q-form></q-card></q-dialog>
 
-    <el-dialog
-      v-model="dialogVisible"
-      :title="form.cid ? '编辑消息通知' : '新增消息通知'"
-      width="820px"
-      :close-on-click-modal="false"
-    >
-      <div class="dialog-body">
-        <el-form label-width="160px">
-          <el-row :gutter="12">
-            <el-col :span="24">
-              <el-form-item label="名称" required>
-                <el-input v-model="form.name" placeholder="别名" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="状态">
-                <el-select v-model="form.enabled" style="width: 100%" :fit-input-width="false">
-                  <el-option :value="1" label="启用" />
-                  <el-option :value="0" label="停用" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12" v-if="currentChannel.search_type">
-              <el-form-item label="交互">
-                <el-select v-model="form.interactive" style="width: 100%" :fit-input-width="false">
-                  <el-option :value="1" label="是" />
-                  <el-option :value="0" label="否" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-form-item label="类型" required>
-            <div class="channel-grid">
-              <label
-                v-for="c in CHANNELS"
-                :key="c.id"
-                class="channel-item"
-                :class="{ active: form.type === c.id }"
-              >
-                <input
-                  class="channel-radio"
-                  type="radio"
-                  name="channel_type"
-                  :value="c.id"
-                  v-model="form.type"
-                  @change="onTypeChange"
-                />
-                <img v-if="channelImg(c.id)" class="channel-icon-img" :src="channelImg(c.id)" :alt="c.name" />
-                <span class="channel-name">{{ c.name }}</span>
-              </label>
-            </div>
-          </el-form-item>
-          <el-row :gutter="12">
-            <el-col
-              v-for="[key, f] in Object.entries(currentChannel.config)"
-              :key="f.id"
-              :span="f.type === 'switch' ? 6 : 12"
-            >
-              <el-form-item :required="f.required">
-                <template #label>{{ f.title }}<HelpTip v-if="f.tooltip" :text="f.tooltip" /></template>
-                <el-switch v-if="f.type === 'switch'" v-model="form.config[key]" />
-                <el-select v-else-if="f.type === 'select'" v-model="form.config[key]" style="width: 100%" :fit-input-width="false">
-                  <el-option v-for="(lbl, val) in f.options" :key="val" :value="val" :label="lbl" />
-                </el-select>
-                <el-input
-                  v-else
-                  v-model="form.config[key]"
-                  :type="f.type === 'password' ? 'password' : 'text'"
-                  :show-password="f.type === 'password'"
-                  :placeholder="f.placeholder"
-                />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <div class="collapse-head">
-            <el-button
-              class="collapse-toggle"
-              link
-              size="small"
-              :icon="ArrowDown"
-              :class="{ open: !pushCollapsed }"
-              @click="pushCollapsed = !pushCollapsed"
-            >
-              推送设置
-            </el-button>
-            <div class="collapse-actions">
-              <el-button link size="small" @click="selectAllSwitchs(true)">全选</el-button>
-              <el-button link size="small" @click="selectAllSwitchs(false)">全不选</el-button>
-              <el-button link size="small" @click="invertSwitchs">反选</el-button>
-            </div>
-          </div>
-          <el-collapse-transition>
-            <div v-show="!pushCollapsed">
-              <div class="collapse-body">
-                <el-checkbox-group v-model="form.switchs" class="switch-group">
-                  <el-checkbox-button v-for="s in SWITCHS" :key="s.id" :value="s.id" border>{{ s.name }}</el-checkbox-button>
-                </el-checkbox-group>
-              </div>
-            </div>
-          </el-collapse-transition>
-        </el-form>
-      </div>
-      <template #footer>
-        <el-button :icon="Connection" :loading="testing" @click="test">测试</el-button>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">确定</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="customVisible" title="发送自定义消息" width="560px" :close-on-click-modal="false">
-      <el-form label-width="80px">
-        <el-form-item label="标题" required>
-          <el-input v-model="customForm.title" />
-        </el-form-item>
-        <el-form-item label="图片">
-          <el-input v-model="customForm.image" placeholder="url" />
-        </el-form-item>
-        <el-form-item label="内容">
-          <el-input v-model="customForm.text" type="textarea" :rows="4" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="customVisible = false">取消</el-button>
-        <el-button type="primary" :loading="customSending" @click="sendCustom">发送</el-button>
-      </template>
-    </el-dialog>
+    <q-dialog v-model="customVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm" persistent><q-card class="custom-dialog"><q-card-section class="row items-center no-wrap"><div class="text-h6">发送自定义消息</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="customVisible = false" /></q-card-section><q-separator /><q-form @submit.prevent="sendCustom"><q-card-section class="custom-form"><q-input v-model="customForm.title" outlined dense label="标题 *" /><q-input v-model="customForm.image" outlined dense label="图片" placeholder="URL" /><q-input v-model="customForm.text" outlined label="内容" type="textarea" autogrow /></q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" @click="customVisible = false" /><q-btn color="primary" unelevated icon="send" label="发送" :loading="customSending" type="submit" /></q-card-actions></q-form></q-card></q-dialog>
   </div>
 </template>
 
 <style scoped>
-.notification-view {
-  padding: 16px;
-}
-.switch-tag {
-  margin-right: 4px;
-  margin-bottom: 4px;
-}
-.type-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.type-icon {
-  font-size: 16px;
-  color: var(--el-color-primary);
-}
-.type-icon-img {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
-  flex-shrink: 0;
-  border-radius: 2px;
-}
-.switch-group {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px 12px;
-}
-.switch-group :deep(.el-checkbox-button__inner) {
-  border-radius: 14px;
-}
-.channel-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px 12px;
-}
-.channel-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: border-color 0.15s, background-color 0.15s;
-  min-width: 0;
-}
-.channel-item:hover {
-  border-color: var(--el-color-primary);
-}
-.channel-item.active {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-}
-.channel-radio {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.channel-icon {
-  font-size: 18px;
-  color: var(--el-color-primary);
-  flex-shrink: 0;
-}
-.channel-icon-img {
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
-  flex-shrink: 0;
-  border-radius: 2px;
-}
-.channel-name {
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.el-form-item :deep(.el-form-item__label) {
-  white-space: nowrap;
-}
-.dialog-body {
-  max-height: 60vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 4px;
-}
-.collapse-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 0;
-  margin-top: 4px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-.collapse-toggle {
-  font-size: 13px;
-  font-weight: 600;
-}
-.collapse-toggle :deep(.el-icon) {
-  transition: transform 0.2s ease;
-}
-.collapse-toggle.open :deep(.el-icon) {
-  transform: rotate(180deg);
-}
-.collapse-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.collapse-actions .el-button {
-  font-size: 12px;
-}
-.collapse-body {
-  padding: 4px 0 8px;
-}
+.notification-card { border-radius: 16px; background: var(--surface); color: var(--text-primary); }.switch-tag { margin: 0 5px 4px 0; }.type-cell { display: inline-flex; align-items: center; gap: 7px; }.type-icon-img { width: 22px; height: 22px; border-radius: 3px; object-fit: contain; }.notification-mobile-list { display: flex; flex-direction: column; gap: 10px; padding: 12px; }.notification-item { border-radius: 12px; background: var(--surface-raised); }.switch-list { display: flex; flex-wrap: wrap; gap: 6px; }.empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 52px 0; color: var(--text-secondary); }.notify-dialog, .custom-dialog { width: min(820px, calc(100vw - 32px)); max-width: none; border-radius: 16px; background: var(--surface); color: var(--text-primary); }.custom-dialog { width: min(560px, calc(100vw - 32px)); }.dialog-body { max-height: 66vh; overflow-y: auto; padding: 20px 24px; }.form-grid, .config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }.field-title { margin: 20px 0 8px; font-size: 13px; font-weight: 600; }.channel-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; }.channel-item { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid var(--border-subtle); border-radius: 10px; cursor: pointer; transition: border-color .15s, background-color .15s; }.channel-item:hover, .channel-item:focus-visible { border-color: var(--q-primary); outline: none; }.channel-item.active { border-color: var(--q-primary); background: var(--primary-soft); }.channel-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }.channel-check { margin-left: auto; }.config-grid { margin-top: 18px; }.switch-field { min-height: 40px; }.collapse-head { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }.collapse-actions { display: flex; gap: 2px; }.collapse-body { padding: 8px 0; }.switch-group { display: flex; flex-wrap: wrap; gap: 4px 12px; }.custom-form { display: grid; gap: 14px; }.dialog-actions { gap: 8px; padding: 12px 24px 16px; }
+@media (max-width: 800px) { .channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }.text-secondary { color: var(--text-secondary); }
+@media (max-width: 599px) { .notify-dialog, .custom-dialog { width: 100%; min-height: 100dvh; border-radius: 0; }.dialog-body { max-height: none; padding: 16px; }.form-grid, .config-grid, .channel-grid { grid-template-columns: 1fr; }.collapse-head { align-items: flex-start; flex-direction: column; gap: 4px; }.dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); }.dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

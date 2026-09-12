@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { setNeedsLoginHandler } from '@/api/request'
+import { checkAuth } from '@/api/auth'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/index' },
@@ -168,13 +169,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/unidentification',
     name: 'unidentification',
-    component: () => import('@/views/rename/UnidentificationView.vue'),
+    component: () => import('@/views/rename/UnidentificationQuasarView.vue'),
     meta: { title: '手动识别' }
   },
   {
     path: '/mediafile',
     name: 'mediafile',
-    component: () => import('@/views/rename/MediaFileView.vue'),
+    component: () => import('@/views/rename/MediaFileQuasarView.vue'),
     meta: { title: '文件管理' }
   },
 
@@ -182,13 +183,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/basic',
     name: 'basic',
-    component: () => import('@/views/setting/BasicView.vue'),
+    component: () => import('@/views/setting/BasicQuasarView.vue'),
     meta: { title: '基础设置' }
   },
   {
     path: '/customwords',
     name: 'customwords',
-    component: () => import('@/views/setting/CustomWordsView.vue'),
+    component: () => import('@/views/setting/CustomWordsQuasarView.vue'),
     meta: { title: '自定义识别词' }
   },
   {
@@ -254,7 +255,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/filterrule',
     name: 'filterrule',
-    component: () => import('@/views/setting/FilterRuleView.vue'),
+    component: () => import('@/views/setting/FilterRuleQuasarView.vue'),
     meta: { title: '过滤规则' }
   },
 
@@ -284,7 +285,6 @@ let authChecked = false
 router.beforeEach(async (to) => {
   if (to.meta?.public) return true
   if (authChecked) return true
-  const { checkAuth } = await import('@/api/auth')
   authChecked = true
   const ok = await checkAuth()
   if (ok) return true

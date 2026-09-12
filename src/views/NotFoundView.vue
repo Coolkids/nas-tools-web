@@ -4,9 +4,19 @@ const router = useRouter()
 </script>
 
 <template>
-  <el-result icon="warning" title="404" sub-title="抱歉，页面不存在">
-    <template #extra>
-      <el-button type="primary" @click="router.push('/index')">返回首页</el-button>
-    </template>
-  </el-result>
+  <div class="not-found-page">
+    <q-card flat bordered class="not-found-card">
+      <q-card-section class="column items-center text-center q-pa-xl">
+        <q-icon name="error_outline" size="72px" color="warning" />
+        <div class="text-h4 q-mt-md">404</div>
+        <div class="text-body1 text-grey-7 q-mt-sm">抱歉，页面不存在</div>
+        <q-btn color="primary" unelevated label="返回首页" class="q-mt-lg" @click="router.push('/index')" />
+      </q-card-section>
+    </q-card>
+  </div>
 </template>
+
+<style scoped>
+.not-found-page { display: grid; place-items: center; min-height: calc(100vh - var(--app-header-height)); padding: 24px; background: var(--page-bg); }
+.not-found-card { width: min(100%, 420px); }
+</style>

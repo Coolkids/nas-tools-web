@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { Delete, Plus, Folder } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import { useConfigForm } from '@/composables/useConfigForm'
@@ -43,6 +42,7 @@ interface TreeNode {
   label: string
   path: string
   isLeaf: boolean
+  lazy?: boolean
 }
 
 const { config, loading, load } = useConfigForm()
@@ -54,6 +54,8 @@ const newPath = ref('')
 const submitting = ref(false)
 const treeLoading = ref(false)
 const treeKey = ref(0)
+const treeNodes = ref<TreeNode[]>([])
+const selectedTreePath = ref('')
 
 function getPaths(section: LibSection): string[] {
   const media = config.value.media as Record<string, unknown> | undefined
@@ -64,8 +66,17 @@ function getPaths(section: LibSection): string[] {
 function openDialog(section: LibSection) {
   currentSection.value = section
   newPath.value = ''
+  selectedTreePath.value = ''
+  treeNodes.value = []
   treeKey.value++
   dialogVisible.value = true
+  loadTreeRoot()
+}
+
+async function loadTreeRoot() {
+  treeLoading.value = true
+  treeNodes.value = await loadTreeChildren('/')
+  treeLoading.value = false
 }
 
 async function loadTreeChildren(parentPath: string): Promise<TreeNode[]> {
@@ -77,6 +88,7 @@ async function loadTreeChildren(parentPath: string): Promise<TreeNode[]> {
         label: d.name,
         path: d.path,
         isLeaf: false,
+        lazy: true,
       }))
     }
   } catch {
@@ -85,18 +97,18 @@ async function loadTreeChildren(parentPath: string): Promise<TreeNode[]> {
   return []
 }
 
-async function treeLazyLoad(node: any, resolve: (data: TreeNode[]) => void) {
-  if (node.level === 0) {
-    const roots = await loadTreeChildren('/')
-    resolve(roots)
-  } else {
-    const children = await loadTreeChildren(node.data.path)
-    resolve(children)
+async function treeLazyLoad({ node, done, fail }: { node: TreeNode; done: (data: TreeNode[]) => void; fail: () => void }) {
+  try {
+    done(await loadTreeChildren(node.path))
+  } catch {
+    fail()
   }
 }
 
-function handleTreeClick(data: TreeNode) {
-  newPath.value = data.path
+function handleTreeSelect(path: string | null) {
+  if (!path) return
+  selectedTreePath.value = path
+  newPath.value = path
 }
 
 async function handleAdd() {
@@ -138,96 +150,31 @@ onMounted(load)
 </script>
 
 <template>
-  <div v-loading="loading" class="library-view">
+  <div class="library-view">
     <PageHeader title="媒体库" description="配置电影、电视剧、动漫、未识别媒体的库目录" />
+    <q-inner-loading :showing="loading"><q-spinner-dots color="primary" size="40px" /></q-inner-loading>
     <div class="lib-list">
-      <el-card v-for="s in SECTIONS" :key="s.key" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <span>
-              <strong>{{ s.title }}</strong>
-              <HelpTip v-if="s.key === 'unknown'" text="Emby/Jellyfin/Plex媒体库对应文件的路径，下载文件转移、目录同步未配置目的目录时，媒体文件将重命名转移到该目录" />
-            </span>
-            <el-button type="primary" :icon="Plus" size="small" @click="openDialog(s)">
-              添加目录
-            </el-button>
-          </div>
-        </template>
-        <el-table :data="getPaths(s)" :show-header="false" empty-text="未配置">
-          <el-table-column label="目录">
-            <template #default="{ row }">
-              <span>{{ row }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column width="80" align="right">
-            <template #default="{ row }">
-              <el-button
-                type="danger"
-                :icon="Delete"
-                link
-                @click="handleDelete(s, row)"
-              />
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
+      <q-card v-for="section in SECTIONS" :key="section.key" flat bordered class="library-card">
+        <q-card-section class="row items-center no-wrap card-header"><div class="text-subtitle1 text-weight-medium">{{ section.title }} <HelpTip v-if="section.key === 'unknown'" text="Emby / Jellyfin / Plex 媒体库对应文件的路径。未配置目的目录时，媒体文件会重命名转移到该目录。" /></div><q-space /><q-btn color="primary" unelevated dense icon="add" label="添加目录" @click="openDialog(section)" /></q-card-section>
+        <q-separator />
+        <q-card-section class="path-list">
+          <div v-for="path in getPaths(section)" :key="path" class="path-item"><q-icon name="folder" color="primary" size="20px" /><span class="path-text">{{ path }}</span><q-btn flat round dense color="negative" icon="delete_outline" aria-label="删除目录" @click="handleDelete(section, path)" /></div>
+          <div v-if="!getPaths(section).length" class="empty-path"><q-icon name="folder_off" size="30px" color="grey-5" />未配置目录</div>
+        </q-card-section>
+      </q-card>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="`新增目录 - ${currentSection?.title}`" width="600px" destroy-on-close>
-      <el-form label-width="80px">
-        <el-form-item label="路径">
-          <el-input v-model="newPath" placeholder="请输入目录路径，或从下方树形结构选择" />
-        </el-form-item>
-      </el-form>
-      <div v-loading="treeLoading" class="tree-container">
-        <el-tree
-          :key="treeKey"
-          :lazy="true"
-          :load="treeLazyLoad"
-          node-key="id"
-          :expand-on-click-node="true"
-          @node-click="handleTreeClick"
-          :highlight-current="true"
-          empty-text="空目录"
-        >
-          <template #default="{ data }">
-            <span class="tree-node">
-              <el-icon><Folder /></el-icon>
-              <span>{{ data.label }}</span>
-            </span>
-          </template>
-        </el-tree>
-      </div>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleAdd">确定</el-button>
-      </template>
-    </el-dialog>
+    <q-dialog v-model="dialogVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm" persistent>
+      <q-card class="library-dialog">
+        <q-card-section class="row items-center no-wrap"><div class="text-h6">新增目录 · {{ currentSection?.title }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="dialogVisible = false" /></q-card-section>
+        <q-separator />
+        <q-card-section class="dialog-body"><q-input v-model="newPath" outlined dense label="路径" placeholder="输入目录路径，或从下方树形结构选择" /><div class="tree-container"><q-inner-loading :showing="treeLoading"><q-spinner-dots color="primary" /></q-inner-loading><q-tree v-if="treeNodes.length" :key="treeKey" v-model:selected="selectedTreePath" :nodes="treeNodes" node-key="id" label-key="label" no-connectors accordion no-transition lazy @lazy-load="treeLazyLoad" @update:selected="handleTreeSelect"><template #default-header="prop"><div class="row items-center no-wrap q-gutter-xs"><q-icon name="folder" color="primary" /><span class="ellipsis">{{ prop.node.label }}</span></div></template></q-tree><div v-else-if="!treeLoading" class="empty-tree"><q-icon name="folder_off" size="34px" color="grey-5" />空目录</div></div></q-card-section>
+        <q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="submitting" @click="dialogVisible = false" /><q-btn color="primary" unelevated label="确定" :loading="submitting" @click="handleAdd" /></q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
 <style scoped>
-.lib-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.tree-container {
-  max-height: 300px;
-  overflow-y: auto;
-  margin-top: 12px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  padding: 8px;
-}
-.tree-node {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
+.library-view { position: relative; }.lib-list { display: flex; flex-direction: column; gap: 16px; }.library-card { border-radius: 16px; background: var(--surface); color: var(--text-primary); }.card-header { min-height: 56px; padding: 12px 16px; }.path-list { display: flex; flex-direction: column; gap: 4px; padding: 8px 16px 14px; }.path-item { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 4px 0; }.path-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }.empty-path, .empty-tree { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 0; color: var(--text-secondary); font-size: 13px; }.library-dialog { width: min(600px, calc(100vw - 32px)); max-width: none; border-radius: 16px; background: var(--surface); color: var(--text-primary); }.dialog-body { padding: 20px 24px; }.tree-container { position: relative; max-height: 320px; min-height: 120px; overflow: auto; margin-top: 14px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-raised); }.dialog-actions { gap: 8px; padding: 12px 24px 16px; }@media (max-width: 599px) { .library-dialog { width: 100%; min-height: 100dvh; border-radius: 0; }.dialog-body { padding: 16px; }.tree-container { max-height: none; flex: 1; }.dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); }.dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>
