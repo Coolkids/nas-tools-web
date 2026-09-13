@@ -358,7 +358,6 @@ onMounted(loadData)
               <q-input v-else :model-value="String(form[field.key] ?? '')" outlined dense :label="field.label" :type="field.type || 'text'" :placeholder="field.placeholder" @update:model-value="setValue(field.key, $event)">
                 <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
               </q-input>
-              <div v-if="fieldHelp(field)" class="setting-help">{{ fieldHelp(field) }}</div>
             </div>
           </div>
           <div class="card-footer">
@@ -405,7 +404,6 @@ onMounted(loadData)
 .setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .setting-field { min-width: 0; }
 .toggle-field { min-height: 42px; align-items: center; }
-.setting-help { margin: -8px 8px 0 12px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 .card-footer { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border-subtle); padding: 16px 0 0; margin-top: 8px; }
 .dialog-card { width: min(92vw, 800px); max-width: none; }
 .scraper-dialog { width: min(92vw, 720px); }
