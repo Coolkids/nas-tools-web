@@ -35,7 +35,6 @@ const mediaReady = computed(() => mediaCount.value.code === 0)
 const spaceReady = computed(() => space.value.code === 0)
 const statReady = computed(() => stat.value.code === 0)
 const historyReady = ref(false)
-const recentHistory = computed(() => history.value.slice(0, 8))
 
 const chartLabels = computed(() => {
   const labels = stat.value.TvChartLabels?.length ? stat.value.TvChartLabels : stat.value.MovieChartLabels
@@ -50,11 +49,11 @@ const chartMax = computed(() => {
   return Math.max(1, ...all.map((value) => Number(value) || 0))
 })
 
-const transferLatest = computed(() => ({
-  movie: stat.value.MovieNums?.[stat.value.MovieNums.length - 1] || 0,
-  tv: stat.value.TvNums?.[stat.value.TvNums.length - 1] || 0,
-  anime: stat.value.AnimeNums?.[stat.value.AnimeNums.length - 1] || 0
-}))
+const trendSeries = computed(() => [
+  { key: 'movie', label: '电影', color: 'var(--q-primary)', values: stat.value.MovieNums || [] },
+  { key: 'tv', label: '电视剧', color: 'var(--q-positive)', values: stat.value.TvNums || [] },
+  { key: 'anime', label: '动漫', color: 'var(--q-warning)', values: stat.value.AnimeNums || [] }
+])
 
 const usedPercent = computed(() => {
   const value = space.value.UsedPercent
@@ -76,26 +75,45 @@ function smoothLinePath(data: number[], width: number, height: number): string {
   const stepX = width / (data.length - 1)
   const points = data.map((raw, index) => ({
     x: index * stepX,
-    y: height - ((Number(raw) || 0) / chartMax.value) * height * 0.88 - height * 0.06
+    y: chartPointY(raw, height)
   }))
+  const slopes = points.map((point, index) => {
+    if (index === 0) return (points[1].y - point.y) / stepX
+    if (index === points.length - 1) return (point.y - points[index - 1].y) / stepX
+    const previous = (point.y - points[index - 1].y) / stepX
+    const next = (points[index + 1].y - point.y) / stepX
+    if (previous * next <= 0) return 0
+    return (previous + next) / 2
+  })
   let path = `M${points[0].x},${points[0].y}`
   for (let index = 0; index < points.length - 1; index += 1) {
-    const p0 = index > 0 ? points[index - 1] : points[index]
     const p1 = points[index]
     const p2 = points[index + 1]
-    const cp1x = p1.x + (p2.x - p0.x) / 6
-    const cp1y = p1.y + (p2.y - p0.y) / 6
-    const cp2x = p2.x - (p2.x - p0.x) / 6
-    const cp2y = p2.y - (p2.y - p0.y) / 6
+    const segmentWidth = p2.x - p1.x
+    const cp1x = p1.x + segmentWidth / 3
+    const cp1y = p1.y + slopes[index] * segmentWidth / 3
+    const cp2x = p2.x - segmentWidth / 3
+    const cp2y = p2.y - slopes[index + 1] * segmentWidth / 3
     path += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`
   }
   return path
 }
 
-function compactNumber(value: string | number | undefined) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return '—'
-  return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(number)
+function smoothAreaPath(data: number[], width: number, height: number): string {
+  const line = smoothLinePath(data, width, height)
+  return line ? `${line} L${width},${height} L0,${height} Z` : ''
+}
+
+function chartPointX(index: number, length: number, width: number) {
+  return length > 1 ? (index * width) / (length - 1) : width / 2
+}
+
+function chartPointY(value: number, height: number) {
+  return height - ((Number(value) || 0) / chartMax.value) * height * 0.82 - height * 0.09
+}
+
+function chartLabelAt(index: number) {
+  return chartLabels.value[index] || `第 ${index + 1} 期`
 }
 
 async function load(options: { notify?: boolean } = {}) {
@@ -177,15 +195,44 @@ onMounted(() => { void load() })
         </q-card-section>
       </q-card>
 
-      <q-card flat bordered class="metric-card">
+      <q-card flat bordered class="metric-card series-metric-card">
+        <div v-if="statReady && chartLabels.length > 1" class="metric-chart-background">
+          <svg viewBox="0 0 600 112" role="img" aria-label="电视剧、动漫和电影转移趋势" preserveAspectRatio="none">
+            <defs>
+              <linearGradient v-for="series in trendSeries" :id="`trend-fill-${series.key}`" :key="`fill-${series.key}`" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" :stop-color="series.color" stop-opacity=".2" />
+                <stop offset="100%" :stop-color="series.color" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="102" x2="600" y2="102" stroke="currentColor" opacity=".12" />
+            <g v-for="series in trendSeries" :key="series.key">
+              <path :d="smoothAreaPath(series.values, 600, 102)" :fill="`url(#trend-fill-${series.key})`" opacity=".7" />
+              <path :d="smoothLinePath(series.values, 600, 102)" fill="none" :stroke="series.color" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity=".62" />
+              <g
+                v-for="(value, index) in series.values"
+                :key="`${series.key}-${index}`"
+                class="metric-chart-point"
+                :transform="`translate(${chartPointX(index, series.values.length, 600)} ${chartPointY(value, 102)})`"
+                :aria-label="`${series.label} · ${chartLabelAt(index)}：${valueOrDash(value)}`"
+              >
+                <circle r="12" fill="transparent" />
+                <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">{{ series.label }} · {{ chartLabelAt(index) }}：{{ valueOrDash(value) }}</q-tooltip>
+              </g>
+            </g>
+          </svg>
+        </div>
+        <div v-if="statReady && chartLabels.length > 1" class="metric-chart-legend" aria-label="趋势图例">
+          <span v-for="series in trendSeries" :key="`legend-${series.key}`" class="metric-chart-legend-item">
+            <i class="metric-chart-legend-line" :style="{ backgroundColor: series.color }" aria-hidden="true" />{{ series.label }}
+          </span>
+        </div>
         <q-card-section class="row items-center no-wrap">
           <q-avatar color="positive" text-color="white" icon="live_tv" size="44px" />
-          <div class="metric-copy q-ml-md">
+          <div class="metric-copy series-metric-copy q-ml-md">
             <div class="metric-label">电视剧 / 动漫</div>
             <div v-if="mediaReady" class="metric-value">{{ valueOrDash(mediaCount.Series) }}</div>
             <q-skeleton v-else-if="loading" type="text" width="60px" />
             <div v-else class="metric-value">—</div>
-            <div class="metric-sub">集数 {{ mediaReady ? valueOrDash(mediaCount.Episodes) : '—' }}</div>
           </div>
         </q-card-section>
       </q-card>
@@ -234,73 +281,42 @@ onMounted(() => { void load() })
       </q-card-section>
     </q-card>
 
-    <div class="dashboard-grid">
-      <q-card flat bordered class="content-card transfer-card">
-        <q-card-section>
-          <div class="section-heading">
-            <div>
-              <div class="section-title">转移趋势</div>
-              <div class="section-description">最近周期的媒体入库数量</div>
-            </div>
-            <q-icon name="show_chart" size="24px" color="positive" />
-          </div>
-          <div v-if="statReady" class="trend-background" aria-hidden="true">
-            <span class="trend-background-item trend-background-tv">电视剧 {{ compactNumber(transferLatest.tv) }}</span>
-            <span class="trend-background-item trend-background-anime">动漫 {{ compactNumber(transferLatest.anime) }}</span>
-          </div>
-          <div v-if="statReady && chartLabels.length > 1" class="chart-wrap">
-            <svg viewBox="0 0 600 180" role="img" aria-label="电影、电视剧和动漫转移趋势图" preserveAspectRatio="none">
-              <line x1="0" y1="166" x2="600" y2="166" stroke="currentColor" opacity=".14" />
-              <path :d="smoothLinePath(stat.MovieNums, 600, 166)" fill="none" stroke="var(--q-primary)" stroke-width="3" stroke-linecap="round" />
-              <path :d="smoothLinePath(stat.TvNums, 600, 166)" fill="none" stroke="var(--q-positive)" stroke-width="3" stroke-linecap="round" />
-              <path :d="smoothLinePath(stat.AnimeNums, 600, 166)" fill="none" stroke="var(--q-warning)" stroke-width="3" stroke-linecap="round" />
-            </svg>
-            <div class="chart-labels"><span v-for="label in chartLabels" :key="label">{{ label }}</span></div>
-          </div>
-          <q-skeleton v-else-if="loading" type="rect" height="180px" />
-          <div v-else class="empty-state"><q-icon name="show_chart" size="32px" color="grey-5" /><span>暂无转移统计</span></div>
-          <div v-if="statReady" class="legend-row">
-            <span><i class="legend-dot dot-primary" />电影 {{ compactNumber(transferLatest.movie) }}</span>
-            <span><i class="legend-dot dot-positive" />电视剧 {{ compactNumber(transferLatest.tv) }}</span>
-            <span><i class="legend-dot dot-warning" />动漫 {{ compactNumber(transferLatest.anime) }}</span>
-          </div>
-        </q-card-section>
-      </q-card>
-
+    <div class="history-section">
       <q-card flat bordered class="content-card history-card">
         <q-card-section class="section-heading">
           <div>
             <div class="section-title">播放历史</div>
-            <div class="section-description">最近的播放和登录活动</div>
+            <div class="section-description">播放和登录活动</div>
           </div>
           <q-icon name="history" size="24px" color="info" />
         </q-card-section>
         <q-table
-          v-if="$q.screen.gt.xs"
           flat
           hide-pagination
-          :rows="recentHistory"
+          :rows="history"
           :columns="historyColumns"
+          :visible-columns="$q.screen.lt.sm ? ['event'] : ['event', 'date']"
           row-key="date"
           :rows-per-page-options="[0]"
           :loading="loading"
+          virtual-scroll
+          :virtual-scroll-item-size="$q.screen.lt.sm ? 64 : 48"
+          :virtual-scroll-sticky-size-start="48"
+          no-data-label="暂无播放记录"
           class="history-table"
         >
           <template #body-cell-event="props">
             <q-td :props="props">
-              <div class="history-event"><q-icon :name="props.row.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" /><span>{{ props.row.event }}</span></div>
+              <div class="history-event">
+                <q-icon :name="props.row.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" />
+                <div class="history-event-copy">
+                  <div class="history-event-title">{{ props.row.event }}</div>
+                  <span class="history-event-date">{{ props.row.date }}</span>
+                </div>
+              </div>
             </q-td>
           </template>
         </q-table>
-        <div v-else class="mobile-history-list">
-          <div v-for="item in recentHistory" :key="`${item.date}-${item.event}`" class="mobile-history-item">
-            <q-icon :name="item.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" />
-            <div class="mobile-history-copy"><div>{{ item.event }}</div><span>{{ item.date }}</span></div>
-          </div>
-          <div v-if="!history.length && !loading" class="empty-state"><q-icon name="history" size="32px" color="grey-5" /><span>暂无播放记录</span></div>
-          <div v-if="history.length > recentHistory.length" class="history-limit-note">仅显示最近 {{ recentHistory.length }} 条</div>
-        </div>
-        <div v-if="history.length > recentHistory.length" class="history-limit-note desktop-history-limit">仅显示最近 {{ recentHistory.length }} 条</div>
         <q-card-section v-if="!historyReady && !loading" class="text-caption text-grey-6 q-pt-none">播放历史暂不可用</q-card-section>
       </q-card>
     </div>
@@ -313,43 +329,34 @@ onMounted(() => { void load() })
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .metric-card, .content-card { background: var(--surface); border-color: var(--border-subtle); }
 .metric-card { min-height: 112px; }
+.series-metric-card { position: relative; overflow: hidden; background: linear-gradient(135deg, var(--surface) 20%, color-mix(in srgb, var(--q-positive) 6%, var(--surface))); }
+.metric-chart-background { position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .5; }
+.metric-chart-background svg { display: block; width: 100%; height: 100%; color: var(--text-secondary); overflow: visible; }
+.metric-chart-point { pointer-events: all; cursor: help; }
+.metric-chart-legend { position: absolute; top: 10px; right: 12px; z-index: 2; display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 10px; pointer-events: none; }
+.metric-chart-legend-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.metric-chart-legend-line { display: inline-block; width: 11px; height: 2px; border-radius: 2px; }
+.series-metric-card > .q-card__section { position: relative; z-index: 1; }
+.series-metric-copy { position: relative; z-index: 3; min-width: 0; }
 .metric-label { color: var(--text-secondary); font-size: 13px; }
 .metric-value { margin-top: 3px; color: var(--text-primary); font-size: 26px; font-weight: 700; line-height: 1.2; }
-.metric-sub { min-height: 18px; margin-top: 2px; color: var(--text-secondary); font-size: 12px; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .section-title { color: var(--text-primary); font-size: 16px; font-weight: 650; }
 .section-description { margin-top: 3px; color: var(--text-secondary); font-size: 12px; }
 .storage-summary { display: flex; flex-wrap: wrap; gap: 18px; margin: 22px 0 12px; color: var(--text-secondary); font-size: 13px; }
 .storage-summary strong { margin-left: 3px; color: var(--text-primary); font-weight: 600; }
 .progress-caption { margin-top: 8px; color: var(--text-secondary); font-size: 12px; text-align: right; }
-.dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 16px; margin-top: 16px; }
-.transfer-card { position: relative; overflow: hidden; background: linear-gradient(135deg, var(--surface) 15%, color-mix(in srgb, var(--q-primary) 5%, var(--surface))); }
-.chart-wrap { position: relative; z-index: 1; margin-top: 20px; }
-.chart-wrap svg { display: block; width: 100%; height: 180px; color: var(--text-secondary); overflow: visible; opacity: .9; }
-.trend-background { position: absolute; top: 64px; right: 20px; display: flex; gap: 10px; color: var(--text-primary); font-size: 24px; font-weight: 700; opacity: .08; pointer-events: none; user-select: none; }
-.trend-background-item { white-space: nowrap; }
-.trend-background-tv { color: var(--q-positive); }
-.trend-background-anime { color: var(--q-warning); }
-.chart-labels { display: flex; justify-content: space-between; gap: 8px; overflow: hidden; color: var(--text-secondary); font-size: 11px; }
-.chart-labels span { overflow: hidden; max-width: 90px; text-overflow: ellipsis; white-space: nowrap; }
-.legend-row { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; color: var(--text-secondary); font-size: 12px; }
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 132px; color: var(--text-secondary); font-size: 13px; }
-.legend-row span { display: inline-flex; align-items: center; gap: 6px; }
-.legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
-.dot-primary { background: var(--q-primary); }
-.dot-positive { background: var(--q-positive); }
-.dot-warning { background: var(--q-warning); }
+.history-section { margin-top: 16px; }
+.history-table { height: 420px; }
+.history-table :deep(.q-table__middle) { height: 100%; overflow-y: auto; }
+.history-table :deep(thead) { position: sticky; top: 0; z-index: 1; background: var(--surface); }
 .history-table :deep(th) { color: var(--text-secondary); font-weight: 500; }
 .history-event { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.history-event span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mobile-history-list { padding: 0 16px 12px; }
-.mobile-history-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
-.mobile-history-copy { min-width: 0; color: var(--text-primary); font-size: 14px; }
-.mobile-history-copy > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mobile-history-copy span { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
-.history-limit-note { padding: 10px 16px 14px; color: var(--text-secondary); font-size: 12px; text-align: right; }
-.desktop-history-limit { padding-top: 0; }
-@media (max-width: 1439px) { .home-page { padding-inline: 24px; } .dashboard-grid { grid-template-columns: minmax(0, 1fr); } }
+.history-event-copy { min-width: 0; }
+.history-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-event-date { display: none; }
+@media (max-width: 1439px) { .home-page { padding-inline: 24px; } }
 @media (max-width: 1023px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 599px) { .home-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .dashboard-grid { gap: 10px; margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .trend-background { top: 60px; right: 16px; flex-direction: column; align-items: flex-end; font-size: 18px; } }
+@media (max-width: 1023px) { .history-table { height: 380px; } }
+@media (max-width: 599px) { .home-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .metric-chart-legend { display: none; } .history-table { height: 360px; } .history-table :deep(table) { table-layout: fixed; } .history-table :deep(th), .history-table :deep(td) { padding-inline: 12px; } .history-table :deep(tbody td) { height: 64px; } .history-event { align-items: flex-start; gap: 8px; } .history-event-date { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.2; } }
 </style>
