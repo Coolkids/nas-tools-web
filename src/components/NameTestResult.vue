@@ -117,14 +117,16 @@ function searchName() {
       <section class="result-section result-conclusion">
         <div class="result-section-heading"><span>识别结论</span><q-badge :color="recognized ? 'positive' : 'warning'" :label="recognized ? '已匹配媒体' : '仅解析文件名'" /></div>
         <div class="result-actions">
-          <q-btn v-if="data.name || input" flat dense no-caps color="primary" icon="search" :label="`识别名称：${data.name || input}`" :title="data.name || input" @click="searchName" />
+          <q-btn v-if="data.name || input" class="result-action" flat dense no-caps color="primary" icon="search" :label="`识别名称：${data.name || input}`" :title="data.name || input" @click="searchName" />
           <span v-else class="result-static">识别名称：未返回</span>
-          <q-btn v-if="data.title" flat dense no-caps color="positive" icon="content_copy" :label="`标题：${data.title}`" :title="data.title" @click="copyValue(data.title, '标题')" />
+          <q-btn v-if="data.title" class="result-action" flat dense no-caps color="positive" icon="content_copy" :label="`标题：${data.title}`" :title="data.title" @click="copyValue(data.title, '标题')" />
           <span v-else class="result-static">标题：未返回</span>
-          <q-btn v-if="data.tmdbid && tmdbUrl()" flat dense no-caps color="positive" icon="open_in_new" :label="`TMDB ID：${data.tmdbid}`" :title="`打开 ${tmdbUrl()}`" @click="openUrl(tmdbUrl())" />
-          <span v-else-if="data.tmdbid" class="result-static">TMDB ID：{{ data.tmdbid }} · 暂无可用链接</span>
-          <q-btn v-if="data.tmdbid" flat dense round color="positive" icon="content_copy" aria-label="复制 TMDB ID" @click="copyValue(data.tmdbid, 'TMDB ID')"><q-tooltip>复制 TMDB ID</q-tooltip></q-btn>
-          <q-btn v-if="data.season_episode && seasonUrl()" flat dense no-caps color="warning" icon="open_in_new" :label="`季集：${data.season_episode}`" :title="`打开 ${seasonUrl()}`" @click="openUrl(seasonUrl())" />
+          <div v-if="data.tmdbid" class="result-action-group">
+            <q-btn v-if="tmdbUrl()" class="result-action result-action-main" flat dense no-caps color="positive" icon="open_in_new" :label="`TMDB ID：${data.tmdbid}`" :title="`打开 ${tmdbUrl()}`" @click="openUrl(tmdbUrl())" />
+            <span v-else class="result-static result-action-main">TMDB ID：{{ data.tmdbid }} · 暂无可用链接</span>
+            <q-btn class="result-copy-action" flat dense round color="positive" icon="content_copy" aria-label="复制 TMDB ID" @click="copyValue(data.tmdbid, 'TMDB ID')"><q-tooltip>复制 TMDB ID</q-tooltip></q-btn>
+          </div>
+          <q-btn v-if="data.season_episode && seasonUrl()" class="result-action" flat dense no-caps color="warning" icon="open_in_new" :label="`季集：${data.season_episode}`" :title="`打开 ${seasonUrl()}`" @click="openUrl(seasonUrl())" />
           <span v-else-if="data.season_episode" class="result-static">季集：{{ data.season_episode }} · 暂无可用链接</span>
         </div>
         <div class="conclusion-meta"><span v-if="data.type">类型：{{ data.type }}</span><span v-if="data.year">年份：{{ data.year }}</span></div>
@@ -164,6 +166,10 @@ function searchName() {
 .result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .result-actions :deep(.q-btn) { max-width: 100%; }
 .result-actions :deep(.q-btn__content) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-action-group { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.result-action-group .result-action-main { min-width: 0; }
+.result-action-group :deep(.result-action-main) { flex: 1; }
+.result-action-group :deep(.result-copy-action) { flex: 0 0 40px; }
 .result-static { color: var(--text-primary); font-size: 13px; }
 .conclusion-meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--text-secondary); font-size: 13px; }
 .parsed-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
@@ -183,8 +189,14 @@ function searchName() {
   .parsed-grid { grid-template-columns: 1fr; }
   .parsed-field, .process-row { grid-template-columns: minmax(88px, auto) minmax(0, 1fr); }
   .result-actions { align-items: stretch; flex-direction: column; }
-  .result-actions :deep(.q-btn) { justify-content: flex-start; width: 100%; min-height: 40px; }
+  .result-actions :deep(.result-action) { justify-content: flex-start; width: 100%; min-height: 40px; }
+  .result-actions :deep(.result-action .q-btn__content) { width: 100%; justify-content: flex-start; text-align: left; }
+  .result-action-group { width: 100%; }
+  .result-action-group :deep(.result-action-main) { width: auto; }
+  .result-action-group :deep(.result-copy-action) { width: 40px; min-width: 40px; }
+  .result-action-group :deep(.result-copy-action .q-btn__content) { width: auto; justify-content: center; }
   .compact .result-actions { flex-direction: row; }
-  .compact .result-actions :deep(.q-btn) { width: auto; max-width: 100%; }
+  .compact .result-actions :deep(.result-action) { width: auto; max-width: 100%; }
+  .compact .result-action-group { width: auto; max-width: 100%; }
 }
 </style>
