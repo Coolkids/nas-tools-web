@@ -222,7 +222,7 @@ function goBack() {
       </div>
 
       <q-separator v-if="total > pageSize" />
-      <div v-if="total > pageSize" class="row justify-center q-pa-md"><q-pagination v-model="page" :max="Math.ceil(total / pageSize)" direction-links boundary-links @update:model-value="onPageChange" /></div>
+      <div v-if="total > pageSize" class="row justify-center q-pa-md"><q-pagination v-model="page" :max="Math.ceil(total / pageSize)" :max-pages="7" direction-links boundary-links @update:model-value="onPageChange" /></div>
     </q-card>
 
     <AddRssMediaDialog

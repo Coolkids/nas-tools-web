@@ -26,7 +26,7 @@ defineProps<{
 @media (max-width: 599px) {
   .page-header { gap: 12px; margin-bottom: 20px; }
   .page-title { font-size: 24px; line-height: 32px; }
-  .header-actions { width: 100%; justify-content: flex-start; }
+  .header-actions { width: calc(100% - 8px); justify-content: flex-start; margin-left: 4px; padding-inline: 4px; box-sizing: border-box; }
   .header-actions :deep(.q-btn) { min-height: 44px; }
 }
 </style>

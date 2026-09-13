@@ -13,9 +13,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <q-app class="app-root">
+  <div class="q-app app-root">
     <GlobalRequestProgress />
     <RouterView v-if="route.meta?.public" />
     <DefaultLayout v-else />
-  </q-app>
+  </div>
 </template>

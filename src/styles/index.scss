@@ -59,6 +59,12 @@ a { color: inherit; text-decoration: none; }
 .request-progress__bar.is-indeterminate { width: 35%; animation: request-progress-slide 1.15s ease-in-out infinite; }
 @keyframes request-progress-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(285%); } }
 
+/* Keep ordinary forms and confirmations readable on desktop. The resource search
+   result dialog opts out because it intentionally needs a wide master/detail view. */
+@media (min-width: 600px) {
+  .q-dialog__inner > .q-card:not(.result-dialog-card) { max-width: min(760px, calc(100vw - 32px)); }
+}
+
 @media (max-width: 599px) {
   :root { --app-header-height: 56px; }
   .app-main { min-height: calc(100vh - var(--app-header-height) - 56px - var(--safe-bottom)); }
