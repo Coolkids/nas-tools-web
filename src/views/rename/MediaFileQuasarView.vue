@@ -180,9 +180,13 @@ function isDir(f: FileItem): boolean {
 }
 
 const fileItems = computed(() => files.value.filter((f) => !isDir(f)))
+const mobileItems = computed(() =>
+  [...files.value].sort((a, b) => Number(isDir(b)) - Number(isDir(a)))
+)
 
 function clickItem(f: FileItem) {
   if (isDir(f)) load(f.path)
+  else openFileDetails(f)
 }
 
 const fileDetailsVisible = ref(false)
@@ -323,11 +327,21 @@ const transferModes = [
   { label: 'Minio移动', value: 'minio' }
 ]
 const transferTypeOptions = [
-  { label: '电影', value: 'MOV' },
-  { label: '电视剧', value: 'TV' },
-  { label: '动漫', value: 'ANIME' }
+  { label: '电影', value: 'MOV', icon: '/static/img/movie.png' },
+  { label: '电视剧', value: 'TV', icon: '/static/img/live_tv.png' },
+  { label: '动漫', value: 'ANIME', icon: '/static/img/animation.png' }
 ]
 const seasonOptions = Array.from({ length: 51 }, (_, i) => ({ label: '第' + i + '季', value: String(i) }))
+
+function selectTransferType(value: string) {
+  transferType.value = value
+  if (value === 'MOV') {
+    transferSeason.value = ''
+    transferEpFormat.value = ''
+    transferEpDetails.value = ''
+    transferEpOffset.value = ''
+  }
+}
 
 const progressVisible = ref(false)
 const progressValue = ref(0)
@@ -618,7 +632,40 @@ async function deleteSelectedHardlinks() {
       </q-breadcrumbs>
     </q-card>
 
-    <div class="split-layout">
+    <div v-if="$q.screen.lt.sm" class="mobile-file-panel">
+      <q-card flat bordered>
+        <q-card-section class="list-header file-header">
+          <div class="section-title"><q-icon name="folder_open" color="primary" />目录与文件 <span class="muted">{{ mobileItems.length }} 项</span></div>
+        </q-card-section>
+        <q-separator />
+        <q-inner-loading :showing="loading"><q-spinner color="primary" size="42px" /></q-inner-loading>
+        <q-card-section v-if="mobileItems.length === 0" class="empty-state">
+          <q-icon name="folder_open" size="48px" color="grey-5" />
+          <div>目录为空</div>
+        </q-card-section>
+        <div v-for="row in mobileItems" :key="row.path" class="mobile-item" :class="{ 'is-directory': isDir(row) }">
+          <button class="mobile-item-main" type="button" :title="row.path" @click="clickItem(row)">
+            <q-icon :name="isDir(row) ? 'folder' : 'description'" :color="isDir(row) ? 'warning' : 'grey-7'" size="22px" />
+            <span class="mobile-item-name">{{ row.name }}</span>
+            <q-badge v-if="row.size && !isDir(row)" color="grey-3" text-color="grey-8">{{ row.size }}</q-badge>
+            <q-icon v-if="isDir(row)" name="chevron_right" color="grey-6" size="20px" />
+            <q-tooltip>{{ isDir(row) ? '打开目录' : '查看文件详情' }}：{{ row.path }}</q-tooltip>
+          </button>
+          <div v-if="!isDir(row)" class="mobile-item-actions">
+            <q-btn flat dense round color="primary" icon="handyman" :loading="nameTestLoading[row.path]" :disable="nameTestLoading[row.path]" aria-label="识别" @click.stop="doNameTest(row)"><q-tooltip>识别</q-tooltip></q-btn>
+            <q-btn flat dense round color="primary" icon="upload" aria-label="转移" @click.stop="openTransfer(row)"><q-tooltip>转移</q-tooltip></q-btn>
+            <q-btn flat dense round color="primary" icon="subtitles" aria-label="字幕" @click.stop="downloadSubtitle(row)"><q-tooltip>字幕</q-tooltip></q-btn>
+            <q-btn flat dense round color="primary" icon="link" aria-label="硬链接" @click.stop="openHardlink(row)"><q-tooltip>硬链接</q-tooltip></q-btn>
+            <q-btn flat dense round color="primary" icon="edit" aria-label="重命名" @click.stop="openRename(row)"><q-tooltip>重命名</q-tooltip></q-btn>
+            <q-btn flat dense round color="negative" icon="delete" aria-label="删除" @click.stop="deleteFile(row)"><q-tooltip>删除</q-tooltip></q-btn>
+          </div>
+          <div v-if="nameTestLoading[row.path]" class="recognition-loading"><q-spinner-dots color="primary" size="20px" /><span>{{ nameTestResults[row.path] ? '上次结果 · 正在重新识别' : '正在识别…' }}</span></div>
+          <NameTestResult v-else-if="nameTestResults[row.path]" :result="nameTestResults[row.path]" :input="row.name" :source="row.path" compact @open-details="openNameResult(row)" />
+        </div>
+      </q-card>
+    </div>
+
+    <div v-else class="split-layout">
       <q-card flat bordered class="dir-panel">
         <q-card-section class="list-header">
           <div class="section-title"><q-icon name="folder" color="warning" />目录</div>
@@ -703,7 +750,7 @@ async function deleteSelectedHardlinks() {
       </q-card>
     </q-dialog>
 
-    <q-dialog v-model="transferVisible" persistent>
+    <q-dialog v-model="transferVisible" :maximized="$q.screen.lt.sm" persistent>
       <q-card class="dialog-card wide-dialog">
         <q-card-section class="dialog-title"><div class="text-h6">自定义识别转移</div><q-btn v-close-popup flat round dense icon="close" /></q-card-section>
         <q-separator />
@@ -712,22 +759,65 @@ async function deleteSelectedHardlinks() {
             <q-input v-model="transferPath" outlined dense label="输入路径" required class="q-mb-md" />
             <q-input v-model="transferOutPath" outlined dense label="输出路径" placeholder="留空则转移至媒体库" class="q-mb-md" />
             <q-select v-model="transferSyncmod" outlined dense label="转移方式" :options="transferModes" emit-value map-options class="q-mb-md" />
-            <q-option-group v-model="transferType" :options="transferTypeOptions" type="radio" inline class="q-mb-md" />
+            <div class="transfer-type-selector q-mb-md">
+              <span class="transfer-type-label">类型</span>
+              <div class="transfer-type-buttons">
+                <q-btn
+                  v-for="option in transferTypeOptions"
+                  :key="option.value"
+                  outline
+                  no-caps
+                  :color="transferType === option.value ? 'primary' : 'grey-4'"
+                  :text-color="transferType === option.value ? 'primary' : 'grey-8'"
+                  :class="{ 'is-selected': transferType === option.value }"
+                  class="transfer-type-button"
+                  @click="selectTransferType(option.value)"
+                >
+                  <img :src="option.icon" :alt="option.label" class="transfer-type-icon" />
+                  <span>{{ option.label }}</span>
+                </q-btn>
+              </div>
+            </div>
             <q-input v-model="transferTmdb" outlined dense label="TMDB ID" placeholder="留空自动识别" class="q-mb-md">
               <template #append><q-btn flat dense color="primary" label="查询" @click="searchTmdb" /></template>
             </q-input>
             <div class="form-row">
-              <q-select v-model="transferSeason" outlined dense label="季" :options="seasonOptions" emit-value map-options :disable="transferType === 'MOV'" />
+              <q-select v-if="transferType !== 'MOV'" v-model="transferSeason" outlined dense label="季" :options="seasonOptions" emit-value map-options />
               <q-input v-model="transferMinFilesize" outlined dense label="最小文件大小" placeholder="留空使用默认值" />
             </div>
-            <q-banner dense rounded class="bg-blue-1 text-primary q-mt-md">
-              集数定位用于从文件名提取集数：定位格式必须包含 {ep}（如 S{season}E{ep} 或 第{ep}集）；起始/终止集填写 1 或 1,2；偏移支持 -10、EP+1、2*EP-1 等。仅剧集/动漫需要，未填写时按自动识别。
-            </q-banner>
-            <div class="form-row q-mt-md">
-              <q-input v-model="transferEpFormat" outlined dense label="集数定位格式" placeholder="如 S{season}E{ep}" />
-              <q-input v-model="transferEpDetails" outlined dense label="起始/终止集" placeholder="如 1 或 1,2" />
-              <q-input v-model="transferEpOffset" outlined dense label="集数偏移" placeholder="如 -10 或 EP+1" />
-            </div>
+            <template v-if="transferType !== 'MOV'">
+              <q-banner v-if="$q.screen.lt.sm" dense rounded class="bg-blue-1 text-primary q-mt-md episode-help-mobile">
+                <q-expansion-item dense :default-opened="false" icon="info_outline" label="集定位说明" class="episode-help-expansion">
+                  <div class="episode-help q-pa-sm">
+                    <div class="episode-help-summary">三个字段都不填时，使用默认识别。</div>
+                    <ol>
+                      <li><code>{ep}</code>：标定集数位置，例如：<code>(BD)十二国記 第45話「東の海神 西の滄海 五章」(1440x1080 x264-10bpp flac).mkv</code>。此处可以填 <code>(BD)十二国記 第{ep}話{a}(1440x1080 x264-10bpp flac).mkv</code>；<code>ep</code> 表示集，<code>a</code> 表示理解成一个变量。</li>
+                      <li><code>起始集[, 终止集]</code>：裁定处理集数范围。如果输入是文件，输出就是单个文件；如果输入是目录，输出可以根据填的值批量识别。例如 <code>1</code> 表示第一集，<code>2,4</code> 只取第 2 集到第 4 集，<code>1-2</code> 表示第 1-2 集。</li>
+                      <li>集数偏移：例如 <code>ep</code> 定位出集数是 11，实际是第 1 集，此处填 <code>-10</code>。</li>
+                    </ol>
+                  </div>
+                </q-expansion-item>
+              </q-banner>
+              <div v-else class="episode-help-desktop q-mt-md" aria-label="集定位说明">
+                <q-icon name="info_outline" color="primary" size="22px" />
+                <span>集定位说明</span>
+                <q-tooltip :delay="2000" anchor="bottom middle" self="top middle">
+                    <div class="episode-help episode-help-tooltip">
+                      <div class="episode-help-summary">集定位说明：三个字段都不填时，使用默认识别。</div>
+                      <ol>
+                        <li><code>{ep}</code>：标定集数位置，例如：<code>(BD)十二国記 第45話「東の海神 西の滄海 五章」(1440x1080 x264-10bpp flac).mkv</code>。此处可以填 <code>(BD)十二国記 第{ep}話{a}(1440x1080 x264-10bpp flac).mkv</code>；<code>ep</code> 表示集，<code>a</code> 表示理解成一个变量。</li>
+                        <li><code>起始集[, 终止集]</code>：裁定处理集数范围。如果输入是文件，输出就是单个文件；如果输入是目录，输出可以根据填的值批量识别。例如 <code>1</code> 表示第一集，<code>2,4</code> 只取第 2 集到第 4 集，<code>1-2</code> 表示第 1-2 集。</li>
+                        <li>集数偏移：例如 <code>ep</code> 定位出集数是 11，实际是第 1 集，此处填 <code>-10</code>。</li>
+                      </ol>
+                    </div>
+                </q-tooltip>
+              </div>
+              <div class="form-row q-mt-md">
+                <q-input v-model="transferEpFormat" outlined dense label="集数定位格式" placeholder="如 S{season}E{ep}" />
+                <q-input v-model="transferEpDetails" outlined dense label="起始/终止集" placeholder="如 1 或 1,2" />
+                <q-input v-model="transferEpOffset" outlined dense label="集数偏移" placeholder="如 -10 或 EP+1" />
+              </div>
+            </template>
           </q-card-section>
           <q-separator />
           <q-card-actions align="right"><q-btn flat label="取消" v-close-popup /><q-btn color="primary" label="转移" type="submit" :loading="transferLoading" /></q-card-actions>
@@ -813,7 +903,9 @@ async function deleteSelectedHardlinks() {
 .path-card { margin-bottom: 12px; padding: 14px; }
 .crumbs { margin-top: 12px; }
 .crumb-link { cursor: pointer; }
+.mobile-file-panel { display: none; }
 .split-layout { display: flex; gap: 12px; flex: 1; min-height: 0; align-items: stretch; }
+.split-layout .list-header { height: 80px; min-height: 80px; box-sizing: border-box; }
 .dir-panel { width: 260px; flex-shrink: 0; min-height: 320px; display: flex; flex-direction: column; }
 .file-panel { flex: 1; min-width: 0; min-height: 320px; position: relative; }
 .tree-body { flex: 1; overflow: auto; }
@@ -855,6 +947,25 @@ async function deleteSelectedHardlinks() {
 .detail-value { overflow-wrap: anywhere; color: var(--text-primary); font-size: 13px; }
 .field-label { color: var(--text-secondary); font-size: 12px; }
 .detail-recognition-hint { display: flex; align-items: center; gap: 6px; margin-top: 16px; color: var(--text-secondary); font-size: 13px; }
+.transfer-type-selector { display: flex; align-items: center; gap: 14px; }
+.transfer-type-label { flex-shrink: 0; color: var(--text-secondary); font-size: 16px; }
+.transfer-type-buttons { display: flex; flex: 1; gap: 12px; min-width: 0; }
+.transfer-type-button { flex: 1; min-width: 0; min-height: 48px; border-radius: 7px; }
+.transfer-type-button.is-selected { background: color-mix(in srgb, var(--q-primary) 12%, transparent) !important; font-weight: 600; }
+.transfer-type-button.is-selected::before { border-width: 2px; }
+.transfer-type-button :deep(.q-btn__content) { gap: 7px; }
+.transfer-type-icon { display: block; width: 24px; height: 24px; flex: 0 0 24px; object-fit: contain; }
+.episode-help { font-size: 13px; line-height: 1.65; }
+.episode-help-summary { font-weight: 600; }
+.episode-help ol { margin: 4px 0 0; padding-left: 20px; }
+.episode-help li + li { margin-top: 4px; }
+.episode-help code { padding: 1px 4px; border-radius: 4px; background: rgb(255 255 255 / 55%); color: inherit; font-family: inherit; overflow-wrap: anywhere; }
+.episode-help-desktop { display: flex; justify-content: flex-start; align-items: center; gap: 6px; min-height: 24px; color: var(--q-primary); cursor: help; font-size: 13px; }
+.episode-help-tooltip { max-width: min(460px, 70vw); white-space: normal; }
+.episode-help-mobile { padding: 0; }
+.episode-help-expansion { width: 100%; }
+.episode-help-expansion :deep(.q-item) { min-height: 40px; padding: 0; }
+.episode-help-expansion :deep(.q-expansion-item__content) { padding-bottom: 4px; }
 .form-row { gap: 12px; align-items: flex-start; }
 .form-row > * { flex: 1; min-width: 0; }
 .search-row { gap: 8px; }
@@ -871,6 +982,22 @@ async function deleteSelectedHardlinks() {
   .file-ops { width: 100%; justify-content: flex-start; }
 }
 @media (max-width: 599px) {
+  .wide-dialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border-radius: 0; }
+  .wide-dialog :deep(.q-form) { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+  .wide-dialog .dialog-body { flex: 1; max-height: none; overflow-y: auto; }
+  .transfer-type-selector { display: block; }
+  .transfer-type-label { display: block; margin-bottom: 8px; }
+  .transfer-type-buttons { width: 100%; gap: 8px; }
+  .mobile-file-panel { display: block; flex: 1; min-height: 260px; position: relative; }
+  .mobile-file-panel > .q-card { min-height: 260px; }
+  .mobile-item { padding: 10px 4px; border-bottom: 1px solid var(--border-light); }
+  .mobile-item:last-child { border-bottom: 0; }
+  .mobile-item-main { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 4px 0; border: 0; background: transparent; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
+  .mobile-item-main:active { opacity: 0.7; }
+  .mobile-item-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-item-actions { display: flex; justify-content: flex-end; gap: 2px; margin-top: 4px; }
+  .mobile-item-actions :deep(.q-btn) { min-width: 36px; min-height: 36px; }
+  .mobile-item.is-directory .mobile-item-name { font-weight: 550; }
   .file-actions { display: none; }
   .file-card { padding: 12px 4px; }
   .file-ops { gap: 4px; }
