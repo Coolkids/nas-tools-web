@@ -185,7 +185,7 @@ async function onDelete(row: RssParser) {
 </template>
 
 <style scoped>
-.rss-parser { max-width: 1440px; margin: 0 auto; }
+.rss-parser { max-width: 1600px; margin: 0 auto; }
 .parser-card { overflow: hidden; }
 .parser-params { max-width: 520px; color: var(--text-secondary); font-size: 13px; white-space: pre-wrap; word-break: break-all; }
 .mobile-parser-list { display: grid; gap: 10px; padding: 12px; }

@@ -182,7 +182,7 @@ watch(() => events.value.length, scrollScheduleToToday)
 </template>
 
 <style scoped>
-.rss-calendar { max-width: 1440px; margin: 0 auto; }
+.rss-calendar { max-width: 1600px; margin: 0 auto; }
 .calendar-card { position: relative; overflow: hidden; }
 .calendar-heading { display: flex; align-items: center; gap: 12px; }
 .week-scroll { overflow-x: auto; }

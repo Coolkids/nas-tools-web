@@ -66,7 +66,7 @@ async function remove(row: DownloadSetting) { if (row.id <= 0) return; if (!awai
 </template>
 
 <style scoped>
-.download-setting { max-width: 1440px; margin: 0 auto; }
+.download-setting { max-width: 1600px; margin: 0 auto; }
 .setting-card { overflow: hidden; }
 .mobile-setting-list { display: grid; gap: 10px; padding: 12px; }
 .setting-item { border-radius: 12px; }

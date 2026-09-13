@@ -243,7 +243,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-.service { max-width: 1440px; margin: 0 auto; }
+.service { max-width: 1600px; margin: 0 auto; }
 .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .stat-card { display: flex; align-items: center; gap: 14px; padding: 18px; border-radius: 12px; }
 .stat-label { color: var(--text-secondary); font-size: 12px; }

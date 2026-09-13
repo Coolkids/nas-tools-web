@@ -69,7 +69,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-.subtitle-view { position: relative; max-width: 1440px; margin: 0 auto; }
+.subtitle-view { position: relative; max-width: 1600px; margin: 0 auto; }
 .server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
 .server-card { overflow: hidden; cursor: pointer; border-radius: 12px; transition: transform .18s ease, border-color .18s ease; }
 .server-card:hover, .server-card:focus-visible { transform: translateY(-2px); border-color: var(--q-primary); outline: none; }

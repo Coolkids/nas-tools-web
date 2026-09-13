@@ -115,7 +115,7 @@ async function clearAll() {
 </template>
 
 <style scoped>
-.tmdb-cache { max-width: 1440px; margin: 0 auto; }
+.tmdb-cache { max-width: 1600px; margin: 0 auto; }
 .cache-card { overflow: hidden; }
 .search-input { width: min(320px, 60vw); }
 .index-cell, .title-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }

@@ -128,7 +128,7 @@ async function remove(row: UserDownloader) {
 </template>
 
 <style scoped>
-.user-downloader { max-width: 1440px; margin: 0 auto; }
+.user-downloader { max-width: 1600px; margin: 0 auto; }
 .downloader-card { overflow: hidden; }
 .save-dir { max-width: 360px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }

@@ -237,7 +237,7 @@ function goBack() {
 </template>
 
 <style scoped>
-.rss-history { max-width: 1440px; margin: 0 auto; }
+.rss-history { max-width: 1600px; margin: 0 auto; }
 .history-card { overflow: hidden; }
 .media-cell { display: flex; align-items: center; gap: 12px; min-width: 260px; }
 .history-poster { width: 48px; height: 72px; flex: 0 0 auto; border-radius: 6px; background: var(--surface-muted); }

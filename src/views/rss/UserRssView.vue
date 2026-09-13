@@ -91,7 +91,7 @@ onMounted(loadOptions)
 </template>
 
 <style scoped>
-.user-rss { max-width: 1440px; margin: 0 auto; }
+.user-rss { max-width: 1600px; margin: 0 auto; }
 .task-list { display: grid; gap: 12px; }
 .task-card { overflow: hidden; border-radius: 12px; }
 .task-header { display: flex; align-items: center; gap: 8px; min-height: 64px; }
