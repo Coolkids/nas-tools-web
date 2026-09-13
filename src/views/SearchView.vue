@@ -41,14 +41,6 @@ const taskColumns: QTableProps['columns'] = [
   { name: 'actions', label: '操作', field: 'keyword', align: 'right' }
 ]
 
-const resultColumns: QTableProps['columns'] = [
-  { name: 'site', label: '站点', field: 'site', align: 'left' },
-  { name: 'torrent', label: '种子名称', field: 'torrent_name', align: 'left' },
-  { name: 'size', label: '大小', field: 'size', align: 'left' },
-  { name: 'seeders', label: '做种', field: 'seeders', align: 'center' },
-  { name: 'actions', label: '操作', field: 'id', align: 'right' }
-]
-
 const uniqueSites = computed(() => Array.from(new Set(taskResults.value.map((item) => item.site).filter(Boolean))).sort())
 const filteredResults = computed(() => {
   let results = taskResults.value
@@ -426,18 +418,87 @@ onBeforeUnmount(() => {
                 <q-input v-model="nameFilter" outlined dense clearable label="名称过滤" class="name-filter" />
                 <span class="filter-count">共 {{ filteredResults.length }} 条结果</span>
               </div>
-              <q-table v-if="$q.screen.gt.xs" flat bordered hide-pagination :rows="filteredResults" :columns="resultColumns" row-key="id" :rows-per-page-options="[0]" class="result-table">
-                <template #body-cell-site="props"><q-td :props="props"><q-badge color="grey-7" :label="props.row.site" /></q-td></template>
-                <template #body-cell-torrent="props"><q-td :props="props"><div class="torrent-name">{{ props.row.torrent_name }}</div><div v-if="props.row.description" class="torrent-desc">{{ props.row.description }}</div><div class="torrent-badges"><q-chip v-if="props.row.title" dense color="primary" text-color="white" :label="props.row.title" /><q-chip v-if="props.row.type === 'MOV'" dense color="positive" text-color="white" label="电影" /><q-chip v-else-if="props.row.type === 'TV'" dense color="warning" text-color="white" label="电视剧" /><q-chip v-if="uploadText(props.row)" dense color="warning" text-color="white" :label="uploadText(props.row) || ''" /><q-chip v-if="freeText(props.row)" dense color="positive" text-color="white" :label="freeText(props.row) || ''" /></div></q-td></template>
-                <template #body-cell-seeders="props"><q-td :props="props">{{ props.row.seeders || 0 }} ↑</q-td></template>
-                <template #body-cell-actions="props"><q-td :props="props"><q-btn color="primary" unelevated dense label="下载" @click="openTorrent(props.row)" /><q-btn v-if="props.row.pageurl" flat round icon="open_in_new" aria-label="打开站点" @click="openPage(props.row.pageurl)" /></q-td></template>
-              </q-table>
-              <div v-else class="mobile-result-list">
-                <q-card v-for="item in filteredResults" :key="item.id" flat bordered class="mobile-result-card">
-                  <q-card-section><div class="row items-center q-gutter-sm"><q-badge color="grey-7" :label="item.site" /><q-chip v-if="item.type === 'MOV'" dense color="positive" text-color="white" label="电影" /><q-chip v-else-if="item.type === 'TV'" dense color="warning" text-color="white" label="电视剧" /></div><div class="torrent-name q-mt-sm">{{ item.torrent_name }}</div><div v-if="item.description" class="torrent-desc">{{ item.description }}</div><div class="torrent-badges"><q-chip v-if="item.size" dense outline :label="item.size" /><q-chip v-if="item.title" dense outline :label="item.title" /><q-chip v-if="uploadText(item)" dense color="warning" text-color="white" :label="uploadText(item) || ''" /><q-chip v-if="freeText(item)" dense color="positive" text-color="white" :label="freeText(item) || ''" /></div></q-card-section>
-                  <q-card-actions align="right"><span class="seeders-text">{{ item.seeders || 0 }} ↑</span><q-btn color="primary" unelevated label="下载" @click="openTorrent(item)" /><q-btn v-if="item.pageurl" flat round icon="open_in_new" aria-label="打开站点" @click="openPage(item.pageurl)" /></q-card-actions>
-                </q-card>
-              </div>
+              <vxe-table
+                v-if="$q.screen.gt.xs"
+                class="result-table"
+                :data="filteredResults"
+                height="90%"
+                border
+                :row-config="{ keyField: 'id', isHover: true }"
+                :virtual-y-config="{ enabled: true, gt: 0, preSize: 10, oSize: 5 }"
+              >
+                <vxe-column field="site" title="站点" width="150">
+                  <template #default="{ row }"><q-badge color="grey-7" :label="row.site" /></template>
+                </vxe-column>
+                <vxe-column field="torrent_name" title="种子名称" min-width="420">
+                  <template #default="{ row }">
+                    <div class="torrent-name">{{ row.torrent_name }}</div>
+                    <div v-if="row.description" class="torrent-desc">{{ row.description }}</div>
+                    <div class="torrent-badges">
+                      <q-chip v-if="row.title" dense color="primary" text-color="white" :label="row.title" />
+                      <q-chip v-if="row.type === 'MOV'" dense color="positive" text-color="white" label="电影" />
+                      <q-chip v-else-if="row.type === 'TV'" dense color="warning" text-color="white" label="电视剧" />
+                      <q-chip v-if="uploadText(row)" dense color="warning" text-color="white" :label="uploadText(row) || ''" />
+                      <q-chip v-if="freeText(row)" dense color="positive" text-color="white" :label="freeText(row) || ''" />
+                    </div>
+                  </template>
+                </vxe-column>
+                <vxe-column field="size" title="大小" width="120" />
+                <vxe-column field="seeders" title="做种" width="90" align="center">
+                  <template #default="{ row }">{{ row.seeders || 0 }} ↑</template>
+                </vxe-column>
+                <vxe-column title="操作" width="150" fixed="right" align="right">
+                  <template #default="{ row }">
+                    <div class="result-actions">
+                      <q-btn color="primary" unelevated dense label="下载" @click.stop="openTorrent(row)" />
+                      <q-btn v-if="row.pageurl" flat round icon="open_in_new" aria-label="打开站点" @click.stop="openPage(row.pageurl)" />
+                    </div>
+                  </template>
+                </vxe-column>
+                <template #empty>
+                  <div class="empty-state result-empty"><q-icon name="inventory_2" size="42px" color="grey-5" /><span>暂无符合条件的搜索结果</span></div>
+                </template>
+              </vxe-table>
+              <vxe-table
+                v-else
+                class="mobile-result-table"
+                :data="filteredResults"
+                height="80%"
+                :show-header="false"
+                :row-config="{ keyField: 'id' }"
+                :cell-config="{ padding: false }"
+                :virtual-y-config="{ enabled: true, gt: 0, preSize: 8, oSize: 4 }"
+              >
+                <vxe-column field="id" min-width="100%">
+                  <template #default="{ row }">
+                    <q-card flat bordered class="mobile-result-card">
+                      <q-card-section>
+                        <div class="row items-center q-gutter-sm">
+                          <q-badge color="grey-7" :label="row.site" />
+                          <q-chip v-if="row.type === 'MOV'" dense color="positive" text-color="white" label="电影" />
+                          <q-chip v-else-if="row.type === 'TV'" dense color="warning" text-color="white" label="电视剧" />
+                        </div>
+                        <div class="torrent-name q-mt-sm">{{ row.torrent_name }}</div>
+                        <div v-if="row.description" class="torrent-desc">{{ row.description }}</div>
+                        <div class="torrent-badges">
+                          <q-chip v-if="row.size" dense outline :label="row.size" />
+                          <q-chip v-if="row.title" dense outline :label="row.title" />
+                          <q-chip v-if="uploadText(row)" dense color="warning" text-color="white" :label="uploadText(row) || ''" />
+                          <q-chip v-if="freeText(row)" dense color="positive" text-color="white" :label="freeText(row) || ''" />
+                        </div>
+                      </q-card-section>
+                      <q-card-actions align="right">
+                        <span class="seeders-text">{{ row.seeders || 0 }} ↑</span>
+                        <q-btn color="primary" unelevated label="下载" @click.stop="openTorrent(row)" />
+                        <q-btn v-if="row.pageurl" flat round icon="open_in_new" aria-label="打开站点" @click.stop="openPage(row.pageurl)" />
+                      </q-card-actions>
+                    </q-card>
+                  </template>
+                </vxe-column>
+                <template #empty>
+                  <div class="empty-state result-empty"><q-icon name="inventory_2" size="42px" color="grey-5" /><span>暂无符合条件的搜索结果</span></div>
+                </template>
+              </vxe-table>
             </template>
             <div v-else-if="!loadingResults" class="empty-state result-empty"><q-icon name="inventory_2" size="42px" color="grey-5" /><span>暂无搜索结果</span></div>
           </section>
@@ -501,13 +562,36 @@ onBeforeUnmount(() => {
 .site-filter { width: 210px; }
 .name-filter { width: 240px; }
 .filter-count { margin-left: auto; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
-.result-table { max-height: 65vh; }
-.result-table :deep(.q-table__middle) { max-height: 65vh; overflow-y: auto; }
-.result-table :deep(thead tr:first-child th) { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+.result-table {
+  width: 100%;
+  --vxe-ui-font-color: var(--text-primary);
+  --vxe-ui-font-lighten-color: var(--text-secondary);
+  --vxe-ui-font-darken-color: var(--text-primary);
+  --vxe-ui-font-primary-color: var(--q-primary);
+  --vxe-ui-layout-background-color: var(--surface);
+  --vxe-ui-table-header-background-color: var(--surface-muted);
+  --vxe-ui-table-header-font-color: var(--text-secondary);
+  --vxe-ui-table-border-color: var(--border-subtle);
+  --vxe-ui-table-row-hover-background-color: color-mix(in srgb, var(--q-primary) 7%, var(--surface));
+}
+.result-table :deep(.vxe-table--render-default) { color: var(--text-primary); background: var(--surface); }
+.result-table :deep(.vxe-table--header-wrapper), .result-table :deep(.vxe-table--body-wrapper) { background: var(--surface); }
+.result-table :deep(.vxe-table--empty-placeholder) { min-height: 280px; }
+.mobile-result-table {
+  width: 100%;
+  --vxe-ui-font-color: var(--text-primary);
+  --vxe-ui-font-lighten-color: var(--text-secondary);
+  --vxe-ui-layout-background-color: transparent;
+  --vxe-ui-table-border-color: transparent;
+}
+.mobile-result-table :deep(.vxe-table--render-default), .mobile-result-table :deep(.vxe-table--body-wrapper) { background: transparent; }
+.mobile-result-table :deep(.vxe-body--column) { padding: 4px 0; border: 0; }
+.mobile-result-table :deep(.vxe-cell) { padding: 0; }
 .torrent-name { color: var(--text-primary); font-size: 14px; line-height: 1.45; word-break: break-word; }
 .torrent-desc { margin-top: 3px; overflow: hidden; color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .torrent-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .torrent-badges :deep(.q-chip) { margin: 0; }
+.result-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .mobile-result-list { display: grid; gap: 8px; }
 .mobile-result-card { background: var(--surface); border-color: var(--border-subtle); }
 .seeders-text { margin-right: auto; color: var(--text-secondary); font-size: 12px; }

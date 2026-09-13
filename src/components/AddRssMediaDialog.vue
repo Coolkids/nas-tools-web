@@ -225,6 +225,12 @@ function invertSearchSites() {
   searchSitesSelected.value = all.filter((name) => !searchSitesSelected.value.includes(name))
 }
 
+function toggleSearchSite(name: string) {
+  searchSitesSelected.value = searchSitesSelected.value.includes(name)
+    ? searchSitesSelected.value.filter((selected) => selected !== name)
+    : [...searchSitesSelected.value, name]
+}
+
 async function submit(keepOpen = false) {
   if (!form.name) {
     emit('error', '请输入标题')
@@ -374,7 +380,17 @@ async function submit(keepOpen = false) {
             <div class="section-head"><span class="section-title">搜索站点</span><span class="section-line" /><div class="section-actions"><q-btn flat dense color="primary" size="sm" :label="searchToggleLabel" @click="toggleAllSearchSites" /><q-btn flat dense color="primary" size="sm" label="反选" @click="invertSearchSites" /></div></div>
             <div class="sites-box">
               <div v-if="searchSites.length" class="site-list">
-                <q-checkbox v-for="site in searchSites" :key="site.name" v-model="searchSitesSelected" :val="site.name" :label="site.name" dense color="primary" class="site-checkbox" />
+                <q-btn
+                  v-for="site in searchSites"
+                  :key="site.name"
+                  flat
+                  no-caps
+                  class="site-button"
+                  :class="{ 'is-selected': searchSitesSelected.includes(site.name) }"
+                  :label="site.name"
+                  :aria-pressed="searchSitesSelected.includes(site.name)"
+                  @click="toggleSearchSite(site.name)"
+                />
               </div>
               <q-banner v-else rounded dense class="bg-grey-2 text-grey-7"><template #avatar><q-icon name="info_outline" /></template>暂无可用搜索站点</q-banner>
             </div>
@@ -416,11 +432,14 @@ async function submit(keepOpen = false) {
 .option-label { display: flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 600; }
 .option-help { margin-top: 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
 .sites-box { max-height: 180px; overflow-y: auto; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-raised); }
-.site-list { display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.site-checkbox { min-width: 150px; }
+.site-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.site-button { width: 100%; min-height: 40px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface); color: var(--text-primary); transition: border-color .2s ease, background-color .2s ease, color .2s ease; }
+.site-button:hover, .site-button:focus-visible { border-color: var(--q-primary); outline: none; }
+.site-button.is-selected { border-color: var(--q-primary); background: var(--primary-soft); color: var(--q-primary); }
+.site-button :deep(.q-btn__content) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fuzzy-banner { border: 1px solid color-mix(in srgb, var(--q-primary), transparent 70%); background: var(--primary-soft); color: var(--text-primary); }
 .dialog-actions { gap: 8px; padding: 14px 24px 18px; background: var(--surface); }
 @media (max-width: 936px) { .rss-media-dialog { width: min(94vw, 760px); } .row-basic { grid-template-columns: repeat(2, minmax(0, 1fr)); } .row-basic > :last-child { grid-column: 1 / -1; } .row-tv, .row-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); } .row-tv > :last-child, .row-filter > :last-child { grid-column: 1 / -1; } }
-@media (max-width: 599px) { .rss-media-dialog { width: 100%; height: 100dvh; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .dialog-body { max-height: none; padding: 16px; } .form-grid, .option-cards, .row-basic, .row-tv, .row-filter, .row-dl { grid-template-columns: 1fr !important; } .form-grid > * { grid-column: 1 / -1 !important; } .section-head { gap: 8px; } .section-actions { margin-left: auto; } .sites-box { max-height: 240px; } .site-checkbox { min-width: 0; flex: 1 1 46%; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
+@media (max-width: 599px) { .rss-media-dialog { width: 100%; height: 100dvh; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .dialog-body { max-height: none; padding: 16px; } .form-grid, .option-cards, .row-basic, .row-tv, .row-filter, .row-dl { grid-template-columns: 1fr !important; } .form-grid > * { grid-column: 1 / -1 !important; } .section-head { gap: 8px; } .section-actions { margin-left: auto; } .sites-box { max-height: 240px; } .site-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .site-button { min-height: 44px; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 @media (max-height: 820px) and (min-width: 600px) { .dialog-body { max-height: 68vh; padding-top: 14px; } .form-section { margin-bottom: 16px; } .sites-box { max-height: 132px; } }
 </style>

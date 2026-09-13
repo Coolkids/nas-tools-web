@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import MediaCard from '@/components/MediaCard.vue'
@@ -9,6 +10,8 @@ import { useDiscovery, type TypeConfig } from '@/composables/useDiscovery'
 
 const route = useRoute()
 const router = useRouter()
+const $q = useQuasar()
+const isPhone = computed(() => $q.screen.lt.sm)
 
 const ROUTE_TYPE_MAP: Record<string, TypeConfig> = {
   douban_movie: { type: 'DOUBANTAG', subtype: 'MOV', title: '豆瓣电影' },
@@ -46,7 +49,7 @@ const typeConfig = computed<TypeConfig>(() => {
   return ROUTE_TYPE_MAP[name] || { type: 'TRENDING', title: '推荐' }
 })
 
-const { items, loading, noMore, initializing, onFavChange, proxyDoubanImage, init, destroy } = useDiscovery(
+const { items, loading, noMore, loadError, initializing, loadPage, onFavChange, proxyDoubanImage, reset, init, destroy } = useDiscovery(
   typeConfig,
   [() => route.name, () => route.query.type, () => route.query.subtype, () => route.query.week, () => route.query.tmdbid, () => route.query.personid, () => route.query.keyword]
 )
@@ -55,48 +58,60 @@ function switchTab(name: string) {
   if (name !== activeTab.value) void router.push({ name })
 }
 
+async function onPullRefresh(done: () => void) {
+  try {
+    await reset()
+  } finally {
+    done()
+  }
+}
+
 onMounted(init)
 onBeforeUnmount(destroy)
 </script>
 
 <template>
-  <div class="recommend-page">
-    <ExploreSearchBar />
-    <PageHeader :title="typeConfig.title" :description="typeConfig.subtitle || '按来源浏览媒体内容'">
-      <template #actions>
-        <q-tabs :model-value="activeTab" dense no-caps inline-label active-color="primary" indicator-color="primary" class="source-tabs" @update:model-value="switchTab">
-          <q-route-tab v-for="tab in TABS" :key="tab.name" :name="tab.name" :to="{ name: tab.name }" :label="tab.label" />
-        </q-tabs>
-      </template>
-    </PageHeader>
+  <q-pull-to-refresh :disable="!isPhone" @refresh="onPullRefresh">
+    <div class="recommend-page">
+      <ExploreSearchBar />
+      <PageHeader :title="typeConfig.title" :description="typeConfig.subtitle || '按来源浏览媒体内容'">
+        <template #actions>
+          <q-tabs :model-value="activeTab" dense no-caps inline-label active-color="primary" indicator-color="primary" class="source-tabs" @update:model-value="switchTab">
+            <q-route-tab v-for="tab in TABS" :key="tab.name" :name="tab.name" :to="{ name: tab.name }" :label="tab.label" />
+          </q-tabs>
+        </template>
+      </PageHeader>
 
-    <div v-if="initializing && !items.length" class="loading-state"><q-spinner-orbit color="primary" size="42px" /><span>正在加载媒体…</span></div>
-    <div v-else-if="!loading && items.length === 0" class="empty-state"><q-icon name="movie_filter" size="48px" color="grey-5" /><span>暂无可展示的媒体</span></div>
-    <div v-else class="media-grid">
-      <MediaCard
-        v-for="(item, index) in items"
-        :key="`${item.id}-${index}`"
-        :tmdb-id="item.id"
-        :title="item.title"
-        :image="proxyDoubanImage(item.image)"
-        :fav="item.fav"
-        :vote="item.vote"
-        :year="item.year"
-        :overview="item.overview"
-        :date="item.date"
-        :media-type="item.type"
-        :res-type="item.media_type"
-        show-sub="1"
-        :site="item.site"
-        :weekday="item.weekday"
-        @fav-change="onFavChange(index, $event)"
-      />
+      <div v-if="initializing && !items.length" class="loading-state"><q-spinner-orbit color="primary" size="42px" /><span>正在加载媒体…</span></div>
+      <div v-else-if="!loading && items.length === 0 && loadError" class="empty-state"><q-icon name="error_outline" size="48px" color="negative" /><span>{{ loadError }}</span><q-btn outline color="primary" label="重试" @click="loadPage" /></div>
+      <div v-else-if="!loading && items.length === 0" class="empty-state"><q-icon name="movie_filter" size="48px" color="grey-5" /><span>暂无可展示的媒体</span></div>
+      <div v-else class="media-grid">
+        <MediaCard
+          v-for="(item, index) in items"
+          :key="`${item.id}-${index}`"
+          :tmdb-id="item.id"
+          :title="item.title"
+          :image="proxyDoubanImage(item.image)"
+          :fav="item.fav"
+          :vote="item.vote"
+          :year="item.year"
+          :overview="item.overview"
+          :date="item.date"
+          :media-type="item.type"
+          :res-type="item.media_type"
+          show-sub="1"
+          :site="item.site"
+          :weekday="item.weekday"
+          @fav-change="onFavChange(index, $event)"
+        />
+      </div>
+
+      <div v-if="loadError && items.length" class="load-tip load-error"><q-icon name="error_outline" size="18px" color="negative" /><span>{{ loadError }}</span><q-btn flat dense color="primary" label="重试" @click="loadPage" /></div>
+      <div v-else-if="loading && items.length" class="load-tip"><q-spinner-dots color="primary" size="24px" /><span>加载更多…</span></div>
+      <div v-else-if="noMore && items.length" class="load-tip"><q-icon name="done" size="18px" /><span>已经到底了</span></div>
+      <ScrollToTop />
     </div>
-
-    <div v-if="loading && items.length" class="load-tip"><q-spinner-dots color="primary" size="24px" /><span>加载更多…</span></div>
-    <div v-else-if="noMore && items.length" class="load-tip"><q-icon name="done" size="18px" /><span>已经到底了</span></div>
-    <ScrollToTop />
-  </div>
+  </q-pull-to-refresh>
 </template>
 
 <style scoped>

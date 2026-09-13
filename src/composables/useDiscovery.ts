@@ -1,6 +1,10 @@
 import { ref, onMounted, onBeforeUnmount, watch, type Ref, type ComputedRef } from 'vue'
 import { getRecommend, proxyDoubanImage, type RecommendItem } from '@/api/discovery'
 import { useModalStore } from '@/stores/modal'
+import { getPageScrollClientHeight, getPageScrollHeight, getPageScrollTarget, getPageScrollTop, type PageScrollTarget } from '@/utils/pageScroll'
+
+export const DISCOVERY_INITIAL_PAGES = 5
+export const DISCOVERY_MAX_PAGE = 20
 
 export interface TypeConfig {
   type: string
@@ -28,19 +32,26 @@ export function useDiscovery(
   const page = ref(1)
   const loading = ref(false)
   const noMore = ref(false)
+  const loadError = ref('')
   const initializing = ref(false)
   const filterParams = ref<Record<string, string>>({})
+  let scrollTarget: PageScrollTarget | null = null
   let generation = 0
   let activeLoad: Promise<void> | null = null
 
   async function loadPage() {
     if (loading.value || noMore.value) return
+    if (page.value > DISCOVERY_MAX_PAGE) {
+      noMore.value = true
+      return
+    }
     const requestGeneration = generation
+    const requestedPage = page.value
     loading.value = true
     const request = (async () => {
       try {
         const cfg = typeCfg.value
-        const params: Record<string, unknown> = { type: cfg.type, page: page.value }
+        const params: Record<string, unknown> = { type: cfg.type, page: requestedPage }
         if (cfg.subtype) params.subtype = cfg.subtype
         if (cfg.week) params.week = cfg.week
         if (cfg.tmdbid) params.tmdbid = cfg.tmdbid
@@ -52,20 +63,22 @@ export function useDiscovery(
         const res = await getRecommend(params as any)
         if (requestGeneration !== generation) return
         if (res.code === 0) {
+          loadError.value = ''
           const list = res.Items || []
           if (list.length === 0) noMore.value = true
           else {
             items.value.push(...list)
-            page.value += 1
+            page.value = requestedPage + 1
+            if (requestedPage >= DISCOVERY_MAX_PAGE) noMore.value = true
           }
         } else {
-          modal.error(res.msg || '加载失败')
-          noMore.value = true
+          loadError.value = res.msg || '加载失败'
+          modal.error(loadError.value)
         }
       } catch (e) {
         if (requestGeneration !== generation) return
-        modal.error(e instanceof Error ? e.message : '加载失败')
-        noMore.value = true
+        loadError.value = e instanceof Error ? e.message : '加载失败'
+        modal.error(loadError.value)
       }
     })()
     activeLoad = request
@@ -84,8 +97,15 @@ export function useDiscovery(
     items.value = []
     page.value = 1
     noMore.value = false
+    loadError.value = ''
     initializing.value = true
-    if (resetGeneration === generation) await loadPage()
+    while (
+      resetGeneration === generation &&
+      !noMore.value &&
+      page.value <= DISCOVERY_INITIAL_PAGES
+    ) {
+      await loadPage()
+    }
     if (resetGeneration === generation) initializing.value = false
   }
 
@@ -106,23 +126,24 @@ export function useDiscovery(
   }
 
   function onScroll() {
-    if (loading.value || noMore.value) return
-    const el = document.querySelector('.app-main')
-    if (!el) return
-    const { scrollTop, scrollHeight, clientHeight } = el
+    if (initializing.value || loading.value || noMore.value || loadError.value) return
+    const target = scrollTarget || getPageScrollTarget()
+    const scrollTop = getPageScrollTop(target)
+    const scrollHeight = getPageScrollHeight(target)
+    const clientHeight = getPageScrollClientHeight(target)
     if (scrollHeight - clientHeight - scrollTop < 300) loadPage()
   }
 
   function init() {
-    reset()
-    const el = document.querySelector('.app-main')
-    if (el) el.addEventListener('scroll', onScroll, { passive: true })
+    void reset()
+    scrollTarget = getPageScrollTarget()
+    scrollTarget.addEventListener('scroll', onScroll, { passive: true })
   }
 
   function destroy() {
     generation += 1
-    const el = document.querySelector('.app-main')
-    if (el) el.removeEventListener('scroll', onScroll)
+    scrollTarget?.removeEventListener('scroll', onScroll)
+    scrollTarget = null
   }
 
   if (watchDeps) {
@@ -131,6 +152,7 @@ export function useDiscovery(
 
   return {
     items, page, loading, noMore, initializing, filterParams,
+    loadError,
     loadPage, reset, setFilter, currentFilterLabel, onFavChange,
     onScroll, init, destroy, proxyDoubanImage
   }

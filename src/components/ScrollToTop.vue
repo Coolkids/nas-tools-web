@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { getPageScrollTarget, getPageScrollTop, scrollPageToTop, type PageScrollTarget } from '@/utils/pageScroll'
 
 const visible = ref(false)
-let scroller: HTMLElement | null = null
+let scroller: PageScrollTarget | null = null
 
-function updateVisibility() { visible.value = Boolean(scroller && scroller.scrollTop > 360) }
-function scrollToTop() { scroller?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }) }
+function updateVisibility() { visible.value = Boolean(scroller && getPageScrollTop(scroller) > 360) }
+function scrollToTop() { if (scroller) scrollPageToTop(scroller, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth') }
 
 onMounted(() => {
-  scroller = document.querySelector<HTMLElement>('.app-main')
-  scroller?.addEventListener('scroll', updateVisibility, { passive: true })
+  scroller = getPageScrollTarget()
+  scroller.addEventListener('scroll', updateVisibility, { passive: true })
   updateVisibility()
 })
 onBeforeUnmount(() => scroller?.removeEventListener('scroll', updateVisibility))

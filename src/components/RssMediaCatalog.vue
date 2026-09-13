@@ -71,6 +71,13 @@ function episodeText(item: RssMediaItem) {
   return item.total_ep && item.current_ep ? `${item.current_ep}/${item.total_ep}` : ''
 }
 
+function filterSummary(item: RssMediaItem) {
+  return [
+    item.filter_rule ? ruleName(item.filter_rule) : '',
+    item.search_sites?.length ? item.search_sites.join(' / ') : ''
+  ].filter(Boolean).join(' · ')
+}
+
 function progressOf(item: RssMediaItem) {
   if (!item.total || item.total <= 0) return 0
   return Math.max(0, Math.min(100, Math.round(((item.total - (item.lack || 0)) * 100) / item.total)))
@@ -102,7 +109,7 @@ onMounted(() => { void loadFilterRules(); void load() })
     <div v-if="!loading && !filteredItems.length" class="empty-state"><q-icon name="subscriptions" size="48px" color="grey-5" /><span>{{ emptyDescription }}</span><q-btn outline color="primary" label="新增订阅" class="q-mt-sm" @click="addDialogVisible = true" /></div>
     <div v-else class="rss-grid">
       <q-card v-for="item in filteredItems" :key="item.id" flat bordered class="rss-card">
-        <div class="card-background"><q-img v-if="item.image" :src="item.image" class="background-image" fit="cover" /><div class="background-overlay" /><q-btn flat round icon="more_horiz" color="white" class="more-button" aria-label="查看订阅详情" @click.stop="openDetail(item)" /><div class="card-content"><div class="card-main"><q-img v-if="item.poster || item.image" :src="item.poster || item.image" ratio=".8" class="card-poster" fit="cover" /><div v-else class="card-poster poster-placeholder"><q-icon name="movie" size="28px" /></div><div class="card-info"><div class="meta-line"><span v-if="item.year">{{ item.year }}</span><q-badge rounded :color="stateMeta(item.state).color" :label="stateMeta(item.state).label" /><span v-if="item.season && item.season !== 'S00'" class="season-text">{{ item.season }}</span><span v-if="episodeText(item)" class="episode-text">{{ episodeText(item) }}</span><q-badge v-if="item.over_edition" rounded color="negative" label="洗版" /></div><div class="item-name" :title="item.name">{{ item.name }}</div><div v-if="item.filter_team" class="info-line">{{ item.filter_team }}</div><div v-if="item.filter_rule" class="info-line">{{ ruleName(item.filter_rule) }}</div><div v-if="item.search_sites?.length" class="info-line info-sites">{{ item.search_sites.join(' / ') }}</div></div></div></div></div>
+        <div class="card-background"><q-img v-if="item.image" :src="item.image" class="background-image" fit="cover" /><div class="background-overlay" /><q-btn flat round icon="more_horiz" color="white" class="more-button" aria-label="查看订阅详情" @click.stop="openDetail(item)" /><div class="card-content"><div class="card-main"><q-img v-if="item.poster || item.image" :src="item.poster || item.image" ratio=".8" class="card-poster" fit="cover" /><div v-else class="card-poster poster-placeholder"><q-icon name="movie" size="28px" /></div><div class="card-info"><div class="meta-line"><span v-if="item.year">{{ item.year }}</span><q-badge rounded :color="stateMeta(item.state).color" :label="stateMeta(item.state).label" /><span v-if="item.season && item.season !== 'S00'" class="season-text">{{ item.season }}</span><span v-if="episodeText(item)" class="episode-text">{{ episodeText(item) }}</span><q-badge v-if="item.over_edition" rounded color="negative" label="洗版" /></div><div class="item-name" :title="item.name">{{ item.name }}</div><div v-if="item.filter_team" class="info-line">{{ item.filter_team }}</div><div v-if="filterSummary(item)" class="info-line filter-summary" :title="filterSummary(item)">{{ filterSummary(item) }}</div></div></div><div v-if="item.overview" class="card-overview" :title="item.overview">{{ item.overview }}</div></div></div>
         <q-linear-progress v-if="props.type === 'TV' && item.total && item.total > 0" :value="progressOf(item) / 100" color="primary" track-color="grey-4" size="5px" class="card-progress" aria-label="订阅进度" />
       </q-card>
     </div>
@@ -136,9 +143,10 @@ onMounted(() => { void loadFilterRules(); void load() })
 .season-text { background: rgba(255,255,255,.14); }
 .item-name { display: -webkit-box; overflow: hidden; margin-top: 8px; color: #fff; font-size: 18px; font-weight: 650; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .info-line { overflow: hidden; margin-top: 6px; color: rgba(255,255,255,.74); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.info-sites { color: rgba(255,255,255,.54); }
+.filter-summary { color: rgba(255,255,255,.6); }
+.card-overview { display: -webkit-box; overflow: hidden; margin-top: 12px; padding-right: 10px; color: rgba(255,255,255,.72); font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .card-progress { flex: 0 0 auto; }
 .empty-state { display: flex; min-height: 320px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-secondary); font-size: 13px; }
 @media (max-width: 1439px) { .rss-page { padding-inline: 24px; } }
-@media (max-width: 599px) { .rss-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .rss-page :deep(.header-actions) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px; } .rss-page :deep(.header-actions) .search-input { grid-column: 1 / -1; width: auto; } .rss-page :deep(.header-actions) .filter-count { grid-column: 1 / -1; } .rss-page :deep(.header-actions) .q-btn { min-width: 0; } .search-input { width: 100%; } .rss-grid { grid-template-columns: 1fr; gap: 10px; } .card-content { padding: 16px 14px 12px; } }
+@media (max-width: 599px) { .rss-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .rss-page :deep(.header-actions) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 8px; } .rss-page :deep(.header-actions) .search-input { grid-column: 1 / -1; width: auto; } .rss-page :deep(.header-actions) .filter-count { grid-column: 1 / -1; } .rss-page :deep(.header-actions) .q-btn { min-width: 0; padding-inline: 4px; } .rss-page :deep(.header-actions) .q-btn__content { white-space: nowrap; } .search-input { width: 100%; } .rss-grid { grid-template-columns: 1fr; gap: 10px; } .card-content { padding: 16px 14px 12px; } }
 </style>

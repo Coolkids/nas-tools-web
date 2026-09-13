@@ -84,7 +84,7 @@ function goTmdb() {
           <div v-if="item.search_sites?.length" class="site-row"><span>搜索站点</span><q-chip v-for="site in item.search_sites" :key="site" dense color="positive" outline :label="site" /></div>
         </div>
       </q-card-section>
-      <q-card-actions align="right" class="detail-actions"><q-btn flat icon="edit" label="编辑" @click="onEdit" /><q-btn flat color="negative" icon="delete" label="取消订阅" @click="onRemove" /><q-btn outline icon="search" label="搜索" @click="triggerRefresh('searched', '已触发搜索')" /><q-btn outline icon="refresh" label="刷新" @click="triggerRefresh('refreshed', '已触发刷新')" /><q-btn color="primary" unelevated label="关闭" v-close-popup /></q-card-actions>
+      <q-card-actions align="right" class="detail-actions"><q-btn flat icon="edit" :label="$q.screen.lt.sm ? '' : '编辑'" aria-label="编辑" @click="onEdit" /><q-btn flat color="negative" icon="delete" :label="$q.screen.lt.sm ? '' : '取消订阅'" aria-label="取消订阅" @click="onRemove" /><q-btn outline icon="search" :label="$q.screen.lt.sm ? '' : '搜索'" aria-label="搜索" @click="triggerRefresh('searched', '已触发搜索')" /><q-btn outline icon="refresh" :label="$q.screen.lt.sm ? '' : '刷新'" aria-label="刷新" @click="triggerRefresh('refreshed', '已触发刷新')" /><q-btn color="primary" unelevated icon="close" :label="$q.screen.lt.sm ? '' : '关闭'" aria-label="关闭" v-close-popup /></q-card-actions>
     </q-card>
   </q-dialog>
 </template>
@@ -105,5 +105,5 @@ function goTmdb() {
 .detail-badges :deep(.q-chip), .site-row :deep(.q-chip) { margin: 0; }
 .site-row > span { flex: 0 0 auto; color: var(--text-secondary); font-size: 12px; }
 .detail-actions { gap: 6px; }
-@media (max-width: 599px) { .detail-card { display: flex; width: 100%; min-height: 100dvh; flex-direction: column; border-radius: 0; } .detail-body { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 14px; overflow-y: auto; } .detail-poster { width: 128px; height: 192px; align-self: center; } .detail-actions { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .detail-actions :deep(.q-btn) { width: 100%; min-width: 0; min-height: 44px; } .detail-actions :deep(.q-btn__content) { white-space: nowrap; } .detail-actions :deep(.q-btn:last-child) { grid-column: 1 / -1; } }
+@media (max-width: 599px) { .detail-card { display: flex; width: 100%; min-height: 100dvh; flex-direction: column; border-radius: 0; } .detail-body { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 14px; overflow-y: auto; } .detail-poster { width: 128px; height: 192px; align-self: center; } .detail-actions { position: sticky; bottom: 0; display: flex; flex-wrap: nowrap; gap: 2px; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .detail-actions :deep(.q-btn) { width: auto; min-width: 0; min-height: 44px; flex: 1 1 0; padding-inline: 0; font-size: 12px; } .detail-actions :deep(.q-btn__content) { gap: 0; white-space: nowrap; } .detail-actions :deep(.q-btn__icon) { margin: 0; font-size: 20px; } }
 </style>

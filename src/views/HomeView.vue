@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import type { QTableProps } from 'quasar'
+import { useQuasar } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
 import {
@@ -15,6 +15,7 @@ import {
 } from '@/api/system'
 
 const modal = useModalStore()
+const $q = useQuasar()
 const loading = ref(false)
 const loadInFlight = ref(false)
 const loadError = ref('')
@@ -61,10 +62,11 @@ const usedPercent = computed(() => {
   return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0
 })
 
-const historyColumns: QTableProps['columns'] = [
-  { name: 'event', label: '事件', field: 'event', align: 'left' },
-  { name: 'date', label: '时间', field: 'date', align: 'right' }
-]
+const historyTableHeight = computed(() => {
+  if ($q.screen.lt.sm) return '360px'
+  if ($q.screen.lt.md) return '380px'
+  return '420px'
+})
 
 function valueOrDash(value: string | number | undefined | null) {
   return value === undefined || value === null || value === '' ? '—' : value
@@ -290,33 +292,30 @@ onMounted(() => { void load() })
           </div>
           <q-icon name="history" size="24px" color="info" />
         </q-card-section>
-        <q-table
-          flat
-          hide-pagination
-          :rows="history"
-          :columns="historyColumns"
-          :visible-columns="$q.screen.lt.sm ? ['event'] : ['event', 'date']"
-          row-key="date"
-          :rows-per-page-options="[0]"
-          :loading="loading"
-          virtual-scroll
-          :virtual-scroll-item-size="$q.screen.lt.sm ? 64 : 48"
-          :virtual-scroll-sticky-size-start="48"
-          no-data-label="暂无播放记录"
+        <vxe-table
+          :data="history"
+          :height="historyTableHeight"
           class="history-table"
+          :loading="loading"
+          :row-config="{ keyField: 'date', isHover: true }"
+          :cell-config="{ minHeight: $q.screen.lt.sm ? 64 : 48 }"
+          :virtual-y-config="{ enabled: true, gt: 0, preSize: 8, oSize: 4 }"
+          border
+          :show-header="false"
         >
-          <template #body-cell-event="props">
-            <q-td :props="props">
+          <vxe-column field="event" title="事件" min-width="100%">
+            <template #default="{ row }">
               <div class="history-event">
-                <q-icon :name="props.row.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" />
+                <q-icon :name="row.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" />
                 <div class="history-event-copy">
-                  <div class="history-event-title">{{ props.row.event }}</div>
-                  <span class="history-event-date">{{ props.row.date }}</span>
+                  <div class="history-event-title">{{ row.event }}</div>
+                  <span class="history-event-date">{{ row.date }}</span>
                 </div>
               </div>
-            </q-td>
-          </template>
-        </q-table>
+            </template>
+          </vxe-column>
+          <template #empty><div class="history-empty">暂无播放记录</div></template>
+        </vxe-table>
         <q-card-section v-if="!historyReady && !loading" class="text-caption text-grey-6 q-pt-none">播放历史暂不可用</q-card-section>
       </q-card>
     </div>
@@ -347,16 +346,27 @@ onMounted(() => { void load() })
 .storage-summary strong { margin-left: 3px; color: var(--text-primary); font-weight: 600; }
 .progress-caption { margin-top: 8px; color: var(--text-secondary); font-size: 12px; text-align: right; }
 .history-section { margin-top: 16px; }
-.history-table { height: 420px; }
-.history-table :deep(.q-table__middle) { height: 100%; overflow-y: auto; }
-.history-table :deep(thead) { position: sticky; top: 0; z-index: 1; background: var(--surface); }
-.history-table :deep(th) { color: var(--text-secondary); font-weight: 500; }
-.history-event { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.history-table {
+  width: 100%;
+  --vxe-ui-font-color: var(--text-primary);
+  --vxe-ui-font-lighten-color: var(--text-secondary);
+  --vxe-ui-font-darken-color: var(--text-primary);
+  --vxe-ui-font-primary-color: var(--q-primary);
+  --vxe-ui-layout-background-color: var(--surface);
+  --vxe-ui-table-header-background-color: var(--surface-muted);
+  --vxe-ui-table-header-font-color: var(--text-secondary);
+  --vxe-ui-table-border-color: var(--border-subtle);
+  --vxe-ui-table-row-hover-background-color: color-mix(in srgb, var(--q-primary) 7%, var(--surface));
+}
+.history-table :deep(.vxe-table--render-default) { color: var(--text-primary); background: var(--surface); }
+.history-table :deep(.vxe-table--header-wrapper), .history-table :deep(.vxe-table--body-wrapper) { background: var(--surface); }
+.history-table :deep(.vxe-header--column) { color: var(--text-secondary); font-weight: 500; }
+.history-table :deep(.vxe-table--empty-placeholder) { min-height: 180px; }
+.history-event { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .history-event-copy { min-width: 0; }
 .history-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-event-date { display: none; }
+.history-event-date { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.2; }
 @media (max-width: 1439px) { .home-page { padding-inline: 24px; } }
 @media (max-width: 1023px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 1023px) { .history-table { height: 380px; } }
-@media (max-width: 599px) { .home-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .metric-chart-legend { display: none; } .history-table { height: 360px; } .history-table :deep(table) { table-layout: fixed; } .history-table :deep(th), .history-table :deep(td) { padding-inline: 12px; } .history-table :deep(tbody td) { height: 64px; } .history-event { align-items: flex-start; gap: 8px; } .history-event-date { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.2; } }
+@media (max-width: 599px) { .home-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .metric-chart-legend { display: none; } .history-table :deep(.vxe-header--column), .history-table :deep(.vxe-body--column) { padding-inline: 12px; } .history-table :deep(.vxe-table--scroll-y-virtual) { width: 0 !important; } .history-table :deep(.vxe-table--scroll-y-wrapper) { display: none; } }
 </style>

@@ -30,14 +30,29 @@ export interface GetRecommendParams {
   params?: Record<string, unknown>
 }
 
+interface RecommendResponse {
+  code: number
+  msg?: string
+  message?: string
+  Items?: RecommendItem[]
+  data?: {
+    Items?: RecommendItem[]
+  }
+}
+
 export interface GetRecommendResult {
   code: number
   msg?: string
   Items: RecommendItem[]
 }
 
-export function getRecommend(params: GetRecommendParams): Promise<GetRecommendResult> {
-  return doAction<GetRecommendResult>('get_recommend', params)
+export async function getRecommend(params: GetRecommendParams): Promise<GetRecommendResult> {
+  const response = await doAction<RecommendResponse>('get_recommend', params)
+  return {
+    code: response.code,
+    msg: response.msg || response.message,
+    Items: response.Items || response.data?.Items || []
+  }
 }
 
 export interface PersonItem {

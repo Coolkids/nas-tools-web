@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import MediaCard from '@/components/MediaCard.vue'
@@ -15,6 +16,8 @@ const props = withDefaults(defineProps<{
 
 const route = useRoute()
 const router = useRouter()
+const $q = useQuasar()
+const isPhone = computed(() => $q.screen.lt.sm)
 const tabs = [
   { label: '推荐', name: 'recommend' },
   { label: '豆瓣电影', name: 'douban_movie' },
@@ -25,10 +28,18 @@ const tabs = [
 const activeTab = computed(() => String(route.name || ''))
 const filterEntries = computed(() => Object.entries(props.filters || {}))
 const cfgRef = computed(() => props.typeConfig)
-const { items, loading, noMore, initializing, filterParams, setFilter, currentFilterLabel, onFavChange, proxyDoubanImage, init, destroy } = useDiscovery(cfgRef)
+const { items, loading, noMore, loadError, initializing, filterParams, setFilter, currentFilterLabel, loadPage, onFavChange, proxyDoubanImage, reset, init, destroy } = useDiscovery(cfgRef)
 
 function switchTab(name: string) {
   if (name !== activeTab.value) void router.push({ name })
+}
+
+async function onPullRefresh(done: () => void) {
+  try {
+    await reset()
+  } finally {
+    done()
+  }
 }
 
 onMounted(init)
@@ -36,34 +47,41 @@ onBeforeUnmount(destroy)
 </script>
 
 <template>
-  <div class="catalog-page">
-    <ExploreSearchBar />
-    <PageHeader :title="typeConfig.title" :description="typeConfig.subtitle || '按分类浏览媒体内容'">
-      <template #actions>
-        <q-tabs v-if="showTabs" :model-value="activeTab" dense no-caps inline-label active-color="primary" indicator-color="primary" class="catalog-tabs" @update:model-value="switchTab">
-          <q-route-tab v-for="tab in tabs" :key="tab.name" :name="tab.name" :to="{ name: tab.name }" :label="tab.label" />
-        </q-tabs>
-        <q-btn-dropdown v-for="[key, field] in filterEntries" :key="key" outline :label="currentFilterLabel(key, field)" icon-right="expand_more">
-          <q-list>
-            <q-item v-for="option in field.options" :key="option.value" v-close-popup clickable :active="filterParams[key] === option.value" active-class="filter-option--active" @click="setFilter(key, option.value)">
-              <q-item-section>{{ option.label }}</q-item-section>
-              <q-item-section v-if="filterParams[key] === option.value" side><q-icon name="check" color="primary" /></q-item-section>
-            </q-item>
-          </q-list>
-        </q-btn-dropdown>
-      </template>
-    </PageHeader>
+  <q-pull-to-refresh :disable="!isPhone" @refresh="onPullRefresh">
+    <div class="catalog-page">
+      <ExploreSearchBar>
+        <template #filters>
+          <q-btn-dropdown v-for="[key, field] in filterEntries" :key="key" outline :label="currentFilterLabel(key, field)" icon-right="expand_more">
+            <q-list>
+              <q-item v-for="option in field.options" :key="option.value" v-close-popup clickable :active="filterParams[key] === option.value" active-class="filter-option--active" @click="setFilter(key, option.value)">
+                <q-item-section>{{ option.label }}</q-item-section>
+                <q-item-section v-if="filterParams[key] === option.value" side><q-icon name="check" color="primary" /></q-item-section>
+              </q-item>
+            </q-list>
+          </q-btn-dropdown>
+        </template>
+      </ExploreSearchBar>
+      <PageHeader :title="typeConfig.title" :description="typeConfig.subtitle || '按分类浏览媒体内容'">
+        <template #actions>
+          <q-tabs v-if="showTabs" :model-value="activeTab" dense no-caps inline-label active-color="primary" indicator-color="primary" class="catalog-tabs" @update:model-value="switchTab">
+            <q-route-tab v-for="tab in tabs" :key="tab.name" :name="tab.name" :to="{ name: tab.name }" :label="tab.label" />
+          </q-tabs>
+        </template>
+      </PageHeader>
 
-    <div v-if="initializing && !items.length" class="loading-state"><q-spinner-orbit color="primary" size="42px" /><span>正在加载媒体…</span></div>
-    <div v-else-if="!loading && !items.length" class="empty-state"><q-icon name="movie_filter" size="48px" color="grey-5" /><span>暂无可展示的媒体</span></div>
-    <div v-else class="media-grid">
-      <MediaCard v-for="(item, index) in items" :key="`${item.id}-${index}`" :tmdb-id="item.id" :title="item.title" :image="proxyDoubanImage(item.image)" :fav="item.fav" :vote="item.vote" :year="item.year" :overview="item.overview" :date="item.date" :media-type="item.type" :res-type="item.media_type" show-sub="1" :site="item.site" :weekday="item.weekday" @fav-change="onFavChange(index, $event)" />
+      <div v-if="initializing && !items.length" class="loading-state"><q-spinner-orbit color="primary" size="42px" /><span>正在加载媒体…</span></div>
+      <div v-else-if="!loading && !items.length && loadError" class="empty-state"><q-icon name="error_outline" size="48px" color="negative" /><span>{{ loadError }}</span><q-btn outline color="primary" label="重试" @click="loadPage" /></div>
+      <div v-else-if="!loading && !items.length" class="empty-state"><q-icon name="movie_filter" size="48px" color="grey-5" /><span>暂无可展示的媒体</span></div>
+      <div v-else class="media-grid">
+        <MediaCard v-for="(item, index) in items" :key="`${item.id}-${index}`" :tmdb-id="item.id" :title="item.title" :image="proxyDoubanImage(item.image)" :fav="item.fav" :vote="item.vote" :year="item.year" :overview="item.overview" :date="item.date" :media-type="item.type" :res-type="item.media_type" show-sub="1" :site="item.site" :weekday="item.weekday" @fav-change="onFavChange(index, $event)" />
+      </div>
+
+      <div v-if="loadError && items.length" class="load-tip load-error"><q-icon name="error_outline" size="18px" color="negative" /><span>{{ loadError }}</span><q-btn flat dense color="primary" label="重试" @click="loadPage" /></div>
+      <div v-else-if="loading && items.length" class="load-tip"><q-spinner-dots color="primary" size="24px" /><span>加载更多…</span></div>
+      <div v-else-if="noMore && items.length" class="load-tip"><q-icon name="done" size="18px" /><span>已经到底了</span></div>
+      <ScrollToTop />
     </div>
-
-    <div v-if="loading && items.length" class="load-tip"><q-spinner-dots color="primary" size="24px" /><span>加载更多…</span></div>
-    <div v-else-if="noMore && items.length" class="load-tip"><q-icon name="done" size="18px" /><span>已经到底了</span></div>
-    <ScrollToTop />
-  </div>
+  </q-pull-to-refresh>
 </template>
 
 <style scoped>
