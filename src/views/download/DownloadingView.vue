@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { QTableProps } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import AddDownloadDialog from '@/components/AddDownloadDialog.vue'
+import PosterPreview from '@/components/PosterPreview.vue'
 import { useModalStore } from '@/stores/modal'
 import { getDownloading, ptStart, ptStop, ptRemove, type DownloadTask } from '@/api/download'
 
@@ -187,7 +188,7 @@ function onAddError(message: string) {
         <template #body-cell-task="props">
           <q-td :props="props">
             <div class="task-cell">
-              <q-img v-if="props.row.image" :src="props.row.image" ratio=".73" class="task-poster" />
+              <PosterPreview v-if="props.row.image" :src="props.row.image" ratio=".73" class="task-poster" />
               <q-avatar v-else rounded color="grey-2" text-color="grey-7" icon="movie" class="task-poster" />
               <div class="task-info">
                 <div class="task-title" :title="props.row.title || props.row.name">{{ props.row.title || props.row.name }}</div>
@@ -217,7 +218,7 @@ function onAddError(message: string) {
       <div v-else class="mobile-task-list">
         <q-card v-for="task in list" :key="task.id" flat class="mobile-task">
           <q-card-section class="row no-wrap items-center q-pb-sm">
-            <q-img v-if="task.image" :src="task.image" ratio=".73" class="task-poster" />
+            <PosterPreview v-if="task.image" :src="task.image" ratio=".73" class="task-poster" />
             <q-avatar v-else rounded color="grey-2" text-color="grey-7" icon="movie" class="task-poster" />
             <div class="task-info q-ml-md">
               <div class="task-title task-title--mobile">{{ task.title || task.name }}</div>

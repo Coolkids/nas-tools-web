@@ -5,6 +5,7 @@ import { doAction } from '@/api'
 import { getMovieRssList, getTvRssList, type RssMediaItem } from '@/api/rss'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
+import PosterPreview from '@/components/PosterPreview.vue'
 
 interface CalendarEvent {
   id: string | number
@@ -96,8 +97,6 @@ function dateFromKey(value: string) {
 }
 function eventsOf(date: Date) { const key = dateKey(date); return events.value.filter((event) => (event.start || '').slice(0, 10) === key) }
 function isMovie(event: CalendarEvent) { return event.type === '电影' || event.type === 'MOV' }
-function posterStyle(event: CalendarEvent): Record<string, string> { return event.poster ? { backgroundImage: `url(${event.poster})` } : {} }
-
 const weekStart = computed(() => {
   const date = new Date(currentDate.value)
   const day = date.getDay()
@@ -196,7 +195,7 @@ watch(() => events.value.length, scrollScheduleToToday)
             <div class="col-header" :class="{ 'is-today': isToday(day) }"><span class="col-day-name">星期{{ dayNames[day.getDay()] }}</span><span class="col-day-num">{{ day.getDate() }}</span></div>
             <div class="col-events">
               <div v-for="event in eventsOf(day)" :key="`${event.id}-${event.start}`" class="col-event" :class="isMovie(event) ? 'movie' : 'tv'">
-                <div class="event-poster-sm" :style="posterStyle(event)"><q-icon v-if="!event.poster" name="movie" size="14px" /></div>
+                <PosterPreview v-if="event.poster" :src="event.poster" class="event-poster-sm" fit="cover" /><div v-else class="event-poster-sm"><q-icon name="movie" size="14px" /></div>
                 <div class="event-info"><div class="event-title" :title="event.title">{{ event.title }}</div><q-badge :color="isMovie(event) ? 'positive' : 'primary'" :label="isMovie(event) ? '电影' : '剧集'" /></div>
               </div>
               <div v-if="!eventsOf(day).length" class="empty-day">—</div>
@@ -234,7 +233,7 @@ watch(() => events.value.length, scrollScheduleToToday)
               </div>
               <div v-else-if="item.kind === 'empty'" class="schedule-empty-day">今天暂无订阅事件</div>
               <div v-else class="schedule-item" :class="isMovie(item.event) ? 'movie' : 'tv'">
-                <div class="schedule-poster" :style="posterStyle(item.event)"><q-icon v-if="!item.event.poster" name="movie" size="20px" /></div>
+                <PosterPreview v-if="item.event.poster" :src="item.event.poster" class="schedule-poster" fit="cover" /><div v-else class="schedule-poster"><q-icon name="movie" size="20px" /></div>
                 <div class="schedule-info"><div class="schedule-title">{{ item.event.title }}</div><div class="schedule-meta"><q-badge :color="isMovie(item.event) ? 'positive' : 'primary'" :label="item.event.type" /><span v-if="item.event.vote_average" class="vote">★ {{ item.event.vote_average }}</span><span v-if="item.event.year" class="text-secondary">{{ item.event.year }}</span></div></div>
               </div>
             </div>

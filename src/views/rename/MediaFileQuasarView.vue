@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { doAction } from '@/api'
 import PageHeader from '@/components/PageHeader.vue'
 import NameTestResult from '@/components/NameTestResult.vue'
+import PosterPreview from '@/components/PosterPreview.vue'
 import { useModalStore } from '@/stores/modal'
 import { nameTest, refreshProcess, type NameTestData } from '@/api/system'
 import { getConfig } from '@/api/config'
@@ -753,7 +754,7 @@ async function deleteSelectedHardlinks() {
           <q-list v-if="tmdbSearchResults.length" bordered separator class="tmdb-list q-mt-md">
             <q-item v-for="item in tmdbSearchResults" :key="item.tmdb_id" clickable :active="tmdbSearchSelected === item.tmdb_id" active-class="bg-blue-1" @click="tmdbSearchSelected = item.tmdb_id">
               <q-item-section side><q-radio v-model="tmdbSearchSelected" :val="item.tmdb_id" /></q-item-section>
-              <q-item-section avatar><q-img :src="item.image || '/no-image.png'" ratio="0.72" width="50px" @error="onTmdbPosterError" /></q-item-section>
+              <q-item-section avatar><PosterPreview :src="item.image || '/no-image.png'" ratio="0.72" width="50px" @error="onTmdbPosterError" /></q-item-section>
               <q-item-section><q-item-label class="text-weight-medium">{{ item.title }} ({{ item.year }})</q-item-label><q-item-label caption lines="3">{{ item.overview || '暂无简介' }}</q-item-label></q-item-section>
             </q-item>
           </q-list>

@@ -6,6 +6,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
 import { getRssHistory, deleteRssHistory, type RssHistoryItem, type RssType } from '@/api/rss'
 import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
+import PosterPreview from '@/components/PosterPreview.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -178,9 +179,10 @@ function goBack() {
         <template #body-cell-media="slotProps">
           <q-td :props="slotProps">
             <div class="media-cell">
-              <q-img :src="slotProps.row.IMAGE" fit="cover" class="history-poster">
+              <PosterPreview :src="slotProps.row.IMAGE" fit="cover" class="history-poster">
                 <template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template>
-              </q-img>
+                <template #empty><div class="poster-placeholder"><q-icon name="movie" /></div></template>
+              </PosterPreview>
               <div class="media-copy">
                 <div class="media-title ellipsis-2-lines">
                   {{ slotProps.row.NAME }}
@@ -205,7 +207,7 @@ function goBack() {
       <div v-else class="mobile-history-list">
         <q-card v-for="item in list" :key="item.ID" flat bordered class="history-item">
           <q-card-section class="row no-wrap q-gutter-md">
-            <q-img :src="item.IMAGE" fit="cover" class="history-poster mobile-poster"><template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template></q-img>
+            <PosterPreview :src="item.IMAGE" fit="cover" class="history-poster mobile-poster"><template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template><template #empty><div class="poster-placeholder"><q-icon name="movie" /></div></template></PosterPreview>
             <div class="col min-width-0">
               <div class="media-title ellipsis-2-lines">{{ item.NAME }} <span v-if="item.YEAR" class="text-secondary">（{{ item.YEAR }}）</span></div>
               <div class="row items-center q-gutter-xs q-mt-xs"><q-badge outline color="primary" :label="typeLabel(item.TYPE)" /><span v-if="item.SEASON" class="text-caption text-secondary">{{ item.SEASON }}</span><span v-if="totalEpisodes(item)" class="text-caption text-secondary">总集数 {{ totalEpisodes(item) }} 集</span><span class="text-caption text-secondary">{{ item.FINISH_TIME || '未记录时间' }}</span></div>

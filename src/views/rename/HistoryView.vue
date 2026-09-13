@@ -27,6 +27,8 @@ const hasMore = ref(false)
 const mobileSearchExpanded = ref(false)
 const mobileSearchButtonVisible = ref(false)
 const lastLoadWasAppend = ref(false)
+const previewVisible = ref(false)
+const previewImage = ref('')
 let pendingReload = false
 let loadGeneration = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -182,6 +184,10 @@ function loadPosters(rows: TransferHistoryItem[]) {
 }
 
 function posterUrl(row: TransferHistoryItem) { return row.TMDBID ? posters.value[String(row.TMDBID)] || '' : '' }
+function openPreview(row: TransferHistoryItem) {
+  const url = posterUrl(row)
+  if (url) { previewImage.value = url; previewVisible.value = true }
+}
 function tmdbUrl(row: TransferHistoryItem) { return row.TMDBID ? `https://www.themoviedb.org/${row.TYPE === '电影' ? 'movie' : 'tv'}/${row.TMDBID}` : '' }
 function isMoveType(row: TransferHistoryItem) { return row.RMT_MODE === 'move' || row.MODE === 'move' || row.SYNC_MODE === 'move' }
 function isSelected(row: TransferHistoryItem) { return selected.value.some((item) => item.ID === row.ID) }
@@ -306,7 +312,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
     <q-banner v-if="loadError" class="q-mb-md" rounded inline-actions dense><template #avatar><q-icon name="error_outline" color="negative" /></template>{{ loadError }}<template #action><q-btn flat color="primary" label="重试" @click="retryLoad" /></template></q-banner>
     <q-card flat bordered class="history-card">
       <q-table v-if="!$q.screen.lt.sm" v-model:selected="selected" flat selection="multiple" :rows="list" :columns="columns" row-key="ID" :loading="loading" hide-pagination :rows-per-page-options="[0]" no-data-label="没有转移历史">
-        <template #body-cell-media="slotProps"><q-td :props="slotProps"><div class="media-cell"><q-img v-if="posterUrl(slotProps.row)" :src="posterUrl(slotProps.row)" fit="cover" class="poster"><template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template></q-img><div v-else class="poster poster-placeholder"><q-icon :name="slotProps.row.TYPE === '电影' ? 'movie' : 'tv'" /></div><div class="media-info"><a v-if="slotProps.row.TMDBID" :href="tmdbUrl(slotProps.row)" target="_blank" rel="noreferrer" class="media-title">{{ slotProps.row.TITLE }} ({{ slotProps.row.YEAR }})</a><div v-else class="media-title">{{ slotProps.row.TITLE }} ({{ slotProps.row.YEAR }})</div><div v-if="slotProps.row.SEASON_EPISODE" class="text-caption text-warning">{{ slotProps.row.SEASON_EPISODE }}</div><div v-if="slotProps.row.CATEGORY" class="text-caption text-secondary">类别：{{ slotProps.row.CATEGORY }}</div></div></div></q-td></template>
+        <template #body-cell-media="slotProps"><q-td :props="slotProps"><div class="media-cell"><q-img v-if="posterUrl(slotProps.row)" :src="posterUrl(slotProps.row)" fit="cover" class="poster" @click="openPreview(slotProps.row)"><template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template></q-img><div v-else class="poster poster-placeholder"><q-icon :name="slotProps.row.TYPE === '电影' ? 'movie' : 'tv'" /></div><div class="media-info"><a v-if="slotProps.row.TMDBID" :href="tmdbUrl(slotProps.row)" target="_blank" rel="noreferrer" class="media-title">{{ slotProps.row.TITLE }} ({{ slotProps.row.YEAR }})</a><div v-else class="media-title">{{ slotProps.row.TITLE }} ({{ slotProps.row.YEAR }})</div><div v-if="slotProps.row.SEASON_EPISODE" class="text-caption text-warning">{{ slotProps.row.SEASON_EPISODE }}</div><div v-if="slotProps.row.CATEGORY" class="text-caption text-secondary">类别：{{ slotProps.row.CATEGORY }}</div></div></div></q-td></template>
         <template #body-cell-file="slotProps"><q-td :props="slotProps"><div class="file-line" :title="slotProps.row.SOURCE_FILENAME || '—'">{{ slotProps.row.SOURCE_FILENAME || '—' }}<q-tooltip v-if="slotProps.row.SOURCE_FILENAME">{{ slotProps.row.SOURCE_FILENAME }}</q-tooltip></div><div v-if="slotProps.row.DEST_PATH || slotProps.row.DEST_FILENAME" class="file-line text-positive" :title="slotProps.row.DEST_FILENAME || slotProps.row.DEST_PATH"><span class="text-secondary">› </span><span class="dest-link" @click="goToFileManager(slotProps.row.DEST_PATH)">{{ slotProps.row.DEST_FILENAME || slotProps.row.DEST_PATH }}</span><q-tooltip>{{ slotProps.row.DEST_FILENAME || slotProps.row.DEST_PATH }}</q-tooltip></div></q-td></template>
         <template #body-cell-time="slotProps"><q-td :props="slotProps"><div class="time-cell"><span>{{ slotProps.row.DATE }}</span><span class="text-caption text-secondary">来自：{{ slotProps.row.SOURCE || '—' }}</span><span class="text-caption text-secondary">方式：{{ slotProps.row.SYNC_MODE || slotProps.row.MODE || '—' }}</span></div></q-td></template>
         <template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn-dropdown flat dense color="primary" label="更多"><q-list><q-item clickable v-close-popup @click="reIdentify([slotProps.row])"><q-item-section>重新识别</q-item-section></q-item><q-item v-if="isMoveType(slotProps.row)" clickable v-close-popup @click="restore(slotProps.row)"><q-item-section>恢复</q-item-section></q-item><template v-else><q-item clickable v-close-popup @click="remove('del_source', [slotProps.row])"><q-item-section>删除源文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_dest', [slotProps.row])"><q-item-section>删除媒体库文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_all', [slotProps.row])"><q-item-section>删除源及媒体库文件</q-item-section></q-item></template></q-list></q-btn-dropdown></q-td></template>
@@ -319,7 +325,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
             <q-card-section class="history-item-content">
               <div class="history-item-summary">
                 <q-checkbox :model-value="isSelected(row)" color="primary" class="self-start history-checkbox" @update:model-value="toggleSelected(row)" />
-                <q-img v-if="posterUrl(row)" :src="posterUrl(row)" fit="cover" class="poster mobile-poster"><template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template></q-img>
+                <q-img v-if="posterUrl(row)" :src="posterUrl(row)" fit="cover" class="poster mobile-poster" @click="openPreview(row)"><template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template></q-img>
                 <div v-else class="poster mobile-poster poster-placeholder"><q-icon :name="row.TYPE === '电影' ? 'movie' : 'tv'" /></div>
                 <div class="history-item-media col min-width-0">
                   <a v-if="row.TMDBID" :href="tmdbUrl(row)" target="_blank" rel="noreferrer" class="media-title ellipsis-2-lines">{{ row.TITLE }} ({{ row.YEAR }})</a>
@@ -349,6 +355,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
       <q-separator v-if="!$q.screen.lt.sm && total > pageSize" />
       <div v-if="!$q.screen.lt.sm && total > pageSize" class="row justify-center q-pa-md"><q-pagination v-model="currentPage" :max="Math.ceil(total / pageSize)" :max-pages="7" direction-links boundary-links @update:model-value="pageChange" /></div>
     </q-card>
+    <q-dialog v-model="previewVisible"><q-card class="preview-dialog"><q-img :src="previewImage" fit="contain" class="preview-image" /><q-btn class="preview-close" round color="dark" icon="close" aria-label="关闭" @click="previewVisible = false" /></q-card></q-dialog>
     <ScrollToTop />
   </div>
 </template>
@@ -358,7 +365,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
 .search-input { width: min(220px, 42vw); }
 .history-card { max-width: 100%; min-width: 0; overflow: hidden; }
 .media-cell { display: flex; align-items: center; gap: 10px; min-width: 240px; }
-.poster { width: 48px; height: 68px; flex: 0 0 auto; border-radius: 5px; background: var(--surface-muted); }
+.poster { width: 48px; height: 68px; flex: 0 0 auto; border-radius: 5px; cursor: zoom-in; background: var(--surface-muted); }
 .mobile-poster { width: 58px; height: 84px; }
 .poster-placeholder { display: grid; place-items: center; color: var(--text-secondary); }
 .media-info { min-width: 0; }
@@ -390,6 +397,9 @@ async function batchRestore(rows: TransferHistoryItem[]) {
 .mobile-search-input { flex: 1; min-width: 0; }
 .mobile-search-button-enter-active, .mobile-search-button-leave-active, .mobile-search-panel-enter-active, .mobile-search-panel-leave-active { transition: opacity .16s ease, transform .16s ease; }
 .mobile-search-button-enter-from, .mobile-search-button-leave-to, .mobile-search-panel-enter-from, .mobile-search-panel-leave-to { opacity: 0; transform: translateY(-6px); }
+.preview-dialog { position: relative; max-width: min(90vw, 720px); background: transparent; box-shadow: none; }
+.preview-image { max-height: 85vh; min-width: 240px; }
+.preview-close { position: absolute; top: 10px; right: 10px; opacity: .85; }
 
 @media (max-width: 599px) {
   .mobile-history-actions { display: flex; width: 100%; align-items: center; flex-wrap: nowrap; gap: 4px; overflow-x: auto; scrollbar-width: none; }

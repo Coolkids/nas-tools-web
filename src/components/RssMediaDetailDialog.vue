@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { removeRssMedia, refreshRss, type RssMediaItem, type RssType } from '@/api/rss'
 import { useModalStore } from '@/stores/modal'
+import PosterPreview from './PosterPreview.vue'
 
 const props = defineProps<{ modelValue: boolean; item: RssMediaItem | null; type: RssType }>()
 const emit = defineEmits<{
@@ -73,7 +74,7 @@ function goTmdb() {
       <q-card-section class="row items-center q-pb-sm"><div class="text-h6 ellipsis">{{ item?.name || '' }}</div><q-space /><q-btn flat round icon="close" aria-label="关闭" v-close-popup /></q-card-section>
       <q-separator />
       <q-card-section v-if="item" class="detail-body">
-        <q-img v-if="item.image" :src="item.image" class="detail-poster" fit="cover" ratio=".67"><template #error><div class="poster-placeholder"><q-icon name="movie" size="36px" /></div></template></q-img>
+        <PosterPreview v-if="item.image" :src="item.image" class="detail-poster" fit="cover" ratio=".67"><template #error><div class="poster-placeholder"><q-icon name="movie" size="36px" /></div></template></PosterPreview>
         <div v-else class="detail-poster poster-placeholder"><q-icon name="movie" size="36px" /></div>
         <div class="detail-content">
           <div class="detail-title"><span :class="{ 'tmdb-link': item.tmdbid }" @click="goTmdb">{{ item.name }}</span><span v-if="item.year" class="muted">（{{ item.year }}）</span><span v-if="item.season && item.season !== 'S00'" class="muted">{{ item.season }}</span><q-badge v-if="item.vote" color="warning" class="q-ml-sm" :label="item.vote" /></div>

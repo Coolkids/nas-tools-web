@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import HelpTip from '@/components/HelpTip.vue'
+import PosterPreview from '@/components/PosterPreview.vue'
 import { useConfigForm } from '@/composables/useConfigForm'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api'
@@ -137,7 +138,7 @@ onMounted(reload)
           <q-inner-loading :showing="historyLoading"><q-spinner-dots color="primary" size="40px" /></q-inner-loading>
           <div v-if="history.length" class="history-list">
             <div v-for="row in history" :key="row.ID" class="history-row">
-              <q-img v-if="row.IMAGE" :src="row.IMAGE" class="history-img" fit="cover" /><div v-else class="history-img history-img-empty"><q-icon name="movie" /></div>
+              <PosterPreview v-if="row.IMAGE" :src="row.IMAGE" class="history-img" fit="cover" /><div v-else class="history-img history-img-empty"><q-icon name="movie" /></div>
               <div class="history-main"><div class="history-title">{{ row.NAME }}<span v-if="row.YEAR">（{{ row.YEAR }}）</span></div><div class="text-muted">{{ row.TYPE }}<span v-if="row.RATING"> · 评分 {{ row.RATING }}</span></div><div class="text-muted">{{ row.ADD_TIME }}</div></div>
               <div class="history-meta"><q-badge :color="stateTag(row.STATE).type" :label="stateTag(row.STATE).text" /><q-btn flat round dense color="negative" icon="delete_outline" aria-label="删除" @click="deleteHistory(row.ID)" /></div>
             </div>

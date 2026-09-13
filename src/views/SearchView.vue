@@ -10,6 +10,7 @@ import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
 import ExploreSearchBar from '@/components/ExploreSearchBar.vue'
 import ScrollToTop from '@/components/ScrollToTop.vue'
+import PosterPreview from '@/components/PosterPreview.vue'
 
 const route = useRoute()
 const modal = useModalStore()
@@ -398,7 +399,7 @@ onBeforeUnmount(() => {
         <q-separator />
         <q-card-section class="result-dialog-body">
           <aside v-if="tmdbInfo" class="result-media">
-            <q-img v-if="tmdbInfo.poster" :src="tmdbInfo.poster" ratio=".67" class="tmdb-poster" />
+            <PosterPreview v-if="tmdbInfo.poster" :src="tmdbInfo.poster" ratio=".67" class="tmdb-poster" />
             <div class="tmdb-title">{{ tmdbInfo.title }}<span v-if="tmdbInfo.year">（{{ tmdbInfo.year }}）</span></div>
             <div v-if="tmdbInfo.overview" class="tmdb-overview">{{ tmdbInfo.overview }}</div>
           </aside>
