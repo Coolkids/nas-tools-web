@@ -406,7 +406,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
   .mobile-history-actions::-webkit-scrollbar { display: none; }
   .mobile-history-actions :deep(.q-btn) { min-width: auto; min-height: 36px !important; flex: 0 0 auto; padding: 0 8px; white-space: nowrap; }
   .history-item-content :deep(.q-checkbox) { padding: 0; }
-  .mobile-poster { width: 46px; height: 66px; }
+  .mobile-poster { width: 56px; height: 84px; }
   .mobile-file-details { margin-top: 8px; padding-top: 7px; }
   .mobile-file-line { font-size: 12px; }
   .history-item-actions :deep(.q-btn) { min-height: 32px; padding-inline: 7px; font-size: 12px; }

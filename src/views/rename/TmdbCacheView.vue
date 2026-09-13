@@ -299,7 +299,6 @@ async function clearAll() {
 .cache-item-content { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; }
 .cache-item-summary { display: flex; align-items: flex-start; min-width: 0; gap: 8px; }
 .cache-item-media { min-width: 0; width: 0; flex: 1 1 0; padding-top: 1px; }
-.mobile-poster { width: 46px; height: 66px; flex: 0 0 auto; }
 .cache-title { min-width: 0; color: var(--text-primary); font-size: 15px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
 .cache-item-meta { min-width: 0; flex-wrap: wrap; }
 .cache-index-line { display: flex; align-items: flex-start; min-width: 0; gap: 6px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border-subtle); color: var(--text-primary); font-size: 12px; line-height: 1.45; }
@@ -325,6 +324,7 @@ async function clearAll() {
 .preview-close { position: absolute; top: 10px; right: 10px; opacity: .85; }
 
 @media (max-width: 599px) {
+  .mobile-poster { width: 56px; height: 84px; flex: 0 0 auto; }
   .mobile-cache-actions { display: flex; width: 100%; align-items: center; flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding: 0 4px; box-sizing: border-box; scrollbar-width: none; }
   .mobile-cache-actions::-webkit-scrollbar { display: none; }
   .mobile-cache-actions :deep(.q-btn) { min-width: auto; min-height: 36px !important; flex: 0 0 auto; padding: 0 8px; white-space: nowrap; }
