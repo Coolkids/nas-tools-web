@@ -105,5 +105,5 @@ function goTmdb() {
 .detail-badges :deep(.q-chip), .site-row :deep(.q-chip) { margin: 0; }
 .site-row > span { flex: 0 0 auto; color: var(--text-secondary); font-size: 12px; }
 .detail-actions { gap: 6px; }
-@media (max-width: 599px) { .detail-card { width: 100%; min-height: 100dvh; border-radius: 0; } .detail-body { display: flex; flex-direction: column; gap: 14px; } .detail-poster { width: 128px; height: 192px; align-self: center; } .detail-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .detail-actions :deep(.q-btn) { flex: 1 0 auto; min-height: 44px; } }
+@media (max-width: 599px) { .detail-card { display: flex; width: 100%; min-height: 100dvh; flex-direction: column; border-radius: 0; } .detail-body { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 14px; overflow-y: auto; } .detail-poster { width: 128px; height: 192px; align-self: center; } .detail-actions { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .detail-actions :deep(.q-btn) { width: 100%; min-width: 0; min-height: 44px; } .detail-actions :deep(.q-btn__content) { white-space: nowrap; } .detail-actions :deep(.q-btn:last-child) { grid-column: 1 / -1; } }
 </style>

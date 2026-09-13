@@ -394,10 +394,10 @@ async function submit(keepOpen = false) {
 </template>
 
 <style scoped>
-.rss-media-dialog { width: min(1024px, calc(100vw - 32px)); max-width: none; border-radius: 16px; overflow: hidden; background: var(--surface); color: var(--text-primary); }
+.rss-media-dialog { display: flex; width: min(800px, calc(100vw - 32px)); height: min(90vh, 840px); max-width: none; flex-direction: column; border-radius: 16px; overflow: hidden; background: var(--surface); color: var(--text-primary); }
 .dialog-header { min-height: 64px; padding: 16px 24px; }
-.dialog-body { position: relative; max-height: min(78vh, 760px); overflow-y: auto; padding: 20px 24px 8px; }
-.rss-form { min-width: 0; }
+.dialog-body { position: relative; min-height: 0; flex: 1; overflow-y: auto; padding: 20px 24px 8px; }
+.rss-form { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
 .form-section { margin-bottom: 22px; }
 .section-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; }
 .section-title { position: relative; padding-left: 10px; font-size: 13px; font-weight: 700; white-space: nowrap; }
@@ -421,6 +421,6 @@ async function submit(keepOpen = false) {
 .fuzzy-banner { border: 1px solid color-mix(in srgb, var(--q-primary), transparent 70%); background: var(--primary-soft); color: var(--text-primary); }
 .dialog-actions { gap: 8px; padding: 14px 24px 18px; background: var(--surface); }
 @media (max-width: 936px) { .rss-media-dialog { width: min(94vw, 760px); } .row-basic { grid-template-columns: repeat(2, minmax(0, 1fr)); } .row-basic > :last-child { grid-column: 1 / -1; } .row-tv, .row-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); } .row-tv > :last-child, .row-filter > :last-child { grid-column: 1 / -1; } }
-@media (max-width: 599px) { .rss-media-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .dialog-body { max-height: none; padding: 16px; } .form-grid, .option-cards, .row-basic, .row-tv, .row-filter, .row-dl { grid-template-columns: 1fr !important; } .form-grid > * { grid-column: 1 / -1 !important; } .section-head { gap: 8px; } .section-actions { margin-left: auto; } .sites-box { max-height: 240px; } .site-checkbox { min-width: 0; flex: 1 1 46%; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
+@media (max-width: 599px) { .rss-media-dialog { width: 100%; height: 100dvh; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .dialog-body { max-height: none; padding: 16px; } .form-grid, .option-cards, .row-basic, .row-tv, .row-filter, .row-dl { grid-template-columns: 1fr !important; } .form-grid > * { grid-column: 1 / -1 !important; } .section-head { gap: 8px; } .section-actions { margin-left: auto; } .sites-box { max-height: 240px; } .site-checkbox { min-width: 0; flex: 1 1 46%; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 @media (max-height: 820px) and (min-width: 600px) { .dialog-body { max-height: 68vh; padding-top: 14px; } .form-section { margin-bottom: 16px; } .sites-box { max-height: 132px; } }
 </style>
