@@ -8,6 +8,7 @@ import { mediaDetail } from '@/api/discovery'
 import { useModalStore } from '@/stores/modal'
 import PageHeader from '@/components/PageHeader.vue'
 import ScrollToTop from '@/components/ScrollToTop.vue'
+import ImagePreviewDialog from '@/components/ImagePreviewDialog.vue'
 import { getPageScrollTarget, getPageScrollTop, type PageScrollTarget } from '@/utils/pageScroll'
 
 const $q = useQuasar()
@@ -355,7 +356,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
       <q-separator v-if="!$q.screen.lt.sm && total > pageSize" />
       <div v-if="!$q.screen.lt.sm && total > pageSize" class="row justify-center q-pa-md"><q-pagination v-model="currentPage" :max="Math.ceil(total / pageSize)" :max-pages="7" direction-links boundary-links @update:model-value="pageChange" /></div>
     </q-card>
-    <q-dialog v-model="previewVisible"><q-card class="preview-dialog"><q-img :src="previewImage" fit="contain" class="preview-image" /><q-btn class="preview-close" round color="dark" icon="close" aria-label="关闭" @click="previewVisible = false" /></q-card></q-dialog>
+    <ImagePreviewDialog v-model="previewVisible" :src="previewImage" />
     <ScrollToTop />
   </div>
 </template>
@@ -397,10 +398,6 @@ async function batchRestore(rows: TransferHistoryItem[]) {
 .mobile-search-input { flex: 1; min-width: 0; }
 .mobile-search-button-enter-active, .mobile-search-button-leave-active, .mobile-search-panel-enter-active, .mobile-search-panel-leave-active { transition: opacity .16s ease, transform .16s ease; }
 .mobile-search-button-enter-from, .mobile-search-button-leave-to, .mobile-search-panel-enter-from, .mobile-search-panel-leave-to { opacity: 0; transform: translateY(-6px); }
-.preview-dialog { position: relative; max-width: min(90vw, 720px); background: transparent; box-shadow: none; }
-.preview-image { max-height: 85vh; min-width: 240px; }
-.preview-close { position: absolute; top: 10px; right: 10px; opacity: .85; }
-
 @media (max-width: 599px) {
   .mobile-history-actions { display: flex; width: 100%; align-items: center; flex-wrap: nowrap; gap: 4px; overflow-x: auto; scrollbar-width: none; }
   .mobile-history-actions::-webkit-scrollbar { display: none; }

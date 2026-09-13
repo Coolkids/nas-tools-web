@@ -7,6 +7,7 @@ import { getTmdbCache, deleteTmdbCache, modifyTmdbCache, clearTmdbCache, type Tm
 import { useModalStore } from '@/stores/modal'
 import PageHeader from '@/components/PageHeader.vue'
 import ScrollToTop from '@/components/ScrollToTop.vue'
+import ImagePreviewDialog from '@/components/ImagePreviewDialog.vue'
 import { getPageScrollTarget, getPageScrollTop, type PageScrollTarget } from '@/utils/pageScroll'
 
 const $q = useQuasar()
@@ -278,7 +279,7 @@ async function clearAll() {
     </q-card>
 
     <q-dialog v-model="modifyVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm"><q-card class="modify-dialog"><q-card-section class="row items-center"><div class="text-h6">修改 TMDB 缓存</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator /><q-card-section><q-input v-model="modifyTitle" outlined autofocus label="标题" placeholder="标题" :disable="modifying" /></q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="modifying" v-close-popup /><q-btn color="primary" unelevated label="确定" :loading="modifying" @click="submitModify" /></q-card-actions></q-card></q-dialog>
-    <q-dialog v-model="previewVisible"><q-card class="preview-dialog"><q-img :src="previewImage" fit="contain" class="preview-image" /><q-btn class="preview-close" round color="dark" icon="close" aria-label="关闭" @click="previewVisible = false" /></q-card></q-dialog>
+    <ImagePreviewDialog v-model="previewVisible" :src="previewImage" />
     <ScrollToTop />
   </div>
 </template>
@@ -319,10 +320,6 @@ async function clearAll() {
 .mobile-search-button-enter-from, .mobile-search-button-leave-to, .mobile-search-panel-enter-from, .mobile-search-panel-leave-to { opacity: 0; transform: translateY(-6px); }
 .modify-dialog { width: min(480px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
 .dialog-actions { gap: 8px; }
-.preview-dialog { position: relative; max-width: min(90vw, 720px); background: transparent; box-shadow: none; }
-.preview-image { max-height: 85vh; min-width: 240px; }
-.preview-close { position: absolute; top: 10px; right: 10px; opacity: .85; }
-
 @media (max-width: 599px) {
   .mobile-poster { width: 56px; height: 84px; flex: 0 0 auto; }
   .mobile-cache-actions { display: flex; width: 100%; align-items: center; flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding: 0 4px; box-sizing: border-box; scrollbar-width: none; }

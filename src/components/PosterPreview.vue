@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs } from 'vue'
+import ImagePreviewDialog from './ImagePreviewDialog.vue'
 
 defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(defineProps<{
   src?: string
+  previewSrc?: string
   alt?: string
   fit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'
 }>(), {
@@ -31,19 +33,11 @@ function openPreview() {
       </template>
     </q-img>
     <slot v-else name="empty" />
-    <q-dialog v-model="previewVisible">
-      <q-card class="poster-preview-dialog">
-        <q-img :src="src" fit="contain" class="poster-preview-large" />
-        <q-btn class="poster-preview-close" round color="dark" icon="close" aria-label="关闭" @click="previewVisible = false" />
-      </q-card>
-    </q-dialog>
+    <ImagePreviewDialog v-model="previewVisible" :src="src" :preview-src="previewSrc" :alt="alt" />
   </div>
 </template>
 
 <style scoped>
 .poster-preview { display: block; min-width: 0; }
 .poster-preview-image { display: block; width: 100%; height: 100%; cursor: zoom-in; }
-.poster-preview-dialog { position: relative; max-width: min(90vw, 720px); background: transparent; box-shadow: none; }
-.poster-preview-large { max-height: 85vh; min-width: 240px; }
-.poster-preview-close { position: absolute; top: 10px; right: 10px; opacity: .85; }
 </style>
