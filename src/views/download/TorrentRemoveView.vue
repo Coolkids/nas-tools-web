@@ -82,5 +82,5 @@ function fmtSize(size: number) { return `${(size / 1024 / 1024 / 1024).toFixed(2
 .dialog-actions { gap: 8px; }
 .preview-count { margin-bottom: 10px; color: var(--text-secondary); font-size: 13px; }
 .empty-preview { display: grid; justify-items: center; gap: 8px; padding: 56px 16px; color: var(--text-secondary); }
-@media (max-width: 599px) { .torrent-remove-view { padding-bottom: 8px; } .editor-dialog, .preview-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .form-grid { grid-template-columns: 1fr; gap: 16px; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
+@media (max-width: 599px) { .editor-dialog, .preview-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .form-grid { grid-template-columns: 1fr; gap: 16px; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

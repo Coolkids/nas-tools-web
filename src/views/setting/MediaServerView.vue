@@ -63,5 +63,5 @@ onMounted(load)
 .editor-dialog { width: min(560px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
 .editor-form { display: grid; gap: 16px; }
 .dialog-actions { gap: 8px; }
-@media (max-width: 599px) { .media-server-view { padding-bottom: 8px; } .editor-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
+@media (max-width: 599px) { .editor-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

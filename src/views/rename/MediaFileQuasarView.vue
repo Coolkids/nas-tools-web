@@ -808,7 +808,7 @@ async function deleteSelectedHardlinks() {
 </template>
 
 <style scoped>
-.mediafile { width: 100%; max-width: 1600px; min-width: 0; margin: 0 auto; padding: 24px 32px 40px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: auto; }
+.mediafile { width: 100%; max-width: 1600px; min-width: 0; margin: 0 auto; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: auto; }
 .path-card { margin-bottom: 12px; padding: 14px; }
 .crumbs { margin-top: 12px; }
 .crumb-link { cursor: pointer; }
@@ -863,7 +863,6 @@ async function deleteSelectedHardlinks() {
 .hl-file-title { padding: 7px 10px; border-radius: 5px; background: var(--surface-muted); font-weight: 600; }
 .hardlink-actions { justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 @media (max-width: 900px) {
-  .mediafile { padding: 16px 12px 28px; }
   .split-layout { flex-direction: column; }
   .dir-panel { width: 100%; min-height: 180px; max-height: 260px; }
   .file-panel { min-height: 260px; }

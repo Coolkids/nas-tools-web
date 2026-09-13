@@ -133,5 +133,5 @@ async function clearAll() {
 .preview-dialog { position: relative; max-width: min(90vw, 720px); background: transparent; box-shadow: none; }
 .preview-image { max-height: 85vh; min-width: 240px; }
 .preview-close { position: absolute; top: 10px; right: 10px; opacity: .85; }
-@media (max-width: 599px) { .tmdb-cache { padding-bottom: 8px; } .modify-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
+@media (max-width: 599px) { .modify-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

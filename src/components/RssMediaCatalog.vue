@@ -121,7 +121,7 @@ onMounted(() => { void loadFilterRules(); void load() })
 </template>
 
 <style scoped>
-.rss-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.rss-page { max-width: 1600px; margin: 0 auto; }
 .search-input { width: 260px; }
 .filter-count { color: var(--text-secondary); font-size: 13px; }
 .load-alert { color: var(--text-primary); background: color-mix(in srgb, var(--q-negative) 10%, var(--surface)); }
@@ -147,6 +147,5 @@ onMounted(() => { void loadFilterRules(); void load() })
 .card-overview { display: -webkit-box; overflow: hidden; margin-top: 12px; padding-right: 10px; color: rgba(255,255,255,.72); font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .card-progress { flex: 0 0 auto; }
 .empty-state { display: flex; min-height: 320px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-secondary); font-size: 13px; }
-@media (max-width: 1439px) { .rss-page { padding-inline: 24px; } }
-@media (max-width: 599px) { .rss-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .rss-page :deep(.header-actions) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 8px; } .rss-page :deep(.header-actions) .search-input { grid-column: 1 / -1; width: auto; } .rss-page :deep(.header-actions) .filter-count { grid-column: 1 / -1; } .rss-page :deep(.header-actions) .q-btn { min-width: 0; padding-inline: 4px; } .rss-page :deep(.header-actions) .q-btn__content { white-space: nowrap; } .search-input { width: 100%; } .rss-grid { grid-template-columns: 1fr; gap: 10px; } .card-content { padding: 16px 14px 12px; } }
+@media (max-width: 599px) { .rss-page :deep(.header-actions) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 8px; } .rss-page :deep(.header-actions) .search-input { grid-column: 1 / -1; width: auto; } .rss-page :deep(.header-actions) .filter-count { grid-column: 1 / -1; } .rss-page :deep(.header-actions) .q-btn { min-width: 0; padding-inline: 4px; } .rss-page :deep(.header-actions) .q-btn__content { white-space: nowrap; } .search-input { width: 100%; } .rss-grid { grid-template-columns: 1fr; gap: 10px; } .card-content { padding: 16px 14px 12px; } }
 </style>

@@ -537,7 +537,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.search-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.search-page { max-width: 1600px; margin: 0 auto; }
 .search-input { width: min(320px, 100%); }
 .search-alert { color: var(--text-primary); background: color-mix(in srgb, var(--q-negative) 10%, var(--surface)); }
 .task-card { overflow: hidden; background: var(--surface); border-color: var(--border-subtle); }
@@ -599,10 +599,8 @@ onBeforeUnmount(() => {
 .type-picker-card { width: min(440px, calc(100vw - 32px)); border-radius: 16px; }
 .advanced-card { width: min(760px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
 .advanced-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 1439px) { .search-page { padding-inline: 24px; } }
 @media (max-width: 1023px) { .result-dialog-body { grid-template-columns: 180px minmax(0, 1fr); } }
 @media (max-width: 599px) {
-  .search-page { padding: 16px 16px calc(32px + var(--safe-bottom)); }
   .search-input { width: 100%; }
   .result-dialog-card { width: 100%; max-height: none; border-radius: 0; }
   .result-dialog-body { display: flex; flex-direction: column; min-height: 0; overflow: auto; padding: 12px 16px 24px; }

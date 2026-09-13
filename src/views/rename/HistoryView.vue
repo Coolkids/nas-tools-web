@@ -133,5 +133,4 @@ async function batchRestore(rows: TransferHistoryItem[]) {
 .mobile-history-list { display: grid; gap: 10px; padding: 12px; }
 .history-item { border-radius: 12px; }
 .min-width-0 { min-width: 0; }
-@media (max-width: 599px) { .history { padding-bottom: 8px; } }
 </style>

@@ -98,7 +98,7 @@ onBeforeUnmount(() => { generation += 1 })
 </template>
 
 <style scoped>
-.ranking-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.ranking-page { max-width: 1600px; margin: 0 auto; }
 .ranking-tabs { max-width: 420px; }
 .ranking-tabs :deep(.q-tab) { min-height: 42px; padding-inline: 12px; }
 .sections { display: grid; gap: 16px; }
@@ -108,6 +108,5 @@ onBeforeUnmount(() => { generation += 1 })
 .section-content { padding-top: 8px; }
 .section-state { display: flex; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
 .slide-row { display: grid; grid-auto-flow: column; grid-auto-columns: 160px; gap: 12px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
-@media (max-width: 1439px) { .ranking-page { padding-inline: 24px; } }
-@media (max-width: 599px) { .ranking-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .ranking-tabs { width: 100%; overflow: auto; } .ranking-tabs :deep(.q-tabs__content) { justify-content: flex-start; } .ranking-tabs :deep(.q-tab) { padding-inline: 8px; font-size: 12px; } .slide-row { grid-auto-columns: 136px; gap: 10px; } }
+@media (max-width: 599px) { .ranking-tabs { width: 100%; overflow: auto; } .ranking-tabs :deep(.q-tabs__content) { justify-content: flex-start; } .ranking-tabs :deep(.q-tab) { padding-inline: 8px; font-size: 12px; } .slide-row { grid-auto-columns: 136px; gap: 10px; } }
 </style>

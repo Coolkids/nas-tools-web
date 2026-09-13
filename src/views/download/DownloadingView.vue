@@ -242,7 +242,7 @@ function onAddError(message: string) {
 </template>
 
 <style scoped>
-.downloading-page { padding: 24px 32px 40px; }
+.downloading-page { min-width: 0; }
 .empty-card { min-height: 240px; }
 .task-card { overflow: hidden; }
 .task-table :deep(.q-table__top), .task-table :deep(th) { color: var(--text-secondary); }
@@ -255,6 +255,4 @@ function onAddError(message: string) {
 .mobile-task-list { display: grid; gap: 8px; }
 .mobile-task { border-bottom: 1px solid var(--border-subtle); border-radius: 0; }
 .task-title--mobile { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-@media (max-width: 1023px) { .downloading-page { padding: 24px; } }
-@media (max-width: 599px) { .downloading-page { padding: 16px 16px calc(24px + var(--safe-bottom)); } }
 </style>

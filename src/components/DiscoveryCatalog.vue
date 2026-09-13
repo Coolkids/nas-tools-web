@@ -85,7 +85,7 @@ onBeforeUnmount(destroy)
 </template>
 
 <style scoped>
-.catalog-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.catalog-page { max-width: 1600px; margin: 0 auto; }
 .catalog-tabs { max-width: min(720px, 100%); }
 .catalog-tabs :deep(.q-tab) { min-height: 42px; padding-inline: 12px; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
@@ -94,7 +94,6 @@ onBeforeUnmount(destroy)
 .empty-state { min-height: 280px; }
 .load-tip { flex-direction: row; padding: 28px 0 8px; }
 :deep(.filter-option--active) { color: var(--q-primary); background: var(--primary-soft); }
-@media (max-width: 1439px) { .catalog-page { padding-inline: 24px; } }
 @media (max-width: 1023px) { .media-grid { grid-template-columns: repeat(auto-fill, minmax(144px, 1fr)); gap: 12px; } }
-@media (max-width: 599px) { .catalog-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .catalog-tabs { width: 100%; overflow: auto; } .catalog-tabs :deep(.q-tabs__content) { justify-content: flex-start; } .catalog-tabs :deep(.q-tab) { padding-inline: 8px; font-size: 12px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+@media (max-width: 599px) { .catalog-tabs { width: 100%; overflow: auto; } .catalog-tabs :deep(.q-tabs__content) { justify-content: flex-start; } .catalog-tabs :deep(.q-tab) { padding-inline: 8px; font-size: 12px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 </style>

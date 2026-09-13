@@ -144,7 +144,7 @@ onBeforeUnmount(() => { generation += 1 })
 </template>
 
 <style scoped>
-.detail-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.detail-page { max-width: 1600px; margin: 0 auto; }
 .detail-alert { color: var(--text-primary); background: color-mix(in srgb, var(--q-negative) 10%, var(--surface)); }
 .loading-state, .section-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 240px; color: var(--text-secondary); font-size: 13px; }
 .hero { position: relative; overflow: hidden; min-height: 360px; border-radius: 14px; background-color: var(--surface-muted); background-position: center; background-size: cover; }
@@ -174,6 +174,6 @@ onBeforeUnmount(() => { generation += 1 })
 .section-count { color: var(--text-secondary); font-size: 12px; }
 .person-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
-@media (max-width: 1023px) { .detail-page { padding-inline: 24px; } .info-grid { grid-template-columns: 1fr; } }
-@media (max-width: 599px) { .detail-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .hero, .hero-content { min-height: 0; } .hero-content { flex-direction: column; align-items: center; padding: 24px 18px; text-align: center; } .hero-poster { flex-basis: 190px; width: 128px; height: 190px; } .hero-info h1 { font-size: 23px; } .meta-row, .hero-actions { justify-content: center; } .info-grid { gap: 10px; } .person-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+@media (max-width: 1023px) { .info-grid { grid-template-columns: 1fr; } }
+@media (max-width: 599px) { .hero, .hero-content { min-height: 0; } .hero-content { flex-direction: column; align-items: center; padding: 24px 18px; text-align: center; } .hero-poster { flex-basis: 190px; width: 128px; height: 190px; } .hero-info h1 { font-size: 23px; } .meta-row, .hero-actions { justify-content: center; } .info-grid { gap: 10px; } .person-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 </style>

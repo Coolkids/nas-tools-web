@@ -74,5 +74,5 @@ async function remove(row: DownloadSetting) { if (row.id <= 0) return; if (!awai
 .editor-form { display: grid; gap: 16px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .dialog-actions { gap: 8px; }
-@media (max-width: 599px) { .download-setting { padding-bottom: 8px; } .editor-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .form-grid { grid-template-columns: 1fr; gap: 16px; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
+@media (max-width: 599px) { .editor-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .form-grid { grid-template-columns: 1fr; gap: 16px; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

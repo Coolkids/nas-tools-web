@@ -194,7 +194,6 @@ async function onDelete(row: RssParser) {
 .editor-form { display: grid; gap: 16px; }
 .editor-actions { gap: 8px; }
 @media (max-width: 599px) {
-  .rss-parser { padding-bottom: 8px; }
   .editor-dialog { width: 100%; min-height: 100dvh; border-radius: 0; }
   .editor-form { flex: 1; align-content: start; padding-bottom: 24px; }
   .editor-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); }

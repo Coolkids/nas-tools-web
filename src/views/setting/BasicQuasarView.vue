@@ -400,7 +400,7 @@ onMounted(loadData)
 </template>
 
 <style scoped>
-.basic-view { padding: 16px; }
+.basic-view { min-width: 0; }
 .settings-card { overflow: hidden; }
 .setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .setting-field { min-width: 0; }
@@ -415,7 +415,6 @@ onMounted(loadData)
 .scraper-title { font-weight: 600; margin-bottom: 8px; padding-left: 8px; border-left: 3px solid var(--q-primary); }
 .scraper-section :deep(.q-checkbox) { margin-right: 16px; min-width: 120px; }
 @media (max-width: 700px) {
-  .basic-view { padding: 12px; }
   .setting-grid { grid-template-columns: 1fr; gap: 10px; }
   .card-footer { justify-content: stretch; }
   .card-footer .q-btn { flex: 1; min-height: 44px; }

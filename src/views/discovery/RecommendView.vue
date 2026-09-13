@@ -115,7 +115,7 @@ onBeforeUnmount(destroy)
 </template>
 
 <style scoped>
-.recommend-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.recommend-page { max-width: 1600px; margin: 0 auto; }
 .source-tabs { max-width: min(720px, 100%); }
 .source-tabs :deep(.q-tab) { min-height: 42px; padding-inline: 12px; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
@@ -123,7 +123,6 @@ onBeforeUnmount(destroy)
 .loading-state { min-height: 360px; }
 .empty-state { min-height: 280px; }
 .load-tip { flex-direction: row; padding: 28px 0 8px; }
-@media (max-width: 1439px) { .recommend-page { padding-inline: 24px; } }
 @media (max-width: 1023px) { .media-grid { grid-template-columns: repeat(auto-fill, minmax(144px, 1fr)); gap: 12px; } }
-@media (max-width: 599px) { .recommend-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .source-tabs { width: 100%; overflow: auto; } .source-tabs :deep(.q-tabs__content) { justify-content: flex-start; } .source-tabs :deep(.q-tab) { padding-inline: 8px; font-size: 12px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+@media (max-width: 599px) { .source-tabs { width: 100%; overflow: auto; } .source-tabs :deep(.q-tabs__content) { justify-content: flex-start; } .source-tabs :deep(.q-tab) { padding-inline: 8px; font-size: 12px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 </style>

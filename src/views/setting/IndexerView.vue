@@ -93,5 +93,5 @@ onMounted(load)
 .builtin-section, .editor-form { position: relative; display: grid; gap: 16px; }
 .site-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; max-height: 360px; overflow-y: auto; }
 .dialog-actions { gap: 8px; }
-@media (max-width: 599px) { .indexer-view { padding-bottom: 8px; } .editor-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .site-grid { grid-template-columns: 1fr; max-height: none; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
+@media (max-width: 599px) { .editor-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .site-grid { grid-template-columns: 1fr; max-height: none; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>

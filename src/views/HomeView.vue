@@ -323,7 +323,7 @@ onMounted(() => { void load() })
 </template>
 
 <style scoped>
-.home-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.home-page { max-width: 1600px; margin: 0 auto; }
 .home-alert { color: var(--text-primary); background: color-mix(in srgb, var(--q-negative) 10%, var(--surface)); }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .metric-card, .content-card { background: var(--surface); border-color: var(--border-subtle); }
@@ -366,7 +366,6 @@ onMounted(() => { void load() })
 .history-event-copy { min-width: 0; }
 .history-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-event-date { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.2; }
-@media (max-width: 1439px) { .home-page { padding-inline: 24px; } }
 @media (max-width: 1023px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 599px) { .home-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .metric-chart-legend { display: none; } .history-table :deep(.vxe-header--column), .history-table :deep(.vxe-body--column) { padding-inline: 12px; } .history-table :deep(.vxe-table--scroll-y-virtual) { width: 0 !important; } .history-table :deep(.vxe-table--scroll-y-wrapper) { display: none; } }
+@media (max-width: 599px) { .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .metric-chart-legend { display: none; } .history-table :deep(.vxe-header--column), .history-table :deep(.vxe-body--column) { padding-inline: 12px; } .history-table :deep(.vxe-table--scroll-y-virtual) { width: 0 !important; } .history-table :deep(.vxe-table--scroll-y-wrapper) { display: none; } }
 </style>

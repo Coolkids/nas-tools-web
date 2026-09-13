@@ -17,6 +17,6 @@ const router = useRouter()
 </template>
 
 <style scoped>
-.not-found-page { display: grid; place-items: center; min-height: calc(100vh - var(--app-header-height)); padding: 24px; background: var(--page-bg); }
+.not-found-page { display: grid; place-items: center; min-height: 100%; background: var(--page-bg); }
 .not-found-card { width: min(100%, 420px); }
 </style>

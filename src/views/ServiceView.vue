@@ -260,7 +260,6 @@ onMounted(load)
 .network-mobile-list { display: none; }
 @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 599px) {
-  .service { padding-bottom: 8px; }
   .stat-grid { gap: 8px; }
   .stat-card { padding: 14px; }
   .stat-value { font-size: 21px; }

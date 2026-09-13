@@ -116,7 +116,7 @@ watch(() => route.query.type, (value) => {
 </template>
 
 <style scoped>
-.person-page { max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.person-page { max-width: 1600px; margin: 0 auto; }
 .person-alert { color: var(--text-primary); background: color-mix(in srgb, var(--q-negative) 10%, var(--surface)); }
 .person-header { display: flex; align-items: center; gap: 20px; margin-bottom: 16px; padding: 20px; background: var(--surface); border-color: var(--border-subtle); }
 .person-meta { min-width: 0; }
@@ -126,6 +126,5 @@ watch(() => route.query.type, (value) => {
 .loading-state { min-height: 320px; }
 .empty-state { min-height: 280px; }
 .load-tip { flex-direction: row; padding: 28px 0 8px; }
-@media (max-width: 1439px) { .person-page { padding-inline: 24px; } }
-@media (max-width: 599px) { .person-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .person-header { padding: 16px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+@media (max-width: 599px) { .person-header { padding: 16px; } .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 </style>
