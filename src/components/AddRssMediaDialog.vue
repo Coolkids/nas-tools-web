@@ -158,12 +158,20 @@ async function loadOptions() {
       getRssSites(),
       getIndexers(),
       getDownloadSettings(),
-      (await import('@/api/request')).doAction<{ code: number; ruleGroups?: Array<{ id: number | string; name: string }> }>('get_filterrules', {})
+      (await import('@/api/request')).doAction<{
+        code: number
+        ruleGroups?: Array<{ id: number | string; name: string }>
+        initRules?: Array<{ id: number | string; name: string }>
+      }>('get_filterrules', {})
     ])
     if (rssRes.code === 0) rssSites.value = rssRes.sites || []
     if (idxRes.code === 0) searchSites.value = idxRes.indexers || []
     if (dsRes.code === 0) downloadSettings.value = dsRes.data || []
-    if (ruleRes.code === 0) ruleGroups.value = ruleRes.ruleGroups || []
+    if (ruleRes.code === 0) {
+      // 内置规则位于 initRules，编辑已有订阅时也需要将它们作为选项加载，
+      // 否则 Quasar 会回退为显示规则 ID。
+      ruleGroups.value = [...(ruleRes.initRules || []), ...(ruleRes.ruleGroups || [])]
+    }
   } catch {
     /* ignore */
   } finally {

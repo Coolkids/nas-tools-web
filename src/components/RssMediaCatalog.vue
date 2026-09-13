@@ -33,8 +33,16 @@ const filteredItems = computed(() => {
 
 async function loadFilterRules() {
   try {
-    const response = await doAction<{ code: number; ruleGroups?: Array<{ id: number | string; name: string }> }>('get_filterrules', {})
-    if (response.code === 0) filterRuleMap.value = Object.fromEntries((response.ruleGroups || []).map((group) => [String(group.id), group.name]))
+    const response = await doAction<{
+      code: number
+      ruleGroups?: Array<{ id: number | string; name: string }>
+      initRules?: Array<{ id: number | string; name: string }>
+    }>('get_filterrules', {})
+    if (response.code === 0) {
+      // 内置规则在 initRules 中返回，不会出现在 ruleGroups 里。
+      const groups = [...(response.initRules || []), ...(response.ruleGroups || [])]
+      filterRuleMap.value = Object.fromEntries(groups.map((group) => [String(group.id), group.name]))
+    }
   } catch { filterRuleMap.value = {} }
 }
 
