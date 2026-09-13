@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
+import NameTestResult from '@/components/NameTestResult.vue'
 import { useModalStore } from '@/stores/modal'
 import { getConfig, type AppConfig } from '@/api/config'
 import {
@@ -127,12 +128,14 @@ async function runService(service: ServiceItem) {
 
 const nameTestVisible = ref(false)
 const nameTestInput = ref('')
+const nameTestSubmitted = ref('')
 const nameTestLoading = ref(false)
 const nameTestResult = ref<NameTestData | { name: string } | null>(null)
-const nameData = computed(() => nameTestResult.value && 'title' in nameTestResult.value ? nameTestResult.value as NameTestData : null)
+let nameTestRequest = 0
 
 function openNameTest() {
   nameTestInput.value = ''
+  nameTestSubmitted.value = ''
   nameTestResult.value = null
   nameTestVisible.value = true
 }
@@ -141,26 +144,21 @@ async function doNameTest() {
   const name = nameTestInput.value.trim()
   if (!name) { modal.warning('请输入资源名称'); return }
   nameTestLoading.value = true
+  nameTestSubmitted.value = name
   nameTestResult.value = null
+  const requestId = ++nameTestRequest
   try {
     const response = await nameTest(name)
+    if (requestId !== nameTestRequest) return
     if (response.code === 0 && response.data) nameTestResult.value = response.data
     else nameTestResult.value = { name: '无法识别' }
   } catch (error) {
-    modal.error(error instanceof Error ? error.message : '识别失败')
+    if (requestId !== nameTestRequest) return
+    nameTestResult.value = { name: error instanceof Error ? error.message : '识别失败' }
   } finally {
     nameTestLoading.value = false
   }
 }
-
-function copyText(value: string) {
-  navigator.clipboard.writeText(value).then(() => modal.success('已复制到剪贴板')).catch(() => modal.error('复制失败'))
-}
-function openUrl(url?: string) { if (url) window.open(url, '_blank', 'noopener,noreferrer') }
-function searchTmdb(query: string) { if (query) openUrl(`https://www.themoviedb.org/search?query=${encodeURIComponent(query)}`) }
-function toArray(value: unknown): string[] { return Array.isArray(value) ? value.filter(Boolean).map(String) : typeof value === 'string' && value ? [value] : [] }
-function replacedWords(data: NameTestData) { return toArray(data.replaced_words) }
-function showOrgString(data: NameTestData) { return !!data.org_string && (replacedWords(data).length > 0 || !data.tmdbid) }
 
 const netTestVisible = ref(false)
 const netTestLoading = ref(false)
@@ -222,19 +220,14 @@ onMounted(load)
     </q-card>
 
     <q-dialog v-model="nameTestVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm">
-      <q-card class="tool-dialog">
+      <q-card class="tool-dialog name-test-dialog result-dialog-card">
         <q-card-section class="row items-center"><div class="text-h6">名称识别测试</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator />
-        <q-card-section>
-          <q-input v-model="nameTestInput" outlined clearable autofocus placeholder="种子名 / 文件名等" :loading="nameTestLoading" @keyup.enter="doNameTest"><template #prepend><q-icon name="search" /></template></q-input>
-          <div v-if="nameData" class="name-test-result">
-            <div class="result-row"><q-chip clickable color="warning" text-color="white" icon="title" :label="`识别名称：${nameData.name}`" @click="searchTmdb(nameData.name)" /><q-chip v-if="showOrgString(nameData)" outline color="warning" :label="`识别用名：${nameData.org_string}`" /></div>
-            <div v-if="replacedWords(nameData).length" class="result-row"><span class="result-label">应用替换词</span><q-chip v-for="word in replacedWords(nameData)" :key="word" dense color="grey-3" text-color="grey-8" :label="word" /></div>
-            <div class="result-row"><q-chip clickable color="positive" text-color="white" :label="`标题：${nameData.title}`" @click="copyText(nameData.title)" /><q-chip v-if="nameData.tmdbid" clickable color="positive" text-color="white" :label="`TMDB ID：${nameData.tmdbid}`" @click="openUrl(nameData.tmdblink)" /><q-chip v-if="nameData.year" color="warning" text-color="white" :label="`年份：${nameData.year}`" /><q-chip v-if="nameData.season_episode" clickable color="warning" text-color="white" :label="`季集：${nameData.season_episode}`" @click="openUrl(nameData.tmdb_S_E_link)" /></div>
-            <div class="result-row"><q-chip v-for="entry in [{ label: '质量', value: nameData.restype }, { label: '特性', value: nameData.effect }, { label: '类别', value: nameData.category }, { label: '分辨率', value: nameData.pix }, { label: '视频编码', value: nameData.video_codec }, { label: '音频编码', value: nameData.audio_codec }, { label: '制作组/字幕组', value: nameData.team }, { label: '分集', value: nameData.part }].filter((item) => item.value)" :key="entry.label" dense outline :label="`${entry.label}：${entry.value}`" /></div>
-          </div>
-          <q-banner v-else-if="nameTestResult" class="q-mt-md" dense rounded><template #avatar><q-icon name="error_outline" color="negative" /></template>{{ nameTestResult.name }}</q-banner>
+        <q-card-section class="name-test-dialog-body">
+          <q-input v-model="nameTestInput" outlined clearable autofocus label="资源名称" placeholder="输入种子名或文件名" :loading="nameTestLoading" @keyup.enter="doNameTest"><template #prepend><q-icon name="search" /></template></q-input>
+          <NameTestResult v-if="nameTestResult" :result="nameTestResult" :input="nameTestSubmitted" />
+          <div v-else-if="!nameTestLoading" class="name-test-empty"><q-icon name="manage_search" size="42px" color="grey-5" /><div>输入种子名或文件名，查看识别结果</div></div>
         </q-card-section>
-        <q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="关闭" v-close-popup /><q-btn color="primary" unelevated :loading="nameTestLoading" label="识别" @click="doNameTest" /></q-card-actions>
+        <q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="关闭" v-close-popup /><q-btn color="primary" unelevated :loading="nameTestLoading" :label="nameTestSubmitted ? '重新识别' : '开始识别'" @click="doNameTest" /></q-card-actions>
       </q-card>
     </q-dialog>
 
@@ -259,10 +252,10 @@ onMounted(load)
 .mobile-service-list { display: grid; gap: 10px; padding: 12px; }
 .service-item { border-radius: 12px; }
 .tool-dialog { width: min(680px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
+.name-test-dialog { width: min(920px, calc(100vw - 32px)); }
 .network-dialog { width: min(760px, calc(100vw - 32px)); }
-.name-test-result { display: grid; gap: 10px; margin-top: 16px; }
-.result-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.result-label { color: var(--text-secondary); font-size: 13px; }
+.name-test-dialog-body { max-height: 75vh; overflow-y: auto; }
+.name-test-empty { display: grid; justify-items: center; gap: 8px; padding: 48px 16px; color: var(--text-secondary); text-align: center; }
 .dialog-actions { gap: 8px; }
 .network-mobile-list { display: none; }
 @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -272,6 +265,7 @@ onMounted(load)
   .stat-card { padding: 14px; }
   .stat-value { font-size: 21px; }
   .tool-dialog { width: 100%; min-height: 100dvh; border-radius: 0; }
+  .name-test-dialog-body { max-height: none; flex: 1; overflow-y: auto; }
   .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); }
   .dialog-actions :deep(.q-btn) { min-height: 44px; }
   .network-table { display: none; }

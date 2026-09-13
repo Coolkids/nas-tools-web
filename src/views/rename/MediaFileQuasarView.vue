@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { doAction } from '@/api'
 import PageHeader from '@/components/PageHeader.vue'
+import NameTestResult from '@/components/NameTestResult.vue'
 import { useModalStore } from '@/stores/modal'
 import { nameTest, refreshProcess, type NameTestData } from '@/api/system'
 import { getConfig } from '@/api/config'
@@ -164,6 +165,15 @@ function goInput() {
   load(pathInput.value)
 }
 
+async function copyPath() {
+  try {
+    await navigator.clipboard.writeText(pathInput.value)
+    modal.success('路径已复制')
+  } catch {
+    modal.info(`路径复制失败，请手动复制：\n${pathInput.value}`)
+  }
+}
+
 function isDir(f: FileItem): boolean {
   return !f.ext || f.type === 'dir'
 }
@@ -172,6 +182,32 @@ const fileItems = computed(() => files.value.filter((f) => !isDir(f)))
 
 function clickItem(f: FileItem) {
   if (isDir(f)) load(f.path)
+}
+
+const fileDetailsVisible = ref(false)
+const selectedFile = ref<FileItem | null>(null)
+
+function openFileDetails(file: FileItem) {
+  selectedFile.value = file
+  fileDetailsVisible.value = true
+}
+
+function detailNameTest() {
+  if (!selectedFile.value) return
+  fileDetailsVisible.value = false
+  doNameTest(selectedFile.value)
+}
+
+function detailTransfer() {
+  if (!selectedFile.value) return
+  fileDetailsVisible.value = false
+  openTransfer(selectedFile.value)
+}
+
+function detailRename() {
+  if (!selectedFile.value) return
+  fileDetailsVisible.value = false
+  openRename(selectedFile.value)
 }
 
 const renameVisible = ref(false)
@@ -228,19 +264,39 @@ async function downloadSubtitle(f: FileItem) {
 
 const nameTestLoading = ref<Record<string, boolean>>({})
 const nameTestResults = reactive<Record<string, NameTestData | { name: string }>>({})
-const chipOrder = ['name', 'year', 'season_episode', 'title', 'tmdbid', 'restype', 'pix', 'video_codec', 'audio_codec', 'team']
+const nameTestRequests = reactive<Record<string, number>>({})
 
 async function doNameTest(f: FileItem) {
   const key = f.path
   nameTestLoading.value[key] = true
+  const requestId = (nameTestRequests[key] || 0) + 1
+  nameTestRequests[key] = requestId
   try {
     const res = await nameTest(f.name)
+    if (requestId !== nameTestRequests[key]) return
     nameTestResults[key] = res.code === 0 && res.data ? res.data : { name: '无法识别' }
   } catch {
+    if (requestId !== nameTestRequests[key]) return
     nameTestResults[key] = { name: '识别失败' }
   } finally {
     nameTestLoading.value[key] = false
   }
+}
+
+const nameResultVisible = ref(false)
+const selectedNameResult = ref<FileItem | null>(null)
+const selectedNameTestResult = computed(() => selectedNameResult.value ? nameTestResults[selectedNameResult.value.path] : null)
+
+function openNameResult(file: FileItem) {
+  if (!nameTestResults[file.path] || !('title' in nameTestResults[file.path])) return
+  selectedNameResult.value = file
+  nameResultVisible.value = true
+}
+
+function retestSelectedNameResult() {
+  if (!selectedNameResult.value) return
+  nameResultVisible.value = false
+  doNameTest(selectedNameResult.value)
 }
 
 const transferVisible = ref(false)
@@ -433,46 +489,6 @@ async function doHardlinkSearch() {
   }
 }
 
-function chipType(key: string): string {
-  const map: Record<string, string> = { name: 'warning', year: 'warning', season_episode: 'warning', title: 'positive', tmdbid: 'positive', team: 'info' }
-  return map[key] || 'grey-7'
-}
-
-function chipLabel(key: string): string {
-  const map: Record<string, string> = { name: '名称', year: '年份', season_episode: '季集', title: '标题', tmdbid: 'TMDB ID', restype: '质量', pix: '分辨率', video_codec: '视频编码', audio_codec: '音频编码', team: '制作组' }
-  return map[key] || key
-}
-
-const clickChipKeys = ['name', 'title', 'tmdbid', 'season_episode']
-function isClickChip(key: string): boolean {
-  return clickChipKeys.includes(key)
-}
-
-function openUrl(url: string) {
-  if (url) window.open(url, '_blank')
-}
-
-function handleChipClick(key: string, row: FileItem) {
-  const result = nameTestResults[row.path] as NameTestData
-  if (key === 'name') {
-    openUrl('https://www.themoviedb.org/search?query=' + encodeURIComponent(result.name))
-  } else if (key === 'title') {
-    navigator.clipboard?.writeText(result.title).then(
-      () => modal.success('标题已复制'),
-      () => modal.info(result.title)
-    )
-  } else if (key === 'tmdbid') {
-    if (result.tmdblink) openUrl(result.tmdblink)
-    else if (result.tmdbid) openUrl('https://www.themoviedb.org/' + (result.type === '电影' ? 'movie' : 'tv') + '/' + result.tmdbid)
-  } else if (key === 'season_episode') {
-    if (result.tmdb_S_E_link) openUrl(result.tmdb_S_E_link)
-    else if (result.tmdbid) {
-      const m = String(result.season_episode).match(/S(\d+)/i)
-      openUrl('https://www.themoviedb.org/tv/' + result.tmdbid + '/season/' + (m ? m[1] : '1'))
-    }
-  }
-}
-
 interface TmdbSearchItem {
   tmdb_id: string
   title: string
@@ -570,17 +586,24 @@ async function deleteSelectedHardlinks() {
   <div class="mediafile page-shell">
     <PageHeader title="文件管理" description="浏览媒体目录、识别、转移、重命名、删除、字幕与硬链接查询">
       <template #actions>
-        <q-btn outline color="primary" icon="arrow_upward" label="上级目录" @click="parentDir" />
-        <q-btn outline color="primary" icon="upload" label="转移目录" @click="openTransferAll" />
-        <q-btn outline color="primary" icon="link" label="所有硬链接" @click="openHardlinkAll" />
+        <q-btn v-if="!$q.screen.lt.sm" outline color="primary" icon="arrow_upward" label="上级目录" @click="parentDir" />
+        <q-btn v-if="!$q.screen.lt.sm" outline color="primary" icon="upload" label="转移当前目录" @click="openTransferAll" />
+        <q-btn v-if="!$q.screen.lt.sm" outline color="primary" icon="link" label="查询当前目录硬链接" @click="openHardlinkAll" />
+        <q-btn-dropdown v-else outline color="primary" icon="more_horiz" label="更多" auto-close>
+          <q-list separator>
+            <q-item clickable @click="parentDir"><q-item-section avatar><q-icon name="arrow_upward" /></q-item-section><q-item-section>上级目录</q-item-section></q-item>
+            <q-item clickable @click="openTransferAll"><q-item-section avatar><q-icon name="upload" /></q-item-section><q-item-section>转移当前目录</q-item-section></q-item>
+            <q-item clickable @click="openHardlinkAll"><q-item-section avatar><q-icon name="link" /></q-item-section><q-item-section>查询当前目录硬链接</q-item-section></q-item>
+          </q-list>
+        </q-btn-dropdown>
         <q-btn unelevated color="primary" icon="refresh" label="刷新" @click="load()" />
       </template>
     </PageHeader>
 
     <q-card flat bordered class="path-card">
-      <q-input v-model="pathInput" outlined dense placeholder="目录路径" @keyup.enter="goInput">
+      <q-input v-model="pathInput" outlined dense label="当前目录路径" placeholder="输入路径后按 Enter 前往" @keyup.enter="goInput">
         <template #prepend><q-icon name="folder_open" /></template>
-        <template #append><q-btn flat dense round icon="arrow_forward" aria-label="前往" @click="goInput" /></template>
+        <template #append><q-btn flat dense round icon="content_copy" aria-label="复制完整路径" @click="copyPath"><q-tooltip>复制完整路径</q-tooltip></q-btn><q-btn flat dense round icon="arrow_forward" aria-label="前往" @click="goInput"><q-tooltip>前往目录</q-tooltip></q-btn></template>
       </q-input>
       <q-breadcrumbs class="crumbs" active-color="primary">
         <q-breadcrumbs-el
@@ -623,10 +646,6 @@ async function deleteSelectedHardlinks() {
       <q-card flat bordered class="file-panel">
         <q-card-section class="list-header file-header">
           <div class="section-title"><q-icon name="description" color="primary" />文件 <span class="muted">{{ fileItems.length }} 个</span></div>
-          <div class="file-actions">
-            <q-btn flat dense color="primary" icon="upload" label="转移目录" @click="openTransferAll" />
-            <q-btn flat dense color="primary" icon="link" label="所有硬链接" @click="openHardlinkAll" />
-          </div>
         </q-card-section>
         <q-separator />
         <q-inner-loading :showing="loading"><q-spinner color="primary" size="42px" /></q-inner-loading>
@@ -638,11 +657,11 @@ async function deleteSelectedHardlinks() {
           <div class="file-top">
             <div class="file-info">
               <q-icon name="description" color="grey-7" size="22px" />
-              <button class="file-name file-name-button" type="button" @click="clickItem(row)">{{ row.name }}</button>
+              <button class="file-name file-name-button" type="button" :title="row.path" @click="openFileDetails(row)">{{ row.name }}<q-tooltip>查看文件详情：{{ row.path }}</q-tooltip></button>
               <q-badge v-if="row.size" color="grey-3" text-color="grey-8">{{ row.size }}</q-badge>
             </div>
             <div class="file-ops">
-              <q-btn flat dense color="primary" icon="handyman" label="识别" @click="doNameTest(row)" />
+              <q-btn flat dense color="primary" icon="handyman" label="识别" :loading="nameTestLoading[row.path]" :disable="nameTestLoading[row.path]" @click="doNameTest(row)" />
               <q-btn flat dense color="primary" icon="upload" label="转移" @click="openTransfer(row)" />
               <q-btn flat dense color="primary" icon="subtitles" label="字幕" @click="downloadSubtitle(row)" />
               <q-btn flat dense color="primary" icon="link" label="硬链接" @click="openHardlink(row)" />
@@ -650,25 +669,38 @@ async function deleteSelectedHardlinks() {
               <q-btn flat dense color="negative" icon="delete" label="删除" @click="deleteFile(row)" />
             </div>
           </div>
-          <div v-if="nameTestResults[row.path]" class="chips-row">
-            <q-spinner-dots v-if="nameTestLoading[row.path]" color="primary" size="20px" />
-            <template v-else-if="'title' in nameTestResults[row.path]">
-              <q-badge
-                v-for="key in chipOrder"
-                v-show="(nameTestResults[row.path] as any)[key]"
-                :key="key"
-                :color="chipType(key)"
-                :class="{ 'click-chip': isClickChip(key) }"
-                @click="handleChipClick(key, row)"
-              >
-                {{ chipLabel(key) }}：{{ (nameTestResults[row.path] as any)[key] }}
-              </q-badge>
-            </template>
-            <q-badge v-else color="negative">{{ (nameTestResults[row.path] as any).name }}</q-badge>
-          </div>
+          <div v-if="nameTestLoading[row.path]" class="recognition-loading"><q-spinner-dots color="primary" size="20px" /><span>{{ nameTestResults[row.path] ? '上次结果 · 正在重新识别' : '正在识别…' }}</span></div>
+          <NameTestResult v-else-if="nameTestResults[row.path]" :result="nameTestResults[row.path]" :input="row.name" :source="row.path" compact @open-details="openNameResult(row)" />
         </div>
       </q-card>
     </div>
+
+    <q-dialog v-model="nameResultVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm">
+      <q-card class="name-result-dialog result-dialog-card">
+        <q-card-section class="dialog-title"><div class="text-h6">名称识别结果</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section>
+        <q-separator />
+        <q-card-section class="name-result-dialog-body">
+          <NameTestResult v-if="selectedNameResult && selectedNameTestResult" :result="selectedNameTestResult" :input="selectedNameResult.name" :source="selectedNameResult.path" />
+        </q-card-section>
+        <q-separator />
+        <q-card-actions align="right"><q-btn flat label="关闭" v-close-popup /><q-btn color="primary" unelevated icon="refresh" label="重新识别" @click="retestSelectedNameResult" /></q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <q-dialog v-model="fileDetailsVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm">
+      <q-card class="file-detail-dialog">
+        <q-card-section class="dialog-title"><div class="text-h6">文件详情</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section>
+        <q-separator />
+        <q-card-section v-if="selectedFile" class="file-detail-body">
+          <div class="detail-heading"><q-icon name="description" color="primary" size="28px" /><div class="detail-name" :title="selectedFile.name">{{ selectedFile.name }}</div></div>
+          <div class="detail-grid"><div><span class="field-label">完整路径</span><span class="detail-value" :title="selectedFile.path">{{ selectedFile.path }}</span></div><div><span class="field-label">大小</span><span class="detail-value">{{ selectedFile.size || '未返回' }}</span></div><div><span class="field-label">类型</span><span class="detail-value">{{ selectedFile.ext || selectedFile.type || '未返回' }}</span></div></div>
+          <NameTestResult v-if="selectedNameResult?.path === selectedFile.path && selectedNameTestResult" :result="selectedNameTestResult" :input="selectedFile.name" :source="selectedFile.path" compact @open-details="openNameResult(selectedFile)" />
+          <div v-else class="detail-recognition-hint"><q-icon name="info_outline" /><span>可在此查看文件信息，或直接开始名称识别。</span></div>
+        </q-card-section>
+        <q-separator />
+        <q-card-actions align="right"><q-btn flat label="关闭" v-close-popup /><q-btn flat color="primary" icon="handyman" label="识别" @click="detailNameTest" /><q-btn flat color="primary" icon="edit" label="重命名" @click="detailRename" /><q-btn color="primary" unelevated icon="upload" label="转移" @click="detailTransfer" /></q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <q-dialog v-model="transferVisible" persistent>
       <q-card class="dialog-card wide-dialog">
@@ -776,7 +808,7 @@ async function deleteSelectedHardlinks() {
 </template>
 
 <style scoped>
-.mediafile { padding: 16px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: auto; }
+.mediafile { width: 100%; max-width: 1600px; min-width: 0; margin: 0 auto; padding: 24px 32px 40px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: auto; }
 .path-card { margin-bottom: 12px; padding: 14px; }
 .crumbs { margin-top: 12px; }
 .crumb-link { cursor: pointer; }
@@ -799,8 +831,7 @@ async function deleteSelectedHardlinks() {
 .file-name-button { border: 0; padding: 0; background: transparent; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
 .file-name-button:hover { color: var(--q-primary); }
 .file-ops { display: flex; flex-wrap: wrap; gap: 2px; flex-shrink: 0; justify-content: flex-end; }
-.chips-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; padding-left: 30px; }
-.click-chip { cursor: pointer; }
+.recognition-loading { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-left: 30px; color: var(--text-secondary); font-size: 12px; }
 .empty-state { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-secondary); }
 .empty-state.compact { min-height: 120px; }
 .dialog-card { width: min(92vw, 560px); max-width: 100%; }
@@ -809,8 +840,20 @@ async function deleteSelectedHardlinks() {
 .progress-card { width: min(92vw, 420px); }
 .tmdb-dialog { width: min(92vw, 600px); }
 .hardlink-dialog { width: min(92vw, 760px); }
+.name-result-dialog { width: min(900px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
+.file-detail-dialog { width: min(720px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
 .dialog-title { padding: 16px 20px; }
 .dialog-body { max-height: 70vh; overflow-y: auto; }
+.name-result-dialog-body { max-height: 75vh; overflow-y: auto; }
+.file-detail-body { max-height: 75vh; overflow-y: auto; }
+.detail-heading { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.detail-name { min-width: 0; overflow-wrap: anywhere; color: var(--text-primary); font-size: 18px; font-weight: 650; line-height: 1.4; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.detail-grid > div { display: grid; gap: 4px; min-width: 0; padding: 10px; border-radius: 8px; background: var(--surface-muted); }
+.detail-grid > div:first-child { grid-column: 1 / -1; }
+.detail-value { overflow-wrap: anywhere; color: var(--text-primary); font-size: 13px; }
+.field-label { color: var(--text-secondary); font-size: 12px; }
+.detail-recognition-hint { display: flex; align-items: center; gap: 6px; margin-top: 16px; color: var(--text-secondary); font-size: 13px; }
 .form-row { gap: 12px; align-items: flex-start; }
 .form-row > * { flex: 1; min-width: 0; }
 .search-row { gap: 8px; }
@@ -820,7 +863,7 @@ async function deleteSelectedHardlinks() {
 .hl-file-title { padding: 7px 10px; border-radius: 5px; background: var(--surface-muted); font-weight: 600; }
 .hardlink-actions { justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 @media (max-width: 900px) {
-  .mediafile { padding: 12px; }
+  .mediafile { padding: 16px 12px 28px; }
   .split-layout { flex-direction: column; }
   .dir-panel { width: 100%; min-height: 180px; max-height: 260px; }
   .file-panel { min-height: 260px; }
@@ -833,9 +876,16 @@ async function deleteSelectedHardlinks() {
   .file-ops { gap: 4px; }
   .file-ops :deep(.q-btn) { min-height: 38px; }
   .file-ops :deep(.q-btn__content) { flex-direction: column; gap: 2px; font-size: 11px; }
-  .chips-row { padding-left: 0; }
+  .recognition-loading { padding-left: 0; }
   .form-row { flex-direction: column; gap: 8px; }
   .form-row > * { width: 100%; }
   .hardlink-actions { align-items: flex-start; }
+}
+@media (max-width: 599px) {
+  .name-result-dialog { width: 100%; min-height: 100dvh; border-radius: 0; }
+  .name-result-dialog-body { max-height: none; flex: 1; overflow-y: auto; padding: 12px; }
+  .file-detail-dialog { width: 100%; min-height: 100dvh; border-radius: 0; }
+  .file-detail-body { max-height: none; flex: 1; overflow-y: auto; }
+  .detail-grid { grid-template-columns: 1fr; }
 }
 </style>
