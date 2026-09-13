@@ -220,7 +220,7 @@ onMounted(load)
     </q-card>
 
     <q-dialog v-model="nameTestVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm">
-      <q-card class="tool-dialog name-test-dialog result-dialog-card">
+      <q-card class="tool-dialog name-test-dialog">
         <q-card-section class="row items-center"><div class="text-h6">名称识别测试</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator />
         <q-card-section class="name-test-dialog-body">
           <q-input v-model="nameTestInput" outlined clearable autofocus label="资源名称" placeholder="输入种子名或文件名" :loading="nameTestLoading" @keyup.enter="doNameTest"><template #prepend><q-icon name="search" /></template></q-input>

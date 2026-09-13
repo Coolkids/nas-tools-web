@@ -24,7 +24,7 @@ function isActive(to: string) {
 </script>
 
 <template>
-  <div class="sidebar-content">
+  <div class="sidebar-content" :class="{ 'sidebar-content--mini': mini }">
     <div class="sidebar-brand">
       <q-avatar rounded color="primary" text-color="white" icon="movie" size="40px" />
       <div v-if="!mini" class="sidebar-brand-copy">
@@ -162,6 +162,9 @@ function isActive(to: string) {
 
 <style scoped>
 .sidebar-content { display: flex; flex-direction: column; height: 100%; background: var(--surface); }
+.sidebar-content--mini .sidebar-list { padding-inline: 0; }
+.sidebar-content--mini .sidebar-scroll :deep(.q-scrollarea__container) { overflow-x: hidden; }
+.sidebar-content--mini .sidebar-scroll :deep(.q-scrollarea__bar--h), .sidebar-content--mini .sidebar-scroll :deep(.q-scrollarea__thumb--h) { display: none; }
 .sidebar-brand { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 16px; }
 .sidebar-brand-copy { min-width: 0; }
 .sidebar-brand-title { font-size: 17px; font-weight: 700; letter-spacing: .2px; }

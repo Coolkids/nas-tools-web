@@ -62,9 +62,17 @@ a { color: inherit; text-decoration: none; }
 @keyframes request-progress-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(285%); } }
 
 /* Keep ordinary forms and confirmations readable on desktop. The resource search
-   result dialog opts out because it intentionally needs a wide master/detail view. */
-@media (min-width: 600px) {
-  .q-dialog__inner > .q-card:not(.result-dialog-card) { max-width: min(760px, calc(100vw - 32px)); }
+   result dialog opts out because it intentionally needs a wide master/detail view.
+   full-width dialogs need an explicit width override because Quasar applies its
+   full-width rule with !important. */
+@media (min-width: 1024px) {
+  .q-dialog__inner > :not(.result-dialog-card) {
+    max-width: min(720px, calc(100vw - 48px)) !important;
+  }
+
+  .q-dialog__inner--fullwidth > :not(.result-dialog-card) {
+    width: min(720px, calc(100vw - 48px)) !important;
+  }
 }
 
 @media (max-width: 599px) {
