@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import type { QVirtualScroll } from 'quasar'
 import { doAction } from '@/api'
 import { getMovieRssList, getTvRssList, type RssMediaItem } from '@/api/rss'
 import PageHeader from '@/components/PageHeader.vue'
@@ -16,11 +17,33 @@ interface CalendarEvent {
   rssid?: string | number
 }
 
+interface ScheduleDateRow {
+  kind: 'date'
+  key: string
+  date: string
+}
+
+interface ScheduleEventRow {
+  kind: 'event'
+  key: string
+  date: string
+  event: CalendarEvent
+}
+
+interface ScheduleEmptyRow {
+  kind: 'empty'
+  key: string
+  date: string
+}
+
+type ScheduleRow = ScheduleDateRow | ScheduleEventRow | ScheduleEmptyRow
+
 const modal = useModalStore()
 const loading = ref(false)
 const loadError = ref('')
 const currentDate = ref(new Date())
 const events = ref<CalendarEvent[]>([])
+const scheduleVirtualScroll = ref<QVirtualScroll | null>(null)
 const viewMode = ref<'week' | 'month' | 'schedule'>('week')
 const viewOptions = [
   { label: '周', value: 'week', icon: 'view_week' },
@@ -67,6 +90,10 @@ function dateKey(date: Date) { return `${date.getFullYear()}-${pad(date.getMonth
 function formatDate(date: Date) { return dateKey(date) }
 function monthLabel(date: Date) { return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月` }
 function isToday(date: Date) { const now = new Date(); return dateKey(date) === dateKey(now) }
+function dateFromKey(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
 function eventsOf(date: Date) { const key = dateKey(date); return events.value.filter((event) => (event.start || '').slice(0, 10) === key) }
 function isMovie(event: CalendarEvent) { return event.type === '电影' || event.type === 'MOV' }
 function posterStyle(event: CalendarEvent): Record<string, string> { return event.poster ? { backgroundImage: `url(${event.poster})` } : {} }
@@ -96,6 +123,25 @@ const groupedSchedule = computed(() => {
   if (!map.has(today)) map.set(today, [])
   return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
 })
+const todayKey = computed(() => dateKey(new Date()))
+const scheduleRows = computed<ScheduleRow[]>(() => {
+  const rows: ScheduleRow[] = []
+  for (const [date, dayEvents] of groupedSchedule.value) {
+    rows.push({ kind: 'date', key: `date-${date}`, date })
+    if (dayEvents.length) {
+      dayEvents.forEach((event, index) => rows.push({
+        kind: 'event',
+        key: `event-${event.id}-${event.start}-${index}`,
+        date,
+        event
+      }))
+    } else {
+      rows.push({ kind: 'empty', key: `empty-${date}`, date })
+    }
+  }
+  return rows
+})
+const todayScheduleRowIndex = computed(() => scheduleRows.value.findIndex((row) => row.kind === 'date' && row.date === todayKey.value))
 const totalEvents = computed(() => events.value.length)
 
 function inCurrentMonth(date: Date) { return date.getMonth() === currentDate.value.getMonth() }
@@ -105,7 +151,10 @@ function onToday() { currentDate.value = new Date() }
 
 function scrollScheduleToToday() {
   if (viewMode.value !== 'schedule') return
-  void nextTick(() => document.querySelector<HTMLElement>('.schedule-view .is-today')?.scrollIntoView({ block: 'center', behavior: 'smooth' }))
+  void nextTick(() => {
+    const index = todayScheduleRowIndex.value
+    if (index >= 0) scheduleVirtualScroll.value?.scrollTo(index, 'center-force')
+  })
 }
 
 watch(viewMode, scrollScheduleToToday)
@@ -166,16 +215,31 @@ watch(() => events.value.length, scrollScheduleToToday)
         </div>
       </q-card-section>
 
-      <q-card-section v-else class="schedule-view">
-        <div v-if="!groupedSchedule.length" class="empty-state"><q-icon name="event_busy" size="40px" /><div>暂无订阅事件</div></div>
-        <div v-for="[date, dayEvents] in groupedSchedule" :key="date" class="schedule-day">
-          <div class="schedule-date-header" :class="{ 'is-today': date === dateKey(new Date()) }"><span class="schedule-date-label">{{ date }}</span><span class="schedule-date-weekday">{{ date === dateKey(new Date()) ? '今天 · ' : '' }}{{ dayNamesLong[new Date(date).getDay()] }}</span></div>
-          <div v-if="!dayEvents.length" class="schedule-empty-day">今天暂无订阅事件</div>
-          <div v-for="event in dayEvents" :key="`${event.id}-${event.start}`" class="schedule-item" :class="isMovie(event) ? 'movie' : 'tv'">
-            <div class="schedule-poster" :style="posterStyle(event)"><q-icon v-if="!event.poster" name="movie" size="20px" /></div>
-            <div class="schedule-info"><div class="schedule-title">{{ event.title }}</div><div class="schedule-meta"><q-badge :color="isMovie(event) ? 'positive' : 'primary'" :label="event.type" /><span v-if="event.vote_average" class="vote">★ {{ event.vote_average }}</span><span v-if="event.year" class="text-secondary">{{ event.year }}</span></div></div>
-          </div>
-        </div>
+      <q-card-section v-else class="schedule-section">
+        <q-virtual-scroll
+          ref="scheduleVirtualScroll"
+          :items="scheduleRows"
+          :virtual-scroll-item-size="78"
+          :virtual-scroll-slice-size="20"
+          :virtual-scroll-slice-ratio-before="1"
+          :virtual-scroll-slice-ratio-after="1"
+          class="schedule-view"
+          aria-label="订阅日程列表"
+        >
+          <template #default="{ item }">
+            <div :key="item.key" class="schedule-row">
+              <div v-if="item.kind === 'date'" class="schedule-date-header" :class="{ 'is-today': item.date === todayKey }">
+                <span class="schedule-date-label">{{ item.date }}</span>
+                <span class="schedule-date-weekday">{{ item.date === todayKey ? '今天 · ' : '' }}{{ dayNamesLong[dateFromKey(item.date).getDay()] }}</span>
+              </div>
+              <div v-else-if="item.kind === 'empty'" class="schedule-empty-day">今天暂无订阅事件</div>
+              <div v-else class="schedule-item" :class="isMovie(item.event) ? 'movie' : 'tv'">
+                <div class="schedule-poster" :style="posterStyle(item.event)"><q-icon v-if="!item.event.poster" name="movie" size="20px" /></div>
+                <div class="schedule-info"><div class="schedule-title">{{ item.event.title }}</div><div class="schedule-meta"><q-badge :color="isMovie(item.event) ? 'positive' : 'primary'" :label="item.event.type" /><span v-if="item.event.vote_average" class="vote">★ {{ item.event.vote_average }}</span><span v-if="item.event.year" class="text-secondary">{{ item.event.year }}</span></div></div>
+              </div>
+            </div>
+          </template>
+        </q-virtual-scroll>
       </q-card-section>
     </q-card>
   </div>
@@ -213,7 +277,10 @@ watch(() => events.value.length, scrollScheduleToToday)
 .event-list { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
 .event-item { overflow: hidden; padding: 3px 5px; border-left: 2px solid var(--q-primary); border-radius: 3px; background: var(--surface-muted); color: var(--text-primary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .event-item.movie { border-left-color: var(--q-positive); }
-.schedule-view { display: grid; gap: 4px; }
+.schedule-section { padding-bottom: 16px; }
+.schedule-view { height: min(70vh, 760px); min-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+.schedule-view :deep(.q-virtual-scroll__content) { display: block; }
+.schedule-row { box-sizing: border-box; padding-bottom: 4px; }
 .schedule-date-header { display: flex; align-items: baseline; gap: 8px; margin-top: 12px; padding: 6px 4px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); font-weight: 650; }
 .schedule-date-header:first-child { margin-top: 0; }
 .schedule-date-weekday { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
@@ -227,5 +294,5 @@ watch(() => events.value.length, scrollScheduleToToday)
 .schedule-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
 .vote { color: var(--q-warning); }
 .empty-state { display: grid; justify-items: center; gap: 8px; padding: 64px 16px; color: var(--text-secondary); }
-@media (max-width: 599px) { .calendar-heading { align-items: flex-start; flex-wrap: wrap; } .calendar-heading > .q-space { display: none; } .calendar-heading > .row { width: 100%; } .week-scroll { overflow-x: visible; } .week-grid { grid-template-columns: 1fr; min-width: 0; gap: 8px; border: 0; background: transparent; } .week-col { min-height: 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 10px; } .col-header { flex-direction: row; justify-content: space-between; padding-inline: 12px; } .col-events { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .col-event { min-width: 0; } .event-title { white-space: normal; overflow-wrap: anywhere; } .schedule-item { min-width: 0; padding: 9px 8px; } .schedule-title { white-space: normal; overflow-wrap: anywhere; } }
+@media (max-width: 599px) { .calendar-heading { align-items: flex-start; flex-wrap: wrap; } .calendar-heading > .q-space { display: none; } .calendar-heading > .row { width: 100%; } .week-scroll { overflow-x: visible; } .week-grid { grid-template-columns: 1fr; min-width: 0; gap: 8px; border: 0; background: transparent; } .week-col { min-height: 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 10px; } .col-header { flex-direction: row; justify-content: space-between; padding-inline: 12px; } .col-events { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .col-event { min-width: 0; } .event-title { white-space: normal; overflow-wrap: anywhere; } .schedule-view { height: min(70vh, 640px); min-height: 280px; } .schedule-item { min-width: 0; padding: 9px 8px; } .schedule-title { white-space: normal; overflow-wrap: anywhere; } }
 </style>
