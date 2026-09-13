@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import NameTestResult from '@/components/NameTestResult.vue'
@@ -32,6 +33,7 @@ interface NetTestRow {
 }
 
 const modal = useModalStore()
+const route = useRoute()
 const loading = ref(false)
 const loadError = ref('')
 const services = ref<ServiceItem[]>([])
@@ -176,7 +178,10 @@ function openNetTest() {
   Promise.all(netTestResults.value.map((row) => netTest(row.target).then((result: NetTestResult) => { row.res = result.res; row.time = result.time }).catch(() => { row.res = false; row.time = '失败' }).finally(() => { row.testing = false }))).finally(() => { netTestLoading.value = false })
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  if (route.query.tool === 'name-test') openNameTest()
+})
 </script>
 
 <template>

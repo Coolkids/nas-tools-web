@@ -32,6 +32,13 @@ const stat = ref<TransferStatisticsResult>({
 })
 const history = ref<PlayHistoryItem[]>([])
 
+const quickActions = [
+  { label: '文件管理', description: '浏览与整理媒体文件', icon: 'folder_open', color: 'primary', to: '/mediafile' },
+  { label: '电视剧订阅', description: '管理电视剧订阅', icon: 'live_tv', color: 'positive', to: '/tv_rss' },
+  { label: '转移历史', description: '查看文件转移记录', icon: 'swap_horiz', color: 'warning', to: '/history' },
+  { label: '名称识别测试', description: '测试资源名称识别', icon: 'manage_search', color: 'info', to: { path: '/service', query: { tool: 'name-test' } } }
+] as const
+
 const mediaReady = computed(() => mediaCount.value.code === 0)
 const spaceReady = computed(() => space.value.code === 0)
 const statReady = computed(() => stat.value.code === 0)
@@ -283,6 +290,39 @@ onMounted(() => { void load() })
       </q-card-section>
     </q-card>
 
+    <q-card v-if="$q.screen.lt.sm" flat bordered class="content-card quick-actions-card">
+      <q-card-section class="section-heading">
+        <div>
+          <div class="section-title">快捷入口</div>
+          <div class="section-description">常用功能快速访问</div>
+        </div>
+        <q-icon name="bolt" size="24px" color="primary" />
+      </q-card-section>
+      <q-card-section class="quick-actions-grid">
+        <q-item
+          v-for="action in quickActions"
+          :key="action.label"
+          v-ripple
+          clickable
+          :to="action.to"
+          class="quick-action-item"
+        >
+          <q-item-section avatar>
+            <q-avatar :color="action.color" text-color="white" size="38px">
+              <q-icon :name="action.icon" size="21px" />
+            </q-avatar>
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>{{ action.label }}</q-item-label>
+            <q-item-label caption>{{ action.description }}</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-icon name="chevron_right" size="18px" color="grey-6" />
+          </q-item-section>
+        </q-item>
+      </q-card-section>
+    </q-card>
+
     <div class="history-section">
       <q-card flat bordered class="content-card history-card">
         <q-card-section class="section-heading">
@@ -345,6 +385,13 @@ onMounted(() => { void load() })
 .storage-summary { display: flex; flex-wrap: wrap; gap: 18px; margin: 22px 0 12px; color: var(--text-secondary); font-size: 13px; }
 .storage-summary strong { margin-left: 3px; color: var(--text-primary); font-weight: 600; }
 .progress-caption { margin-top: 8px; color: var(--text-secondary); font-size: 12px; text-align: right; }
+.quick-actions-card { margin-top: 10px; }
+.quick-actions-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-top: 0; }
+.quick-action-item { min-width: 0; min-height: 68px; padding: 10px 8px; border: 1px solid var(--border-subtle); border-radius: 10px; color: var(--text-primary); transition: background-color 160ms ease, border-color 160ms ease; }
+.quick-action-item:hover { border-color: color-mix(in srgb, var(--q-primary) 45%, var(--border-subtle)); background: var(--primary-soft); }
+.quick-action-item :deep(.q-item__section--avatar) { min-width: 46px; }
+.quick-action-item :deep(.q-item__label) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-action-item :deep(.q-item__label--caption) { margin-top: 3px; color: var(--text-secondary); font-size: 11px; }
 .history-section { margin-top: 16px; }
 .history-table {
   width: 100%;
@@ -367,5 +414,5 @@ onMounted(() => { void load() })
 .history-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-event-date { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.2; }
 @media (max-width: 1023px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 599px) { .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .metric-chart-legend { display: none; } .history-table :deep(.vxe-header--column), .history-table :deep(.vxe-body--column) { padding-inline: 12px; } .history-table :deep(.vxe-table--scroll-y-virtual) { width: 0 !important; } .history-table :deep(.vxe-table--scroll-y-wrapper) { display: none; } }
+@media (max-width: 599px) { .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .quick-actions-grid { padding: 0 16px 16px; } .quick-action-item { padding-inline: 6px; } .metric-chart-legend { display: none; } .history-table :deep(.vxe-header--column), .history-table :deep(.vxe-body--column) { padding-inline: 12px; } .history-table :deep(.vxe-table--scroll-y-virtual) { width: 0 !important; } .history-table :deep(.vxe-table--scroll-y-wrapper) { display: none; } }
 </style>
