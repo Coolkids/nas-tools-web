@@ -79,10 +79,7 @@ function tmdbUrl(item: RssHistoryItem) {
   return `https://www.themoviedb.org/${item.TYPE === 'MOV' ? 'movie' : 'tv'}/${item.TMDBID}`
 }
 
-function remainEpisodes(item: RssHistoryItem) {
-  if (item.TOTAL && item.TOTAL > 0) return item.TOTAL - (item.START || 0)
-  return null
-}
+function totalEpisodes(item: RssHistoryItem) { return item.TOTAL && item.TOTAL > 0 ? item.TOTAL : null }
 
 function typeLabel(type?: string) {
   return type === 'TV' ? '电视剧' : '电影'
@@ -193,7 +190,7 @@ function goBack() {
                 <div class="row items-center q-gutter-xs q-mt-xs">
                   <q-badge outline color="primary" :label="typeLabel(slotProps.row.TYPE)" />
                   <a v-if="slotProps.row.TMDBID" :href="tmdbUrl(slotProps.row)" target="_blank" rel="noreferrer" class="tmdb-link">TMDB {{ slotProps.row.TMDBID }}</a>
-                  <span v-if="remainEpisodes(slotProps.row)" class="text-caption text-secondary">剩余 {{ remainEpisodes(slotProps.row) }} 集</span>
+                  <span v-if="totalEpisodes(slotProps.row)" class="text-caption text-secondary">总集数 {{ totalEpisodes(slotProps.row) }} 集</span>
                 </div>
               </div>
             </div>
@@ -211,7 +208,7 @@ function goBack() {
             <q-img :src="item.IMAGE" fit="cover" class="history-poster mobile-poster"><template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template></q-img>
             <div class="col min-width-0">
               <div class="media-title ellipsis-2-lines">{{ item.NAME }} <span v-if="item.YEAR" class="text-secondary">（{{ item.YEAR }}）</span></div>
-              <div class="row items-center q-gutter-xs q-mt-xs"><q-badge outline color="primary" :label="typeLabel(item.TYPE)" /><span v-if="item.SEASON" class="text-caption text-secondary">{{ item.SEASON }}</span><span class="text-caption text-secondary">{{ item.FINISH_TIME || '未记录时间' }}</span></div>
+              <div class="row items-center q-gutter-xs q-mt-xs"><q-badge outline color="primary" :label="typeLabel(item.TYPE)" /><span v-if="item.SEASON" class="text-caption text-secondary">{{ item.SEASON }}</span><span v-if="totalEpisodes(item)" class="text-caption text-secondary">总集数 {{ totalEpisodes(item) }} 集</span><span class="text-caption text-secondary">{{ item.FINISH_TIME || '未记录时间' }}</span></div>
               <div v-if="item.DESC" class="description ellipsis-2-lines q-mt-sm">{{ item.DESC }}</div>
             </div>
           </q-card-section>

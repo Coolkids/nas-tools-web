@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { doAction } from '@/api'
 import { getMovieRssList, getTvRssList, type RssMediaItem } from '@/api/rss'
 import PageHeader from '@/components/PageHeader.vue'
@@ -92,6 +92,8 @@ const monthDays = computed(() => {
 const groupedSchedule = computed(() => {
   const map = new Map<string, CalendarEvent[]>()
   for (const event of events.value) { const key = (event.start || '').slice(0, 10); if (!map.has(key)) map.set(key, []); map.get(key)!.push(event) }
+  const today = dateKey(new Date())
+  if (!map.has(today)) map.set(today, [])
   return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
 })
 const totalEvents = computed(() => events.value.length)
@@ -100,6 +102,14 @@ function inCurrentMonth(date: Date) { return date.getMonth() === currentDate.val
 function onPrev() { const date = new Date(currentDate.value); if (viewMode.value === 'week') date.setDate(date.getDate() - 7); else date.setMonth(date.getMonth() - 1); currentDate.value = date }
 function onNext() { const date = new Date(currentDate.value); if (viewMode.value === 'week') date.setDate(date.getDate() + 7); else date.setMonth(date.getMonth() + 1); currentDate.value = date }
 function onToday() { currentDate.value = new Date() }
+
+function scrollScheduleToToday() {
+  if (viewMode.value !== 'schedule') return
+  void nextTick(() => document.querySelector<HTMLElement>('.schedule-view .is-today')?.scrollIntoView({ block: 'center', behavior: 'smooth' }))
+}
+
+watch(viewMode, scrollScheduleToToday)
+watch(() => events.value.length, scrollScheduleToToday)
 </script>
 
 <template>
@@ -159,7 +169,8 @@ function onToday() { currentDate.value = new Date() }
       <q-card-section v-else class="schedule-view">
         <div v-if="!groupedSchedule.length" class="empty-state"><q-icon name="event_busy" size="40px" /><div>暂无订阅事件</div></div>
         <div v-for="[date, dayEvents] in groupedSchedule" :key="date" class="schedule-day">
-          <div class="schedule-date-header"><span class="schedule-date-label">{{ date }}</span><span class="schedule-date-weekday">{{ dayNamesLong[new Date(date).getDay()] }}</span></div>
+          <div class="schedule-date-header" :class="{ 'is-today': date === dateKey(new Date()) }"><span class="schedule-date-label">{{ date }}</span><span class="schedule-date-weekday">{{ date === dateKey(new Date()) ? '今天 · ' : '' }}{{ dayNamesLong[new Date(date).getDay()] }}</span></div>
+          <div v-if="!dayEvents.length" class="schedule-empty-day">今天暂无订阅事件</div>
           <div v-for="event in dayEvents" :key="`${event.id}-${event.start}`" class="schedule-item" :class="isMovie(event) ? 'movie' : 'tv'">
             <div class="schedule-poster" :style="posterStyle(event)"><q-icon v-if="!event.poster" name="movie" size="20px" /></div>
             <div class="schedule-info"><div class="schedule-title">{{ event.title }}</div><div class="schedule-meta"><q-badge :color="isMovie(event) ? 'positive' : 'primary'" :label="event.type" /><span v-if="event.vote_average" class="vote">★ {{ event.vote_average }}</span><span v-if="event.year" class="text-secondary">{{ event.year }}</span></div></div>
@@ -206,6 +217,8 @@ function onToday() { currentDate.value = new Date() }
 .schedule-date-header { display: flex; align-items: baseline; gap: 8px; margin-top: 12px; padding: 6px 4px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); font-weight: 650; }
 .schedule-date-header:first-child { margin-top: 0; }
 .schedule-date-weekday { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.schedule-date-header.is-today { color: var(--q-primary); background: var(--primary-soft); }
+.schedule-empty-day { padding: 10px; color: var(--text-secondary); font-size: 12px; }
 .schedule-item { display: flex; align-items: center; gap: 12px; padding: 10px; border-left: 4px solid var(--q-primary); border-radius: 8px; background: var(--surface-muted); }
 .schedule-item.movie { border-left-color: var(--q-positive); }
 .schedule-poster { width: 44px; height: 62px; border-radius: 5px; }
@@ -214,5 +227,5 @@ function onToday() { currentDate.value = new Date() }
 .schedule-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
 .vote { color: var(--q-warning); }
 .empty-state { display: grid; justify-items: center; gap: 8px; padding: 64px 16px; color: var(--text-secondary); }
-@media (max-width: 599px) { .rss-calendar { padding-bottom: 8px; } .calendar-heading { align-items: flex-start; flex-wrap: wrap; } .calendar-heading > .q-space { display: none; } .calendar-heading > .row { width: 100%; } .schedule-item { padding: 9px 8px; } }
+@media (max-width: 599px) { .rss-calendar { padding-bottom: 8px; } .calendar-heading { align-items: flex-start; flex-wrap: wrap; } .calendar-heading > .q-space { display: none; } .calendar-heading > .row { width: 100%; } .week-scroll { overflow-x: visible; } .week-grid { grid-template-columns: 1fr; min-width: 0; gap: 8px; border: 0; background: transparent; } .week-col { min-height: 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 10px; } .col-header { flex-direction: row; justify-content: space-between; padding-inline: 12px; } .col-events { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .col-event { min-width: 0; } .event-title { white-space: normal; overflow-wrap: anywhere; } .schedule-item { min-width: 0; padding: 9px 8px; } .schedule-title { white-space: normal; overflow-wrap: anywhere; } }
 </style>
