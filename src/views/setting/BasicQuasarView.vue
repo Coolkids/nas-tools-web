@@ -157,6 +157,51 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'laboratory.tmdb_proxy', label: '使用TMDB代理服务', kind: 'toggle' }
 ]
 
+const SETTING_DESCRIPTIONS: Record<string, string> = {
+  'app.web_port': 'WEB 界面监听的端口，修改后需要重新启动服务。',
+  'app.login_user': '登录 WEB 管理界面时使用的用户名。',
+  'app.login_password': '登录 WEB 管理界面时使用的密码。',
+  'app.ssl_cert': '启用 HTTPS 时填写证书文件的绝对路径。',
+  'app.ssl_key': '启用 HTTPS 时填写私钥文件的绝对路径。',
+  'app.domain': '对外访问地址，用于生成回调或媒体链接。',
+  'app.user_agent': '访问外部站点时使用的请求标识，通常保持默认即可。',
+  'app.tmdb_domain': '选择访问 TMDB API 的域名，网络受限时可切换。',
+  'app.rmt_match_mode': '控制媒体名称匹配的宽松程度，严格模式可减少误匹配。',
+  'media.category': '按媒体类型或来源生成二级分类目录，留空使用默认策略。',
+  'pt.rmt_mode': '未单独指定转移方式时，媒体文件默认采用的方式。',
+  'media.min_filesize': '小于该大小的文件不会自动转移，单位为 MB。',
+  'media.ignored_paths': '路径中匹配这些规则的文件不会参与转移，多个规则用分号分隔。',
+  'media.ignored_files': '文件名匹配这些规则的文件不会参与转移，多个规则用分号分隔。',
+  'pt.download_order': '同一媒体有多个候选资源时，用于决定优先下载的规则。',
+  'media.movie_name_format': '电影整理后的目录和文件名格式，可使用标题、年份、制作组等变量。',
+  'media.tv_name_format': '电视剧整理后的目录和文件名格式，可使用季集等变量。',
+  'pt.ptsignin_cron': '按 Cron 时间执行站点签到，留空表示关闭自动签到。',
+  'pt.pt_check_interval': '检查 RSS 订阅的间隔，单位为秒；留空表示关闭。',
+  'pt.search_rss_interval': '执行订阅搜索的间隔，单位为小时；留空表示关闭。',
+  'media.mediasync_interval': '同步媒体服务器媒体库的间隔，单位为小时；留空表示关闭。',
+  'pt.pt_monitor': '定时读取下载软件任务，并处理已完成的下载。',
+  'pt.pt_monitor_only': '开启后只管理由 NAStool 创建或管理的下载任务。',
+  'pt.search_auto': '远程搜索返回多个资源时，自动选择符合规则的最佳资源。',
+  'pt.search_no_result_rss': '远程搜索不完整时，自动创建 RSS 订阅等待后续资源。',
+  'security.media_server_webhook_allow_ip.ipv4': '允许访问媒体服务器 Webhook 的 IPv4 网段，支持 CIDR。',
+  'security.media_server_webhook_allow_ip.ipv6': '允许访问媒体服务器 Webhook 的 IPv6 网段，支持 CIDR。',
+  'security.telegram_webhook_allow_ip.ipv4': '允许访问 Telegram Webhook 的 IPv4 网段，支持 CIDR。',
+  'security.telegram_webhook_allow_ip.ipv6': '允许访问 Telegram Webhook 的 IPv6 网段，支持 CIDR。',
+  'security.synology_webhook_allow_ip.ipv4': '允许访问 Synology Chat Webhook 的 IPv4 网段，支持 CIDR。',
+  'security.synology_webhook_allow_ip.ipv6': '允许访问 Synology Chat Webhook 的 IPv6 网段，支持 CIDR。',
+  'security.api_key': '外部 API 调用使用的密钥，请妥善保管并避免分享。',
+  'laboratory.search_keyword': '使用文件名中的关键词辅助查找媒体信息。',
+  'laboratory.search_tmdbweb': '在 API 匹配失败时，尝试通过 TMDB 网页结果增强识别。',
+  'laboratory.tmdb_cache_expire': '启用 TMDB 缓存过期处理，避免长期使用过期结果。',
+  'laboratory.use_douban_titles': '使用豆瓣标题作为额外名称，提高中文名称匹配率。',
+  'laboratory.search_en_title': '搜索时优先尝试英文标题，适合英文资源名较多的场景。',
+  'laboratory.tmdb_proxy': '通过配置的代理访问 TMDB，适用于直连不稳定的网络。'
+}
+
+function fieldHelp(field: SettingField) {
+  return field.help || SETTING_DESCRIPTIONS[field.key] || ''
+}
+
 const scraperVisible = ref(false)
 const scraperTab = ref('nfo')
 const scriptVisible = ref(false)
@@ -303,17 +348,18 @@ onMounted(loadData)
       <q-tab-panels v-model="activeTab" animated>
         <q-tab-panel v-for="(fields, tab) in { system: SYSTEM_FIELDS, media: MEDIA_FIELDS, service: SERVICE_FIELDS, security: SECURITY_FIELDS, laboratory: LAB_FIELDS }" :key="tab" :name="tab">
           <div class="setting-grid">
-            <template v-for="field in fields" :key="field.key">
+            <div v-for="field in fields" :key="field.key" class="setting-field">
               <q-toggle v-if="field.kind === 'toggle'" :model-value="Boolean(form[field.key])" color="primary" :label="field.label" class="toggle-field" @update:model-value="setBoolean(field.key, $event)">
-                <HelpTip v-if="field.help" :text="field.help" />
+                <HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" />
               </q-toggle>
               <q-select v-else-if="field.kind === 'select'" :model-value="String(form[field.key] ?? '')" outlined dense emit-value map-options :label="field.label" :options="field.options" @update:model-value="setValue(field.key, $event)">
-                <template #append><HelpTip v-if="field.help" :text="field.help" /></template>
+                <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
               </q-select>
               <q-input v-else :model-value="String(form[field.key] ?? '')" outlined dense :label="field.label" :type="field.type || 'text'" :placeholder="field.placeholder" @update:model-value="setValue(field.key, $event)">
-                <template #append><HelpTip v-if="field.help" :text="field.help" /></template>
+                <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
               </q-input>
-            </template>
+              <div v-if="fieldHelp(field)" class="setting-help">{{ fieldHelp(field) }}</div>
+            </div>
           </div>
           <div class="card-footer">
             <template v-if="tab === 'system'"><q-btn outline color="primary" label="自定义 CSS/JavaScript" @click="openScript" /></template>
@@ -357,7 +403,9 @@ onMounted(loadData)
 .basic-view { padding: 16px; }
 .settings-card { overflow: hidden; }
 .setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.setting-field { min-width: 0; }
 .toggle-field { min-height: 42px; align-items: center; }
+.setting-help { margin: -8px 8px 0 12px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 .card-footer { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border-subtle); padding: 16px 0 0; margin-top: 8px; }
 .dialog-card { width: min(92vw, 800px); max-width: none; }
 .scraper-dialog { width: min(92vw, 720px); }

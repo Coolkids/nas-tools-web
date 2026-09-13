@@ -688,12 +688,12 @@ async function deleteSelectedHardlinks() {
               <q-input v-model="transferMinFilesize" outlined dense label="最小文件大小" placeholder="留空使用默认值" />
             </div>
             <q-banner dense rounded class="bg-blue-1 text-primary q-mt-md">
-              集数定位：填写定位格式（如 {ep}）、起始集范围（如 1 或 1,2）和集数偏移。填写后必须提供 {ep} 格式。
+              集数定位用于从文件名提取集数：定位格式必须包含 {ep}（如 S{season}E{ep} 或 第{ep}集）；起始/终止集填写 1 或 1,2；偏移支持 -10、EP+1、2*EP-1 等。仅剧集/动漫需要，未填写时按自动识别。
             </q-banner>
             <div class="form-row q-mt-md">
-              <q-input v-model="transferEpFormat" outlined dense placeholder="{ep}定位集数" />
-              <q-input v-model="transferEpDetails" outlined dense placeholder="起始集[,终止集]" />
-              <q-input v-model="transferEpOffset" outlined dense placeholder="集数偏移，如-10" />
+              <q-input v-model="transferEpFormat" outlined dense label="集数定位格式" placeholder="如 S{season}E{ep}" />
+              <q-input v-model="transferEpDetails" outlined dense label="起始/终止集" placeholder="如 1 或 1,2" />
+              <q-input v-model="transferEpOffset" outlined dense label="集数偏移" placeholder="如 -10 或 EP+1" />
             </div>
           </q-card-section>
           <q-separator />
