@@ -829,7 +829,10 @@ async function deleteSelectedHardlinks() {
       <q-card class="progress-card">
         <q-card-section class="text-center">
           <div class="text-subtitle1 text-weight-medium q-mb-md">{{ progressTitle }}</div>
-          <q-linear-progress rounded size="24px" :value="progressValue / 100" color="primary" />
+          <div class="progress-bar-wrap">
+            <q-linear-progress rounded size="24px" :value="progressValue / 100" color="primary" />
+            <span class="progress-percent">{{ progressValue.toFixed(1) }}%</span>
+          </div>
           <div class="text-caption text-grey-7 q-mt-sm">{{ progressText }}</div>
         </q-card-section>
       </q-card>
@@ -931,6 +934,8 @@ async function deleteSelectedHardlinks() {
 .wide-dialog { width: min(92vw, 680px); }
 .small-dialog { width: min(92vw, 480px); }
 .progress-card { width: min(92vw, 420px); }
+.progress-bar-wrap { position: relative; }
+.progress-percent { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 600; line-height: 1; pointer-events: none; text-shadow: 0 1px 2px rgb(0 0 0 / 70%); }
 .tmdb-dialog { width: min(92vw, 600px); }
 .hardlink-dialog { width: min(92vw, 760px); }
 .name-result-dialog { width: min(900px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
