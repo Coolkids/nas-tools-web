@@ -42,10 +42,28 @@ export const useModalStore = defineStore('modal', {
       this.progressText = ''
     },
     success(message: string) {
-      Notify.create({ type: 'positive', message, position: 'top-right', timeout: 2800 })
+      const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 599px)').matches
+      Notify.create({
+        type: 'positive',
+        message,
+        icon: 'check_circle',
+        position: isMobile ? 'bottom' : 'top-right',
+        timeout: 3600,
+        progress: true,
+        classes: 'app-feedback-notify'
+      })
     },
     error(message: string) {
-      Notify.create({ type: 'negative', message, position: 'top-right', timeout: 5200 })
+      const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 599px)').matches
+      Notify.create({
+        type: 'negative',
+        message,
+        icon: 'error_outline',
+        position: isMobile ? 'bottom' : 'top-right',
+        timeout: 5200,
+        progress: true,
+        classes: 'app-feedback-notify'
+      })
     },
     warning(message: string) {
       Notify.create({ type: 'warning', message, position: 'top-right', timeout: 4200 })
