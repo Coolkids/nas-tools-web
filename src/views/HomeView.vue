@@ -35,6 +35,7 @@ const mediaReady = computed(() => mediaCount.value.code === 0)
 const spaceReady = computed(() => space.value.code === 0)
 const statReady = computed(() => stat.value.code === 0)
 const historyReady = ref(false)
+const recentHistory = computed(() => history.value.slice(0, 8))
 
 const chartLabels = computed(() => {
   const labels = stat.value.TvChartLabels?.length ? stat.value.TvChartLabels : stat.value.MovieChartLabels
@@ -243,6 +244,10 @@ onMounted(() => { void load() })
             </div>
             <q-icon name="show_chart" size="24px" color="positive" />
           </div>
+          <div v-if="statReady" class="trend-background" aria-hidden="true">
+            <span class="trend-background-item trend-background-tv">电视剧 {{ compactNumber(transferLatest.tv) }}</span>
+            <span class="trend-background-item trend-background-anime">动漫 {{ compactNumber(transferLatest.anime) }}</span>
+          </div>
           <div v-if="statReady && chartLabels.length > 1" class="chart-wrap">
             <svg viewBox="0 0 600 180" role="img" aria-label="电影、电视剧和动漫转移趋势图" preserveAspectRatio="none">
               <line x1="0" y1="166" x2="600" y2="166" stroke="currentColor" opacity=".14" />
@@ -274,7 +279,7 @@ onMounted(() => { void load() })
           v-if="$q.screen.gt.xs"
           flat
           hide-pagination
-          :rows="history"
+          :rows="recentHistory"
           :columns="historyColumns"
           row-key="date"
           :rows-per-page-options="[0]"
@@ -288,12 +293,14 @@ onMounted(() => { void load() })
           </template>
         </q-table>
         <div v-else class="mobile-history-list">
-          <div v-for="item in history" :key="`${item.date}-${item.event}`" class="mobile-history-item">
+          <div v-for="item in recentHistory" :key="`${item.date}-${item.event}`" class="mobile-history-item">
             <q-icon :name="item.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" />
             <div class="mobile-history-copy"><div>{{ item.event }}</div><span>{{ item.date }}</span></div>
           </div>
           <div v-if="!history.length && !loading" class="empty-state"><q-icon name="history" size="32px" color="grey-5" /><span>暂无播放记录</span></div>
+          <div v-if="history.length > recentHistory.length" class="history-limit-note">仅显示最近 {{ recentHistory.length }} 条</div>
         </div>
+        <div v-if="history.length > recentHistory.length" class="history-limit-note desktop-history-limit">仅显示最近 {{ recentHistory.length }} 条</div>
         <q-card-section v-if="!historyReady && !loading" class="text-caption text-grey-6 q-pt-none">播放历史暂不可用</q-card-section>
       </q-card>
     </div>
@@ -316,8 +323,13 @@ onMounted(() => { void load() })
 .storage-summary strong { margin-left: 3px; color: var(--text-primary); font-weight: 600; }
 .progress-caption { margin-top: 8px; color: var(--text-secondary); font-size: 12px; text-align: right; }
 .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 16px; margin-top: 16px; }
-.chart-wrap { margin-top: 20px; }
-.chart-wrap svg { display: block; width: 100%; height: 180px; color: var(--text-secondary); overflow: visible; }
+.transfer-card { position: relative; overflow: hidden; background: linear-gradient(135deg, var(--surface) 15%, color-mix(in srgb, var(--q-primary) 5%, var(--surface))); }
+.chart-wrap { position: relative; z-index: 1; margin-top: 20px; }
+.chart-wrap svg { display: block; width: 100%; height: 180px; color: var(--text-secondary); overflow: visible; opacity: .9; }
+.trend-background { position: absolute; top: 64px; right: 20px; display: flex; gap: 10px; color: var(--text-primary); font-size: 24px; font-weight: 700; opacity: .08; pointer-events: none; user-select: none; }
+.trend-background-item { white-space: nowrap; }
+.trend-background-tv { color: var(--q-positive); }
+.trend-background-anime { color: var(--q-warning); }
 .chart-labels { display: flex; justify-content: space-between; gap: 8px; overflow: hidden; color: var(--text-secondary); font-size: 11px; }
 .chart-labels span { overflow: hidden; max-width: 90px; text-overflow: ellipsis; white-space: nowrap; }
 .legend-row { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; color: var(--text-secondary); font-size: 12px; }
@@ -335,7 +347,9 @@ onMounted(() => { void load() })
 .mobile-history-copy { min-width: 0; color: var(--text-primary); font-size: 14px; }
 .mobile-history-copy > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-history-copy span { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
+.history-limit-note { padding: 10px 16px 14px; color: var(--text-secondary); font-size: 12px; text-align: right; }
+.desktop-history-limit { padding-top: 0; }
 @media (max-width: 1439px) { .home-page { padding-inline: 24px; } .dashboard-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1023px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 599px) { .home-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .dashboard-grid { gap: 10px; margin-top: 10px; } .content-card .q-card__section { padding: 16px; } }
+@media (max-width: 599px) { .home-page { padding: 16px 16px calc(32px + var(--safe-bottom)); } .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .dashboard-grid { gap: 10px; margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .trend-background { top: 60px; right: 16px; flex-direction: column; align-items: flex-end; font-size: 18px; } }
 </style>

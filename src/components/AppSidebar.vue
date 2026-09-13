@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, toRefs, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { navigationGroups, primaryNavigation } from '@/navigation'
 
-defineProps<{ mini?: boolean }>()
+const props = withDefaults(defineProps<{ mini?: boolean; mobile?: boolean; mobileGroup?: string | null }>(), { mini: false, mobile: false, mobileGroup: null })
+const { mini, mobile } = toRefs(props)
 const emit = defineEmits<{ navigate: []; 'toggle-mini': [] }>()
 const route = useRoute()
 
@@ -11,6 +12,11 @@ const activePath = computed(() => route.path)
 const activeGroup = computed(() => navigationGroups.find((group) =>
   group.items.some((item) => activePath.value === item.to || activePath.value.startsWith(`${item.to}/`))
 ))
+const selectedMobileGroup = ref(props.mobileGroup || activeGroup.value?.label || '')
+watch(() => props.mobileGroup, (group) => { selectedMobileGroup.value = group || activeGroup.value?.label || '' })
+watch(activeGroup, (group) => {
+  if (props.mobile && !props.mobileGroup && group) selectedMobileGroup.value = group.label
+})
 
 function isActive(to: string) {
   return activePath.value === to || activePath.value.startsWith(`${to}/`)
@@ -46,7 +52,48 @@ function isActive(to: string) {
 
         <q-separator spaced />
 
-        <template v-for="group in navigationGroups" :key="group.label">
+        <template v-if="mobile">
+          <q-item-label header class="mobile-menu-heading">选择功能分组</q-item-label>
+          <q-item
+            v-for="group in navigationGroups"
+            :key="group.label"
+            v-ripple
+            clickable
+            :active="selectedMobileGroup === group.label"
+            active-class="nav-item--active"
+            @click="selectedMobileGroup = group.label"
+          >
+            <q-item-section avatar><q-icon :name="group.icon" /></q-item-section>
+            <q-item-section>{{ group.label }}</q-item-section>
+            <q-item-section side><q-icon name="chevron_right" size="18px" /></q-item-section>
+          </q-item>
+          <q-separator spaced />
+          <q-item-label v-if="!selectedMobileGroup" header>请选择一个功能分组</q-item-label>
+          <q-item
+            v-for="group in navigationGroups.filter((item) => item.label === selectedMobileGroup)"
+            :key="`mobile-${group.label}`"
+            class="mobile-submenu-title"
+          >
+            <q-item-section avatar><q-icon :name="group.icon" color="primary" /></q-item-section>
+            <q-item-section class="text-primary text-weight-medium">{{ group.label }}</q-item-section>
+          </q-item>
+          <q-item
+            v-for="item in navigationGroups.find((group) => group.label === selectedMobileGroup)?.items || []"
+            :key="`mobile-${item.to}`"
+            v-ripple
+            clickable
+            :to="item.to"
+            :active="isActive(item.to)"
+            active-class="nav-item--active"
+            :aria-current="isActive(item.to) ? 'page' : undefined"
+            @click="emit('navigate')"
+          >
+            <q-item-section avatar><q-icon :name="item.icon" size="20px" /></q-item-section>
+            <q-item-section>{{ item.label }}</q-item-section>
+          </q-item>
+        </template>
+
+        <template v-else v-for="group in navigationGroups" :key="group.label">
           <q-item
             v-if="mini"
             v-ripple
@@ -91,6 +138,17 @@ function isActive(to: string) {
 
     <q-separator />
     <q-btn
+      v-if="mobile"
+      flat
+      stretch
+      class="sidebar-collapse-btn"
+      icon="close"
+      label="关闭菜单"
+      aria-label="关闭菜单"
+      @click="emit('navigate')"
+    />
+    <q-btn
+      v-else
       flat
       stretch
       class="sidebar-collapse-btn"
@@ -116,4 +174,6 @@ function isActive(to: string) {
 .sidebar-list :deep(.nav-item--active) { color: var(--q-primary); background: var(--primary-soft); font-weight: 600; }
 .sidebar-list :deep(.nav-group--active) { color: var(--q-primary); }
 .sidebar-collapse-btn { min-height: 52px; color: var(--text-secondary); }
+.mobile-menu-heading { color: var(--text-secondary); }
+.mobile-submenu-title { margin-top: 4px; background: var(--surface-muted); }
 </style>

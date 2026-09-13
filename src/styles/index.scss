@@ -36,6 +36,8 @@ a { color: inherit; text-decoration: none; }
 .app-layout { min-height: 100vh; background: var(--page-bg); }
 .app-header { background: var(--surface); color: var(--text-primary); }
 .app-drawer { background: var(--surface); color: var(--text-primary); }
+.app-drawer, .app-drawer .q-drawer__content { overflow-x: hidden; }
+.app-drawer .q-scrollarea { width: 100%; }
 .app-page-container { background: var(--page-bg); }
 .app-main { min-height: calc(100vh - var(--app-header-height)); color: var(--text-primary); }
 .app-bottom-nav { background: var(--surface); color: var(--text-secondary); padding-bottom: var(--safe-bottom); }

@@ -9,6 +9,7 @@ import { mobileNavigation } from '@/navigation'
 const $q = useQuasar()
 const drawerOpen = ref(false)
 const miniDrawer = ref(false)
+const mobileGroup = ref<string | null>(null)
 const isPhone = computed(() => $q.screen.lt.sm)
 const isDesktop = computed(() => $q.screen.gt.sm)
 
@@ -18,6 +19,16 @@ watch(isDesktop, (desktop) => {
 
 function toggleDrawer() {
   drawerOpen.value = !drawerOpen.value
+}
+
+function openMobileGroup(label: string) {
+  mobileGroup.value = label
+  drawerOpen.value = true
+}
+
+function openMobileMenu() {
+  mobileGroup.value = null
+  drawerOpen.value = true
 }
 
 function closeDrawer() {
@@ -48,6 +59,8 @@ function closeDrawer() {
       @hide="drawerOpen = false"
     >
       <AppSidebar
+        :mobile="isPhone"
+        :mobile-group="mobileGroup"
         :mini="isDesktop && miniDrawer"
         @navigate="closeDrawer"
         @toggle-mini="miniDrawer = !miniDrawer"
@@ -64,14 +77,9 @@ function closeDrawer() {
 
     <q-footer v-if="isPhone" bordered class="app-bottom-nav">
       <q-tabs dense no-caps active-color="primary" indicator-color="transparent" class="text-grey-7">
-        <q-route-tab
-          v-for="item in mobileNavigation"
-          :key="item.to"
-          :to="item.to"
-          :icon="item.icon"
-          :label="item.label"
-        />
-        <q-tab name="more" icon="more_horiz" label="更多" @click="drawerOpen = true" />
+        <q-route-tab v-for="item in mobileNavigation.slice(0, 1)" :key="item.to" :to="item.to" :icon="item.icon" :label="item.label" />
+        <q-tab v-for="item in mobileNavigation.slice(1)" :key="item.label" :name="item.label" :icon="item.icon" :label="item.label" @click="openMobileGroup(item.label)" />
+        <q-tab name="more" icon="more_horiz" label="更多" @click="openMobileMenu" />
       </q-tabs>
     </q-footer>
 

@@ -15,12 +15,7 @@ export const navigationGroups: NavigationGroup[] = [
   {
     label: '探索', icon: 'explore', items: [
       { label: '推荐', icon: 'auto_awesome', to: '/recommend' },
-      { label: '榜单', icon: 'leaderboard', to: '/ranking' },
-      { label: 'Bangumi', icon: 'play_circle', to: '/bangumi' },
-      { label: '豆瓣电影', icon: 'movie', to: '/douban_movie' },
-      { label: '豆瓣剧集', icon: 'live_tv', to: '/douban_tv' },
-      { label: 'TMDB电影', icon: 'local_movies', to: '/tmdb_movie' },
-      { label: 'TMDB剧集', icon: 'video_library', to: '/tmdb_tv' }
+      { label: '榜单 / Bangumi', icon: 'leaderboard', to: '/ranking' }
     ]
   },
   {
