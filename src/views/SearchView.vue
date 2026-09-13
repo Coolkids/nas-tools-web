@@ -8,6 +8,8 @@ import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
 import { search, getSearchTaskList, getSearchTaskResult, searchTaskDelete, type SearchParams, type SearchTaskItem, type SearchTaskResultItem, type TaskTmdbInfo } from '@/api/media'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
+import ExploreSearchBar from '@/components/ExploreSearchBar.vue'
+import ScrollToTop from '@/components/ScrollToTop.vue'
 
 const route = useRoute()
 const modal = useModalStore()
@@ -335,6 +337,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="search-page">
+    <ExploreSearchBar />
     <PageHeader title="资源搜索" :description="`共 ${tasks.length} 个任务`">
       <template #actions>
         <q-input v-model="keyword" outlined dense clearable class="search-input" placeholder="输入电影 / 电视剧名称" @keyup.enter="doSearch">
@@ -423,7 +426,7 @@ onBeforeUnmount(() => {
                 <q-input v-model="nameFilter" outlined dense clearable label="名称过滤" class="name-filter" />
                 <span class="filter-count">共 {{ filteredResults.length }} 条结果</span>
               </div>
-              <q-table v-if="$q.screen.gt.xs" flat bordered :rows="filteredResults" :columns="resultColumns" row-key="id" :rows-per-page-options="[20, 50, 100]" class="result-table">
+              <q-table v-if="$q.screen.gt.xs" flat bordered hide-pagination :rows="filteredResults" :columns="resultColumns" row-key="id" :rows-per-page-options="[0]" class="result-table">
                 <template #body-cell-site="props"><q-td :props="props"><q-badge color="grey-7" :label="props.row.site" /></q-td></template>
                 <template #body-cell-torrent="props"><q-td :props="props"><div class="torrent-name">{{ props.row.torrent_name }}</div><div v-if="props.row.description" class="torrent-desc">{{ props.row.description }}</div><div class="torrent-badges"><q-chip v-if="props.row.title" dense color="primary" text-color="white" :label="props.row.title" /><q-chip v-if="props.row.type === 'MOV'" dense color="positive" text-color="white" label="电影" /><q-chip v-else-if="props.row.type === 'TV'" dense color="warning" text-color="white" label="电视剧" /><q-chip v-if="uploadText(props.row)" dense color="warning" text-color="white" :label="uploadText(props.row) || ''" /><q-chip v-if="freeText(props.row)" dense color="positive" text-color="white" :label="freeText(props.row) || ''" /></div></q-td></template>
                 <template #body-cell-seeders="props"><q-td :props="props">{{ props.row.seeders || 0 }} ↑</q-td></template>
@@ -468,6 +471,7 @@ onBeforeUnmount(() => {
         </q-form>
       </q-card>
     </q-dialog>
+    <ScrollToTop />
   </div>
 </template>
 
@@ -497,6 +501,9 @@ onBeforeUnmount(() => {
 .site-filter { width: 210px; }
 .name-filter { width: 240px; }
 .filter-count { margin-left: auto; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.result-table { max-height: 65vh; }
+.result-table :deep(.q-table__middle) { max-height: 65vh; overflow-y: auto; }
+.result-table :deep(thead tr:first-child th) { position: sticky; top: 0; z-index: 2; background: var(--surface); }
 .torrent-name { color: var(--text-primary); font-size: 14px; line-height: 1.45; word-break: break-word; }
 .torrent-desc { margin-top: 3px; overflow: hidden; color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .torrent-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }

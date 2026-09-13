@@ -85,10 +85,7 @@ export function useDiscovery(
     page.value = 1
     noMore.value = false
     initializing.value = true
-    for (let i = 0; i < 3; i++) {
-      if (noMore.value || resetGeneration !== generation) break
-      await loadPage()
-    }
+    if (resetGeneration === generation) await loadPage()
     if (resetGeneration === generation) initializing.value = false
   }
 

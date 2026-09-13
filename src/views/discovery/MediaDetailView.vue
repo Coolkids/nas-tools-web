@@ -5,6 +5,8 @@ import PageHeader from '@/components/PageHeader.vue'
 import MediaCard from '@/components/MediaCard.vue'
 import PersonCard from '@/components/PersonCard.vue'
 import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
+import ExploreSearchBar from '@/components/ExploreSearchBar.vue'
+import ScrollToTop from '@/components/ScrollToTop.vue'
 import { mediaDetail, mediaRecommendations, mediaPerson, proxyDoubanImage, type MediaDetail, type RecommendItem, type PersonItem } from '@/api/discovery'
 import { search } from '@/api/media'
 import { removeRssMedia } from '@/api/rss'
@@ -104,6 +106,7 @@ onBeforeUnmount(() => { generation += 1 })
 
 <template>
   <div class="detail-page">
+    <ExploreSearchBar />
     <PageHeader title="媒体详情">
       <template #actions><q-btn flat icon="arrow_back" label="返回" @click="router.back" /></template>
     </PageHeader>
@@ -136,6 +139,7 @@ onBeforeUnmount(() => { generation += 1 })
     </template>
 
     <AddRssMediaDialog v-model="rssDialogVisible" :type="mediaType.toUpperCase() === 'TV' ? 'TV' : 'MOV'" :initial-name="media?.title" :initial-year="media?.year" :initial-keyword="media?.title" @success="onRssSuccess" />
+    <ScrollToTop />
   </div>
 </template>
 

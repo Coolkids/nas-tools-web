@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import MediaCard from '@/components/MediaCard.vue'
+import ExploreSearchBar from '@/components/ExploreSearchBar.vue'
+import ScrollToTop from '@/components/ScrollToTop.vue'
 import { useDiscovery, type TypeConfig } from '@/composables/useDiscovery'
 
 const route = useRoute()
@@ -59,6 +61,7 @@ onBeforeUnmount(destroy)
 
 <template>
   <div class="recommend-page">
+    <ExploreSearchBar />
     <PageHeader :title="typeConfig.title" :description="typeConfig.subtitle || '按来源浏览媒体内容'">
       <template #actions>
         <q-tabs :model-value="activeTab" dense no-caps inline-label active-color="primary" indicator-color="primary" class="source-tabs" @update:model-value="switchTab">
@@ -92,6 +95,7 @@ onBeforeUnmount(destroy)
 
     <div v-if="loading && items.length" class="load-tip"><q-spinner-dots color="primary" size="24px" /><span>加载更多…</span></div>
     <div v-else-if="noMore && items.length" class="load-tip"><q-icon name="done" size="18px" /><span>已经到底了</span></div>
+    <ScrollToTop />
   </div>
 </template>
 

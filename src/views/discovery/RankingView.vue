@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import MediaCard from '@/components/MediaCard.vue'
+import ExploreSearchBar from '@/components/ExploreSearchBar.vue'
+import ScrollToTop from '@/components/ScrollToTop.vue'
 import { getRecommend, proxyDoubanImage, type RecommendItem } from '@/api/discovery'
 
 interface DiscoveryCategory { type: string; title: string; subtype?: string; week?: string }
@@ -69,6 +71,7 @@ onBeforeUnmount(() => { generation += 1 })
 
 <template>
   <div class="ranking-page">
+    <ExploreSearchBar />
     <PageHeader :title="pageTitle" description="按主题浏览媒体榜单">
       <template #actions>
         <q-tabs :model-value="activeTab" dense no-caps inline-label active-color="primary" indicator-color="primary" class="ranking-tabs" @update:model-value="switchTab">
@@ -90,6 +93,7 @@ onBeforeUnmount(() => { generation += 1 })
         </q-card-section>
       </q-card>
     </div>
+    <ScrollToTop />
   </div>
 </template>
 

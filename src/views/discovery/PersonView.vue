@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import MediaCard from '@/components/MediaCard.vue'
+import ExploreSearchBar from '@/components/ExploreSearchBar.vue'
+import ScrollToTop from '@/components/ScrollToTop.vue'
 import { personMedias, proxyDoubanImage, type RecommendItem } from '@/api/discovery'
 import { useModalStore } from '@/stores/modal'
 
@@ -89,6 +91,7 @@ watch(() => route.query.type, (value) => {
 
 <template>
   <div class="person-page">
+    <ExploreSearchBar />
     <PageHeader title="人物作品" :description="personName">
       <template #actions>
         <q-btn-toggle :model-value="creditType" unelevated toggle-color="primary" :options="[{ label: '参演电影', value: 'MOV' }, { label: '参演剧集', value: 'TV' }]" @update:model-value="chooseType" />
@@ -108,6 +111,7 @@ watch(() => route.query.type, (value) => {
     </div>
     <div v-if="loading && items.length" class="load-tip"><q-spinner-dots color="primary" size="24px" /><span>加载更多…</span></div>
     <div v-else-if="noMore && items.length" class="load-tip"><q-icon name="done" size="18px" /><span>已经到底了</span></div>
+    <ScrollToTop />
   </div>
 </template>
 
