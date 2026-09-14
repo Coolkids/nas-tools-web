@@ -33,6 +33,50 @@ body {
 }
 a { color: inherit; text-decoration: none; }
 
+/* Make the remaining VXETable instances follow Quasar's flat q-table treatment. */
+.vxe-quasar-table {
+  --vxe-ui-font-color: var(--text-primary);
+  --vxe-ui-font-lighten-color: var(--text-secondary);
+  --vxe-ui-font-darken-color: var(--text-primary);
+  --vxe-ui-font-primary-color: var(--q-primary);
+  --vxe-ui-layout-background-color: var(--surface);
+  --vxe-ui-table-header-background-color: var(--surface);
+  --vxe-ui-table-header-font-color: var(--text-secondary);
+  --vxe-ui-table-header-font-weight: 500;
+  --vxe-ui-table-border-color: var(--border-subtle);
+  --vxe-ui-table-row-hover-background-color: color-mix(in srgb, var(--q-primary) 7%, var(--surface));
+  --vxe-ui-table-row-height-default: 48px;
+  --vxe-ui-table-row-height-medium: 48px;
+  --vxe-ui-table-row-line-height: 22px;
+  width: 100%;
+  color: var(--text-primary);
+}
+.vxe-quasar-table .vxe-table--render-default,
+.vxe-quasar-table .vxe-table--header-wrapper,
+.vxe-quasar-table .vxe-table--body-wrapper,
+.vxe-quasar-table .vxe-table--fixed-left-wrapper,
+.vxe-quasar-table .vxe-table--fixed-right-wrapper {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.vxe-quasar-table .vxe-header--column {
+  padding: 7px 16px;
+  background-color: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.vxe-quasar-table .vxe-body--column {
+  padding: 7px 16px;
+  background-color: var(--surface);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.vxe-quasar-table .vxe-table--border-line { border-color: var(--border-subtle); }
+.vxe-quasar-table .vxe-table--empty-placeholder { color: var(--text-secondary); }
+.q-table th.text-right { text-align: center; }
+.vxe-quasar-table .table-operation-header > .vxe-cell { justify-content: center; }
+
 .app-layout { min-height: 100vh; background: var(--page-bg); }
 .app-header { background: var(--surface); color: var(--text-primary); }
 .app-drawer { background: var(--surface); color: var(--text-primary); }

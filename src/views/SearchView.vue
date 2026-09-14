@@ -421,10 +421,10 @@ onBeforeUnmount(() => {
               </div>
               <vxe-table
                 v-if="$q.screen.gt.xs"
-                class="result-table"
+                class="vxe-quasar-table result-table"
                 :data="filteredResults"
                 height="90%"
-                border
+                round
                 :row-config="{ keyField: 'id', isHover: true }"
                 :virtual-y-config="{ enabled: true, gt: 0, preSize: 10, oSize: 5 }"
               >
@@ -448,7 +448,7 @@ onBeforeUnmount(() => {
                 <vxe-column field="seeders" title="做种" width="90" align="center">
                   <template #default="{ row }">{{ row.seeders || 0 }} ↑</template>
                 </vxe-column>
-                <vxe-column title="操作" width="150" fixed="right" align="right">
+                <vxe-column title="操作" width="150" fixed="right" align="right" header-class-name="table-operation-header">
                   <template #default="{ row }">
                     <div class="result-actions">
                       <q-btn color="primary" unelevated dense label="下载" @click.stop="openTorrent(row)" />
@@ -465,6 +465,7 @@ onBeforeUnmount(() => {
                 class="mobile-result-table"
                 :data="filteredResults"
                 height="80%"
+                round
                 :show-header="false"
                 :row-config="{ keyField: 'id' }"
                 :cell-config="{ padding: false }"
@@ -563,20 +564,6 @@ onBeforeUnmount(() => {
 .site-filter { width: 210px; }
 .name-filter { width: 240px; }
 .filter-count { margin-left: auto; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
-.result-table {
-  width: 100%;
-  --vxe-ui-font-color: var(--text-primary);
-  --vxe-ui-font-lighten-color: var(--text-secondary);
-  --vxe-ui-font-darken-color: var(--text-primary);
-  --vxe-ui-font-primary-color: var(--q-primary);
-  --vxe-ui-layout-background-color: var(--surface);
-  --vxe-ui-table-header-background-color: var(--surface-muted);
-  --vxe-ui-table-header-font-color: var(--text-secondary);
-  --vxe-ui-table-border-color: var(--border-subtle);
-  --vxe-ui-table-row-hover-background-color: color-mix(in srgb, var(--q-primary) 7%, var(--surface));
-}
-.result-table :deep(.vxe-table--render-default) { color: var(--text-primary); background: var(--surface); }
-.result-table :deep(.vxe-table--header-wrapper), .result-table :deep(.vxe-table--body-wrapper) { background: var(--surface); }
 .result-table :deep(.vxe-table--empty-placeholder) { min-height: 280px; }
 .mobile-result-table {
   width: 100%;

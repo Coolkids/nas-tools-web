@@ -325,7 +325,7 @@ onMounted(() => { void load() })
 
     <div class="history-section">
       <q-card flat bordered class="content-card history-card">
-        <q-card-section class="section-heading">
+        <q-card-section class="section-heading" style="border-bottom: 1px solid rgb(221, 227, 237);">
           <div>
             <div class="section-title">播放历史</div>
             <div class="section-description">播放和登录活动</div>
@@ -335,12 +335,12 @@ onMounted(() => { void load() })
         <vxe-table
           :data="history"
           :height="historyTableHeight"
-          class="history-table"
+          class="vxe-quasar-table history-table"
           :loading="loading"
+          border="inner"
           :row-config="{ keyField: 'date', isHover: true }"
           :cell-config="{ minHeight: $q.screen.lt.sm ? 64 : 48 }"
           :virtual-y-config="{ enabled: true, gt: 0, preSize: 8, oSize: 4 }"
-          border
           :show-header="false"
         >
           <vxe-column field="event" title="事件" min-width="100%">
@@ -393,21 +393,6 @@ onMounted(() => { void load() })
 .quick-action-item :deep(.q-item__label) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quick-action-item :deep(.q-item__label--caption) { margin-top: 3px; color: var(--text-secondary); font-size: 11px; }
 .history-section { margin-top: 16px; }
-.history-table {
-  width: 100%;
-  --vxe-ui-font-color: var(--text-primary);
-  --vxe-ui-font-lighten-color: var(--text-secondary);
-  --vxe-ui-font-darken-color: var(--text-primary);
-  --vxe-ui-font-primary-color: var(--q-primary);
-  --vxe-ui-layout-background-color: var(--surface);
-  --vxe-ui-table-header-background-color: var(--surface-muted);
-  --vxe-ui-table-header-font-color: var(--text-secondary);
-  --vxe-ui-table-border-color: var(--border-subtle);
-  --vxe-ui-table-row-hover-background-color: color-mix(in srgb, var(--q-primary) 7%, var(--surface));
-}
-.history-table :deep(.vxe-table--render-default) { color: var(--text-primary); background: var(--surface); }
-.history-table :deep(.vxe-table--header-wrapper), .history-table :deep(.vxe-table--body-wrapper) { background: var(--surface); }
-.history-table :deep(.vxe-header--column) { color: var(--text-secondary); font-weight: 500; }
 .history-table :deep(.vxe-table--empty-placeholder) { min-height: 180px; }
 .history-event { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .history-event-copy { min-width: 0; }

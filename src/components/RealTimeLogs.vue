@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, nextTick } from 'vue'
+import {ref, watch, onUnmounted, nextTick, computed} from 'vue'
+import type { VxeTableDefines, VxeTableInstance } from 'vxe-table'
 import { getLogging, type LogEntry } from '@/api/system'
 import { useModalStore } from '@/stores/modal'
+import {useQuasar} from "quasar";
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
+const $q = useQuasar()
 const logs = ref<LogEntry[]>([])
 const paused = ref(false)
 const activeSource = ref('')
@@ -13,12 +16,16 @@ const followTail = ref(true)
 const newLogCount = ref(0)
 const loadedCount = ref(0)
 const loading = ref(false)
-const logBody = ref<HTMLElement | null>(null)
+const logBody = ref<VxeTableInstance<LogEntry> | null>(null)
 const modal = useModalStore()
 let timer: ReturnType<typeof setTimeout> | null = null
 const MAX_LOGS = 1000
 
 const LOG_SOURCES = ['All', 'System', 'Rss', 'Rmt', 'Meta', 'Sync', 'Sites', 'Brush', 'Douban', 'Spider', 'Message', 'Indexer', 'Searcher', 'Subscribe', 'Downloader', 'TorrentRemover']
+
+const historyTableHeight = computed(() => {
+
+})
 
 function stopPolling() {
   if (timer) {
@@ -36,9 +43,9 @@ async function loadLogs() {
       loadedCount.value += res.loglist.length
       logs.value = [...logs.value, ...res.loglist].slice(-MAX_LOGS)
       await nextTick()
-      if (logBody.value && followTail.value) {
-        logBody.value.scrollTop = logBody.value.scrollHeight
-      } else if (!followTail.value) {
+      if (followTail.value) {
+        scrollToBottom()
+      } else {
         newLogCount.value += res.loglist.length
       }
     }
@@ -81,17 +88,20 @@ function selectSource(s: string) {
   startPolling()
 }
 
-function onLogScroll(event: Event) {
-  const target = event.currentTarget as HTMLElement
-  const atBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 24
+function onLogScroll({ target, isBottom, scrollTop, scrollHeight }: VxeTableDefines.ScrollEventParams<LogEntry>) {
+  const atBottom = isBottom || scrollHeight - scrollTop - target.clientHeight < 24
   followTail.value = atBottom
   if (atBottom) newLogCount.value = 0
+}
+
+function scrollToBottom() {
+  if (logs.value.length) void logBody.value?.scrollToEndRow()
 }
 
 function jumpToBottom() {
   followTail.value = true
   newLogCount.value = 0
-  if (logBody.value) logBody.value.scrollTop = logBody.value.scrollHeight
+  scrollToBottom()
 }
 
 async function copyLogs() {
@@ -141,7 +151,7 @@ onUnmounted(stopPolling)
 </script>
 
 <template>
-  <q-dialog :model-value="visible" :maximized="$q.screen.lt.sm" persistent @update:model-value="updateVisible">
+  <q-dialog :model-value="visible" :maximized="$q.screen.lt.sm" persistent @show="scrollToBottom" @update:model-value="updateVisible">
     <q-card class="log-dialog">
       <q-card-section class="row items-center no-wrap dialog-header">
         <div class="text-h6 text-weight-medium">实时日志 <span class="log-count">最近 {{ logs.length }} 条</span></div>
@@ -158,33 +168,48 @@ onUnmounted(stopPolling)
         <div v-if="newLogCount && !followTail" class="new-log-banner">
           <q-btn flat color="primary" icon="south" :label="`有 ${newLogCount} 条新日志，回到底部`" @click="jumpToBottom" />
         </div>
-        <div ref="logBody" class="log-body" @scroll="onLogScroll">
-          <table v-if="logs.length" class="log-table">
-            <thead><tr><th class="col-time">时间</th><th class="col-source">来源</th><th class="col-text">内容</th></tr></thead>
-            <tbody><tr v-for="(log, i) in logs" :key="i"><td class="col-time">{{ log.time }}</td><td class="col-source"><q-badge outline :color="levelType(log.level)">{{ log.source }}</q-badge></td><td class="col-text">{{ log.text }}</td></tr></tbody>
-          </table>
-          <div v-else class="log-empty"><q-spinner-dots v-if="loading" color="primary" size="28px" /><q-icon v-else name="receipt_long" size="42px" color="grey-5" /><span>{{ loading ? '正在读取日志…' : '暂无日志' }}</span></div>
-        </div>
+        <vxe-table
+          v-if="logs.length"
+          ref="logBody"
+          class="vxe-quasar-table log-table"
+          :data="logs"
+          :virtual-y-config="{enabled: true, gt: 0}"
+          max-height="85%"
+          round
+          :scrollbar-config="{ y: { visible: false } }"
+          @scroll="onLogScroll"
+        >
+          <vxe-column field="time" title="时间" width="100" class-name="col-time" />
+          <vxe-column field="source" title="来源" width="110" class-name="col-source">
+            <template #default="{ row }"><q-badge outline :color="levelType(row.level)">{{ row.source }}</q-badge></template>
+          </vxe-column>
+          <vxe-column field="text" title="内容" min-width="0" class-name="col-text">
+            <template #default="{ row }"><div class="log-text">{{ row.text }}</div></template>
+          </vxe-column>
+          <template #empty><div class="log-empty"><q-spinner-dots v-if="loading" color="primary" size="28px" /><q-icon v-else name="receipt_long" size="42px" color="grey-5" /><span>{{ loading ? '正在读取日志…' : '暂无日志' }}</span></div></template>
+        </vxe-table>
+        <div v-else class="log-empty"><q-spinner-dots v-if="loading" color="primary" size="28px" /><q-icon v-else name="receipt_long" size="42px" color="grey-5" /><span>{{ loading ? '正在读取日志…' : '暂无日志' }}</span></div>
       </q-card-section>
     </q-card>
   </q-dialog>
 </template>
 
 <style scoped>
-.log-dialog { width: min(900px, calc(100vw - 32px)); max-width: none; max-height: 88vh; border-radius: 16px; background: var(--surface); color: var(--text-primary); }
+.log-dialog { display: flex; width: min(900px, calc(100vw - 32px)); height: 88vh; max-width: none; max-height: 88vh; flex-direction: column; overflow: hidden; border-radius: 16px; background: var(--surface); color: var(--text-primary); }
 .dialog-header { min-height: 60px; padding: 14px 20px; }
 .log-count { margin-left: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 400; }
-.log-content { padding: 16px 20px 20px; }
+.log-content { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden; padding: 16px 20px 20px; }
 .log-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .source-select { width: 180px; }
 .new-log-banner { margin: -4px 0 8px; text-align: center; }
-.log-body { max-height: 64vh; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 10px; font: 13px/1.55 Consolas, Monaco, monospace; }
-.log-table { width: 100%; border-collapse: collapse; }
-.log-table th { position: sticky; top: 0; z-index: 1; padding: 9px 10px; background: var(--surface-muted); color: var(--text-primary); text-align: left; font-weight: 600; }
-.log-table td { padding: 7px 10px; border-top: 1px solid var(--border-subtle); vertical-align: top; }
-.col-time { width: 100px; white-space: nowrap; font-family: monospace; color: var(--text-secondary); }
-.col-source { width: 110px; }
-.col-text { word-break: break-all; }
+.log-table { min-height: 0; flex: 1 1 auto; overflow-x: hidden; font: 13px/1.55 Consolas, Monaco, monospace; --vxe-ui-table-row-height-default: 38px; --vxe-ui-table-row-height-medium: 38px; --vxe-ui-table-row-line-height: 20px; }
+.log-table :deep(.vxe-header--column) { height: 38px; padding: 7px 10px; }
+.log-table :deep(.vxe-body--column) { padding: 7px 10px; vertical-align: top; }
+.log-table :deep(.vxe-table--render-default) { height: 100%; }
+.log-table :deep(.vxe-table--header-wrapper), .log-table :deep(.vxe-table--body-wrapper) { overflow: hidden; }
+.log-table :deep(.vxe-table--body-inner-wrapper) { overflow-x: hidden; }
+.log-table :deep(.col-time) { white-space: nowrap; font-family: monospace; color: var(--text-secondary); }
+.log-text { display: -webkit-box; max-width: 100%; overflow: hidden; white-space: normal; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
 .log-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 240px; color: var(--text-secondary); }
-@media (max-width: 599px) { .log-dialog { width: 100%; max-height: none; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .log-content { padding: 16px; } .log-body { max-height: none; } .source-select { flex: 1; width: auto; } .log-toolbar :deep(.q-btn) { min-height: 42px; } .col-time { width: 80px; } .col-source { width: 76px; } .log-toolbar :deep(.q-btn:last-child) { margin-left: auto; } }
+@media (max-width: 599px) { .log-dialog { width: 100%; height: 100dvh; max-height: none; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .log-content { padding: 16px; } .source-select { flex: 1; width: auto; } .log-toolbar :deep(.q-btn) { min-height: 42px; } .log-table :deep(.vxe-header--column), .log-table :deep(.vxe-body--column) { padding-inline: 8px; } .log-toolbar :deep(.q-btn:last-child) { margin-left: auto; } }
 </style>

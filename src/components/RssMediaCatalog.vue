@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
+import RssExcelImportDialog from '@/components/RssExcelImportDialog.vue'
 import RssMediaDetailDialog from '@/components/RssMediaDetailDialog.vue'
 import PosterPreview from './PosterPreview.vue'
 import { useModalStore } from '@/stores/modal'
@@ -21,6 +22,7 @@ const detailDialogVisible = ref(false)
 const selectedItem = ref<RssMediaItem | null>(null)
 const editRssid = ref<string | number>('')
 const editDialogVisible = ref(false)
+const importDialogVisible = ref(false)
 const filterRuleMap = ref<Record<string, string>>({})
 
 const title = computed(() => props.type === 'TV' ? '电视剧订阅' : '电影订阅')
@@ -108,6 +110,7 @@ onMounted(() => { void loadFilterRules(); void load() })
         <q-input v-model="nameFilter" outlined dense clearable class="search-input" placeholder="搜索标题"><template #prepend><q-icon name="search" /></template></q-input>
         <span class="filter-count">共 {{ filteredItems.length }} 条</span>
         <q-btn color="primary" unelevated icon="add" label="新增订阅" @click="addDialogVisible = true" />
+        <q-btn outline icon="table_view" label="Excel 导入" @click="importDialogVisible = true" />
         <q-btn outline icon="history" label="订阅历史" @click="goHistory" />
         <q-btn outline icon="refresh" label="刷新" :loading="loading" @click="load({ notify: true })" />
       </template>
@@ -118,12 +121,13 @@ onMounted(() => { void loadFilterRules(); void load() })
     <div v-if="!loading && !filteredItems.length" class="empty-state"><q-icon name="subscriptions" size="48px" color="grey-5" /><span>{{ emptyDescription }}</span><q-btn outline color="primary" label="新增订阅" class="q-mt-sm" @click="addDialogVisible = true" /></div>
     <div v-else class="rss-grid">
       <q-card v-for="item in filteredItems" :key="item.id" flat bordered class="rss-card">
-        <div class="card-background"><q-img v-if="item.image" :src="item.image" class="background-image" fit="cover" /><div class="background-overlay" /><q-btn flat round icon="more_horiz" color="white" class="more-button" aria-label="查看订阅详情" @click.stop="openDetail(item)" /><div class="card-content"><div class="card-main"><PosterPreview v-if="item.poster || item.image" :src="item.poster || item.image" ratio=".8" class="card-poster" fit="cover" /><div v-else class="card-poster poster-placeholder"><q-icon name="movie" size="28px" /></div><div class="card-info"><div class="meta-line"><span v-if="item.year">{{ item.year }}</span><q-badge rounded :color="stateMeta(item.state).color" :label="stateMeta(item.state).label" /><span v-if="item.season && item.season !== 'S00'" class="season-text">{{ item.season }}</span><span v-if="episodeText(item)" class="episode-text">{{ episodeText(item) }}</span><q-badge v-if="item.over_edition" rounded color="negative" label="洗版" /></div><div class="item-name" :title="item.name">{{ item.name }}</div><div v-if="item.filter_team" class="info-line">{{ item.filter_team }}</div><div v-if="filterSummary(item)" class="info-line filter-summary" :title="filterSummary(item)">{{ filterSummary(item) }}</div></div></div><div v-if="item.overview" class="card-overview" :title="item.overview">{{ item.overview }}</div></div></div>
+        <div class="card-background"><q-img v-if="item.image" :src="item.image" class="background-image" fit="cover" /><div class="background-overlay" /><q-btn flat round icon="more_horiz" color="white" class="more-button" aria-label="查看订阅详情" @click.stop="openDetail(item)" /><div class="card-content"><div class="card-main"><PosterPreview v-if="item.poster || item.image" :src="item.poster || item.image" ratio=".8" class="card-poster" fit="cover" /><div v-else class="card-poster poster-placeholder"><q-icon name="movie" size="28px" /></div><div class="card-info"><div class="meta-line"><span v-if="item.year">{{ item.year }}</span><q-badge :color="stateMeta(item.state).color" :label="stateMeta(item.state).label" /><span v-if="item.season && item.season !== 'S00'" class="season-text">{{ item.season }}</span><span v-if="episodeText(item)" class="episode-text">{{ episodeText(item) }}</span><q-badge v-if="item.over_edition" rounded color="negative" label="洗版" /></div><div class="item-name" :title="item.name">{{ item.name }}</div><div v-if="item.filter_team" class="info-line">{{ item.filter_team }}</div><div v-if="filterSummary(item)" class="info-line filter-summary" :title="filterSummary(item)">{{ filterSummary(item) }}</div></div></div><div v-if="item.overview" class="card-overview" :title="item.overview">{{ item.overview }}</div></div></div>
         <q-linear-progress v-if="props.type === 'TV' && item.total && item.total > 0" :value="progressOf(item) / 100" color="primary" track-color="grey-4" size="5px" class="card-progress" aria-label="订阅进度" />
       </q-card>
     </div>
 
     <AddRssMediaDialog v-model="addDialogVisible" :type="type" @success="onSuccess('添加订阅成功')" @error="modal.error($event)" />
+    <RssExcelImportDialog v-model="importDialogVisible" :type="type" @completed="load" @error="modal.error($event)" />
     <RssMediaDetailDialog v-model="detailDialogVisible" :item="selectedItem" :type="type" @edit="openEdit" @removed="load" @searched="load" @refreshed="load" />
     <AddRssMediaDialog v-model="editDialogVisible" :type="type" :rssid="editRssid" @success="onEditSuccess" @error="modal.error($event)" />
   </div>

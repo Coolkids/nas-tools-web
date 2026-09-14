@@ -135,6 +135,7 @@ const voteText = computed(() => formatVote(props.vote))
 @media (max-width: 599px) {
   .card-overlay { padding: 10px; opacity: 1; background: linear-gradient(180deg, rgba(8, 12, 22, .35), rgba(8, 12, 22, .9)); }
   .overlay-overview { -webkit-line-clamp: 3; }
+  .overlay-content { padding-top: 24px; }
   .overlay-title { font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .media-card { transition: none; } }

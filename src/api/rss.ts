@@ -1,4 +1,4 @@
-import { doAction } from './request'
+import instance, { doAction } from './request'
 
 export interface RssHistoryItem {
   ID: number
@@ -326,4 +326,76 @@ export function getRssDetail(rssid: string | number, type: RssType): Promise<{ c
 
 export function refreshRss(rssid: string | number, type: RssType): Promise<SimpleResult> {
   return doAction<SimpleResult>('refresh_rss', { rssid, type })
+}
+
+// ---- Excel 批量导入订阅 ----
+
+export interface RssImportValues {
+  name: string
+  year?: string
+  keyword?: string
+  season?: string
+  fuzzy_match?: boolean
+  rss_sites?: string[]
+  search_sites?: string[]
+  over_edition?: boolean
+  filter_restype?: string
+  filter_pix?: string
+  filter_team?: string
+  filter_rule?: string
+  download_setting?: string
+  save_path?: string
+  total_ep?: string
+  current_ep?: string
+}
+
+export interface RssImportRow {
+  row: number
+  values: RssImportValues
+  status: 'pending' | 'processing' | 'success' | 'failed'
+  reason?: string
+}
+
+export interface RssImportJob {
+  id: string
+  type: RssType
+  total: number
+  processed: number
+  succeeded: number
+  failed: number
+  current_row?: number
+  state: 'running' | 'completed'
+  rows: RssImportRow[]
+}
+
+export async function uploadRssImportFile(file: File): Promise<{ code: number; filepath?: string; msg?: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await instance.post<{ code: number; filepath?: string; msg?: string }>('/rss_import_upload', form)
+  return response.data
+}
+
+export function startRssImport(filepath: string, type: RssType): Promise<{ code: number; msg?: string; job?: RssImportJob }> {
+  return doAction('start_rss_excel_import', { filepath, type })
+}
+
+export function getRssImportStatus(jobId: string): Promise<{ code: number; msg?: string; job?: RssImportJob }> {
+  return doAction('get_rss_excel_import', { job_id: jobId })
+}
+
+export function retryRssImportRows(jobId: string, rows: Array<Pick<RssImportRow, 'row' | 'values'>>): Promise<{ code: number; msg?: string; job?: RssImportJob }> {
+  return doAction('retry_rss_excel_import', { job_id: jobId, rows })
+}
+
+async function downloadBlob(url: string): Promise<Blob> {
+  const response = await instance.get(url, { responseType: 'blob' })
+  return response.data
+}
+
+export function downloadRssImportTemplate(type: RssType): Promise<Blob> {
+  return downloadBlob(`/rss_import_template?type=${encodeURIComponent(type)}`)
+}
+
+export function downloadRssImportErrors(jobId: string): Promise<Blob> {
+  return downloadBlob(`/rss_import_errors/${encodeURIComponent(jobId)}.xlsx`)
 }
