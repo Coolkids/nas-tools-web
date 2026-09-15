@@ -1,6 +1,6 @@
 # NAStool Web
 
-基于 **Vue 3 + Element Plus + Vite + TypeScript** 的 NAStool 前端界面。
+基于 **Vue 3 + Quasar + Quasar CLI (Vite) + TypeScript** 的 NAStool 前端界面。
 
 > NAStool 的前后端分离前端，需配合 [nas-tools](https://github.com/Coolkids/nas-tools) 后端使用。
 
@@ -9,8 +9,8 @@
 | 能力 | 选型 |
 |------|------|
 | 框架 | Vue 3 (`<script setup lang="ts">`) |
-| 构建 | Vite 5 |
-| UI | Element Plus 2 |
+| 构建 | Quasar CLI with Vite |
+| UI | Quasar 2 |
 | 路由 | Vue Router 4 |
 | 状态 | Pinia |
 | HTTP | Axios |
@@ -33,12 +33,12 @@
 ```
 nas-tools-web/
 ├── index.html                # Vite 入口
-├── vite.config.ts            # 构建 + 开发反向代理
+├── quasar.config.ts         # Quasar CLI + Vite 配置、开发反向代理
 ├── nginx.conf                # 生产 nginx 配置示例
 ├── .env.development          # 开发环境变量
 ├── .env.production           # 生产环境变量
 ├── src/
-│   ├── main.ts               # 入口
+│   ├── boot/app.ts           # Pinia、Viewer、VXETable 初始化
 │   ├── App.vue               # 根据 route.meta.public 切换登录页/主布局
 │   ├── router/index.ts       # 全部路由 + 登录守卫
 │   ├── api/                  # Axios 封装 + 各业务 API 模块
@@ -70,10 +70,10 @@ export NASTOOL_CONFIG=./config/config.yaml
 
 ```bash
 pnpm install     # 首次
-pnpm dev         # Vite :5173，自动反向代理 API 到 :3000
+pnpm dev         # Quasar dev :5174，自动反向代理 API 到 :3000
 ```
 
-打开 `http://localhost:5173/`，自动跳转到 Vue 登录页（admin / password）。
+打开 `http://localhost:5174/`，自动跳转到 Vue 登录页（admin / password）。
 
 ### 3. 登录流程
 

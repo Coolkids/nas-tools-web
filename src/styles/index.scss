@@ -25,7 +25,7 @@ body.body--dark {
   --primary-soft: #263b64;
 }
 
-html, body, #app { min-height: 100%; margin: 0; padding: 0; }
+html, body, #q-app { min-height: 100%; margin: 0; padding: 0; }
 body {
   background: var(--page-bg);
   color: var(--text-primary);

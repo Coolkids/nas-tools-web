@@ -1,12 +1,12 @@
 {
   "name": "nas-tools-web",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "dev": "quasar dev",
+    "build": "vue-tsc --noEmit && quasar build",
+    "preview": "quasar serve dist --history",
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
@@ -23,9 +23,8 @@
     "xe-utils": "^4.0.13"
   },
   "devDependencies": {
-    "@quasar/vite-plugin": "^2.0.0",
+    "@quasar/app-vite": "^3.8.4",
     "@types/node": "^26.5.0",
-    "@vitejs/plugin-vue": "^6.0.8",
     "sass": "^1.104.0",
     "sass-embedded": "^1.93.2",
     "typescript": "^5.9.3",

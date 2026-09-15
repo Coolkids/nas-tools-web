@@ -1,35 +1,44 @@
-import { fileURLToPath, URL } from 'node:url'
-import { join } from 'node:path'
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import { quasar, transformAssetUrls } from '@quasar/vite-plugin'
+import { defineConfig } from '#q-app'
 
 // 开发时后端 Flask 地址（run.py 默认 3000 端口）
 const FLASK_TARGET = process.env.FLASK_TARGET || 'http://localhost:3000'
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [
-    vue({ template: { transformAssetUrls } }),
-    quasar({ sassVariables: join(import.meta.dirname, 'src/quasar-variables.sass') })
+export default defineConfig(() => ({
+  css: [
+    '../styles/index.scss',
+    '~viewerjs/dist/viewer.css',
+    '~vxe-table/lib/style.css'
   ],
-  base: '/',
-  css: {
-    preprocessorOptions: {
-      scss: { api: 'modern-compiler' }
+
+  extras: ['material-icons'],
+
+  framework: {
+    lang: 'zh-CN',
+    iconSet: 'material-icons',
+    plugins: ['Dialog', 'Notify'],
+    config: {
+      brand: {
+        primary: '#315BD6',
+        positive: '#187348',
+        negative: '#BE303A',
+        warning: '#8A5700',
+        info: '#176B9A'
+      }
     }
   },
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
-  },
-  server: {
+
+  boot: ['app'],
+
+  devServer: {
     host: '0.0.0.0',
     port: 5174,
     // 开发期把后端接口代理到 Flask，同源请求，cookie 跨端口共享（浏览器 cookie 不区分端口）
     proxy: {
-      '/do': { target: FLASK_TARGET, changeOrigin: true, bypass: (req) => { if (req.url?.split('?')[0] !== '/do') return req.url } },
+      '/do': {
+        target: FLASK_TARGET,
+        changeOrigin: true,
+        bypass: (req) => req.url?.split('?')[0] !== '/do' ? req.url : undefined
+      },
       '/login_json': { target: FLASK_TARGET, changeOrigin: true },
       '/logout_json': { target: FLASK_TARGET, changeOrigin: true },
       '/dirlist': { target: FLASK_TARGET, changeOrigin: true },
@@ -49,9 +58,21 @@ export default defineConfig({
       '/wallpaper': { target: FLASK_TARGET, changeOrigin: true }
     }
   },
+
   build: {
-    outDir: 'dist',
+    publicPath: '/',
+    vueRouterMode: 'history',
+    distDir: 'dist',
     sourcemap: false,
-    chunkSizeWarningLimit: 1500
+    extendViteConf: () => ({
+      css: {
+        preprocessorOptions: {
+          scss: { api: 'modern-compiler' }
+        }
+      },
+      build: {
+        chunkSizeWarningLimit: 1500
+      }
+    })
   }
-})
+}))
