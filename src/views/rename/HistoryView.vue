@@ -191,17 +191,20 @@ function openPreview(row: TransferHistoryItem) {
 }
 function tmdbUrl(row: TransferHistoryItem) { return row.TMDBID ? `https://www.themoviedb.org/${row.TYPE === '电影' ? 'movie' : 'tv'}/${row.TMDBID}` : '' }
 function isMoveType(row: TransferHistoryItem) { return row.RMT_MODE === 'move' || row.MODE === 'move' || row.SYNC_MODE === 'move' }
+function hasMoveSelection() { return selected.value.some(isMoveType) }
+function hasNonMoveSelection() { return selected.value.some((row) => !isMoveType(row)) }
 function isSelected(row: TransferHistoryItem) { return selected.value.some((item) => item.ID === row.ID) }
 function toggleSelected(row: TransferHistoryItem) {
   selected.value = isSelected(row) ? selected.value.filter((item) => item.ID !== row.ID) : [...selected.value, row]
 }
 
 async function reIdentify(rows: TransferHistoryItem[]) {
-  if (!rows.length) { modal.warning('请先选择记录'); return }
+  const identifiable = rows.filter((row) => !isMoveType(row))
+  if (!identifiable.length) { modal.warning('移动类型只能恢复，不能重新识别'); return }
   actionBusy.value = true
   modal.showLoading('重新识别中…')
   try {
-    const response = await reIdentification('history', rows.map((row) => row.ID))
+    const response = await reIdentification('history', identifiable.map((row) => row.ID))
     response.retcode === 0 ? modal.success(response.retmsg || '重新识别成功') : modal.warning(response.retmsg || '识别失败')
     await reloadAfterAction()
   } catch (error) {
@@ -213,13 +216,14 @@ async function reIdentify(rows: TransferHistoryItem[]) {
 }
 
 async function remove(flag: 'del_source' | 'del_dest' | 'del_all', rows: TransferHistoryItem[]) {
-  if (!rows.length) { modal.warning('请先选择记录'); return }
+  const removable = rows.filter((row) => !isMoveType(row))
+  if (!removable.length) { modal.warning('移动类型只能恢复，不能删除'); return }
   const label = flag === 'del_all' ? '源文件及媒体库' : flag === 'del_source' ? '源' : '媒体库'
-  const name = rows.map((row) => `${row.TITLE} (${row.YEAR}) ${row.SEASON_EPISODE || ''}`).join('、')
+  const name = removable.map((row) => `${row.TITLE} (${row.YEAR}) ${row.SEASON_EPISODE || ''}`).join('、')
   if (!await modal.confirm(`${name} 对应${label}文件将被同步删除，是否确认？`, '删除转移记录')) return
   actionBusy.value = true
   try {
-    const response = await deleteHistory(flag, rows.map((row) => row.ID))
+    const response = await deleteHistory(flag, removable.map((row) => row.ID))
     if (response.code === 0) {
       modal.success('删除成功')
       selected.value = []
@@ -271,9 +275,9 @@ async function batchRestore(rows: TransferHistoryItem[]) {
         <div v-if="$q.screen.lt.sm" class="mobile-history-actions">
           <q-btn dense unelevated color="primary" icon="search" label="查询" aria-label="按标题过滤" @click="openMobileSearch"><q-tooltip>按标题过滤</q-tooltip></q-btn>
           <q-btn dense outline icon="refresh" label="刷新" aria-label="刷新" :loading="loading" @click="refreshHistory"><q-tooltip>刷新</q-tooltip></q-btn>
-          <q-btn dense color="primary" unelevated icon="manage_search" label="识别" aria-label="重新识别" :disable="!selected.length || actionBusy" @click="reIdentify(selected)"><q-tooltip>重新识别</q-tooltip></q-btn>
-          <q-btn dense flat icon="restore" label="恢复" aria-label="批量恢复" :disable="!selected.length || actionBusy" @click="batchRestore(selected)"><q-tooltip>批量恢复</q-tooltip></q-btn>
-          <q-btn-dropdown dense color="negative" unelevated icon="delete" label="删除" dropdown-icon="expand_more" aria-label="批量删除" :disable="!selected.length || actionBusy">
+          <q-btn v-if="hasNonMoveSelection()" dense color="primary" unelevated icon="manage_search" label="识别" aria-label="重新识别" :disable="actionBusy" @click="reIdentify(selected)"><q-tooltip>重新识别</q-tooltip></q-btn>
+          <q-btn v-if="hasMoveSelection()" dense flat icon="restore" label="恢复" aria-label="批量恢复" :disable="actionBusy" @click="batchRestore(selected)"><q-tooltip>批量恢复</q-tooltip></q-btn>
+          <q-btn-dropdown v-if="hasNonMoveSelection()" dense color="negative" unelevated icon="delete" label="删除" dropdown-icon="expand_more" aria-label="批量删除" :disable="actionBusy">
             <q-list>
               <q-item clickable v-close-popup @click="remove('del_source', selected)"><q-item-section>删除源文件</q-item-section></q-item>
               <q-item clickable v-close-popup @click="remove('del_dest', selected)"><q-item-section>删除媒体库文件</q-item-section></q-item>
@@ -284,9 +288,9 @@ async function batchRestore(rows: TransferHistoryItem[]) {
         <template v-else>
           <q-input v-model="keyword" outlined dense clearable class="search-input" placeholder="搜索标题…" @keyup.enter="doSearch"><template #prepend><q-icon name="search" /></template></q-input>
           <q-btn outline icon="refresh" label="刷新" :loading="loading" @click="refreshHistory" />
-          <q-btn color="primary" unelevated icon="manage_search" label="重新识别" :disable="!selected.length || actionBusy" @click="reIdentify(selected)" />
-          <q-btn flat icon="restore" label="批量恢复" :disable="!selected.length || actionBusy" @click="batchRestore(selected)" />
-          <q-btn-dropdown color="negative" unelevated icon="delete" label="批量删除" :disable="!selected.length || actionBusy">
+          <q-btn v-if="hasNonMoveSelection()" color="primary" unelevated icon="manage_search" label="重新识别" :disable="actionBusy" @click="reIdentify(selected)" />
+          <q-btn v-if="hasMoveSelection()" flat icon="restore" label="批量恢复" :disable="actionBusy" @click="batchRestore(selected)" />
+          <q-btn-dropdown v-if="hasNonMoveSelection()" color="negative" unelevated icon="delete" label="批量删除" :disable="actionBusy">
             <q-list>
               <q-item clickable v-close-popup @click="remove('del_source', selected)"><q-item-section>删除源文件</q-item-section></q-item>
               <q-item clickable v-close-popup @click="remove('del_dest', selected)"><q-item-section>删除媒体库文件</q-item-section></q-item>
@@ -316,7 +320,7 @@ async function batchRestore(rows: TransferHistoryItem[]) {
         <template #body-cell-media="slotProps"><q-td :props="slotProps"><div class="media-cell"><q-img v-if="posterUrl(slotProps.row)" :src="posterUrl(slotProps.row)" fit="cover" class="poster" @click="openPreview(slotProps.row)"><template #error><div class="poster-placeholder"><q-icon name="movie" /></div></template></q-img><div v-else class="poster poster-placeholder"><q-icon :name="slotProps.row.TYPE === '电影' ? 'movie' : 'tv'" /></div><div class="media-info"><a v-if="slotProps.row.TMDBID" :href="tmdbUrl(slotProps.row)" target="_blank" rel="noreferrer" class="media-title">{{ slotProps.row.TITLE }} ({{ slotProps.row.YEAR }})</a><div v-else class="media-title">{{ slotProps.row.TITLE }} ({{ slotProps.row.YEAR }})</div><div v-if="slotProps.row.SEASON_EPISODE" class="text-caption text-warning">{{ slotProps.row.SEASON_EPISODE }}</div><div v-if="slotProps.row.CATEGORY" class="text-caption text-secondary">类别：{{ slotProps.row.CATEGORY }}</div></div></div></q-td></template>
         <template #body-cell-file="slotProps"><q-td :props="slotProps"><div class="file-line" :title="slotProps.row.SOURCE_FILENAME || '—'">{{ slotProps.row.SOURCE_FILENAME || '—' }}<q-tooltip v-if="slotProps.row.SOURCE_FILENAME">{{ slotProps.row.SOURCE_FILENAME }}</q-tooltip></div><div v-if="slotProps.row.DEST_PATH || slotProps.row.DEST_FILENAME" class="file-line text-positive" :title="slotProps.row.DEST_FILENAME || slotProps.row.DEST_PATH"><span class="text-secondary">› </span><span class="dest-link" @click="goToFileManager(slotProps.row.DEST_PATH)">{{ slotProps.row.DEST_FILENAME || slotProps.row.DEST_PATH }}</span><q-tooltip>{{ slotProps.row.DEST_FILENAME || slotProps.row.DEST_PATH }}</q-tooltip></div></q-td></template>
         <template #body-cell-time="slotProps"><q-td :props="slotProps"><div class="time-cell"><span>{{ slotProps.row.DATE }}</span><span class="text-caption text-secondary">来自：{{ slotProps.row.SOURCE || '—' }}</span><span class="text-caption text-secondary">方式：{{ slotProps.row.SYNC_MODE || slotProps.row.MODE || '—' }}</span></div></q-td></template>
-        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn-dropdown flat dense color="primary" label="更多"><q-list><q-item clickable v-close-popup @click="reIdentify([slotProps.row])"><q-item-section>重新识别</q-item-section></q-item><q-item v-if="isMoveType(slotProps.row)" clickable v-close-popup @click="restore(slotProps.row)"><q-item-section>恢复</q-item-section></q-item><template v-else><q-item clickable v-close-popup @click="remove('del_source', [slotProps.row])"><q-item-section>删除源文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_dest', [slotProps.row])"><q-item-section>删除媒体库文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_all', [slotProps.row])"><q-item-section>删除源及媒体库文件</q-item-section></q-item></template></q-list></q-btn-dropdown></q-td></template>
+        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn v-if="isMoveType(slotProps.row)" flat dense color="primary" icon="restore" label="恢复" @click="restore(slotProps.row)" /><q-btn-dropdown v-else flat dense color="primary" label="更多"><q-list><q-item clickable v-close-popup @click="reIdentify([slotProps.row])"><q-item-section>重新识别</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_source', [slotProps.row])"><q-item-section>删除源文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_dest', [slotProps.row])"><q-item-section>删除媒体库文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_all', [slotProps.row])"><q-item-section>删除源及媒体库文件</q-item-section></q-item></q-list></q-btn-dropdown></q-td></template>
       </q-table>
 
       <div v-else class="mobile-history-list">
@@ -342,9 +346,8 @@ async function batchRestore(rows: TransferHistoryItem[]) {
             </q-card-section>
             <q-separator />
             <q-card-actions align="right" class="history-item-actions">
-              <q-btn dense flat color="primary" icon="manage_search" label="识别" @click="reIdentify([row])" />
               <q-btn v-if="isMoveType(row)" dense flat color="primary" icon="restore" label="恢复" @click="restore(row)" />
-              <q-btn-dropdown dense flat color="negative" icon="delete" dropdown-icon="expand_more" aria-label="删除"><q-list><q-item clickable v-close-popup @click="remove('del_source', [row])"><q-item-section>删除源文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_dest', [row])"><q-item-section>删除媒体库文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_all', [row])"><q-item-section>删除源及媒体库文件</q-item-section></q-item></q-list></q-btn-dropdown>
+              <template v-else><q-btn dense flat color="primary" icon="manage_search" label="识别" @click="reIdentify([row])" /><q-btn-dropdown dense flat color="negative" icon="delete" dropdown-icon="expand_more" aria-label="删除"><q-list><q-item clickable v-close-popup @click="remove('del_source', [row])"><q-item-section>删除源文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_dest', [row])"><q-item-section>删除媒体库文件</q-item-section></q-item><q-item clickable v-close-popup @click="remove('del_all', [row])"><q-item-section>删除源及媒体库文件</q-item-section></q-item></q-list></q-btn-dropdown></template>
             </q-card-actions>
           </q-card>
           <template #loading><div class="mobile-list-loading"><q-spinner-dots color="primary" size="24px" /><span>加载下一页…</span></div></template>
