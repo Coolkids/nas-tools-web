@@ -5,7 +5,7 @@ import { useModalStore } from '@/stores/modal'
 import { getUnknownList, delUnknownPath, reIdentification, renameUdf, type UnknownItem, type TransferMode, type ManualMediaType } from '@/api/rename'
 
 const modal = useModalStore(); const loading = ref(false); const list = ref<UnknownItem[]>([]); const selection = ref<UnknownItem[]>([])
-const transferModes: { label: string; value: TransferMode }[] = [{ label: '复制', value: 'copy' }, { label: '硬链接', value: 'link' }, { label: '软链接', value: 'softlink' }, { label: '移动', value: 'move' }, { label: 'Rclone', value: 'rclone' }, { label: 'Rclone复制', value: 'rclonecopy' }, { label: 'MinIO', value: 'minio' }, { label: 'MinIO复制', value: 'miniocopy' }]
+const transferModes: { label: string; value: TransferMode }[] = [{ label: '复制', value: 'copy' }, { label: '硬链接', value: 'link' }, { label: '软链接', value: 'softlink' }, { label: '移动', value: 'move' }, { label: 'Rclone', value: 'rclone' }, { label: 'Rclone复制', value: 'rclonecopy' }, { label: 'rustfs', value: 'rustfs' }, { label: 'rustfs复制', value: 'rustfscopy' }]
 const mediaTypes: { label: string; value: ManualMediaType }[] = [{ label: '电影', value: 'movie' }, { label: '电视剧', value: 'tv' }, { label: '动漫', value: 'anime' }]
 const modeLabel = (value: string) => transferModes.find((mode) => mode.value === value)?.label || value || ''; const count = computed(() => list.value.length)
 async function load() { loading.value = true; try { const res = await getUnknownList(); if (res.code === 0) list.value = res.items || []; else modal.error('获取未识别列表失败') } catch (error) { modal.error(error instanceof Error ? error.message : '获取未识别列表失败') } finally { loading.value = false } }

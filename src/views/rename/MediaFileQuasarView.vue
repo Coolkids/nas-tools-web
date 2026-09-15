@@ -323,8 +323,8 @@ const transferModes = [
   { label: '移动', value: 'move' },
   { label: 'Rclone复制', value: 'rclonecopy' },
   { label: 'Rclone移动', value: 'rclone' },
-  { label: 'Minio复制', value: 'miniocopy' },
-  { label: 'Minio移动', value: 'minio' }
+  { label: 'rustfs复制', value: 'rustfscopy' },
+  { label: 'rustfs移动', value: 'rustfs' }
 ]
 const transferTypeOptions = [
   { label: '电影', value: 'MOV', icon: '/static/img/movie.png' },

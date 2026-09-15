@@ -28,8 +28,8 @@ const RMT_MODES: Option[] = [
   { value: 'move', label: '移动' },
   { value: 'rclonecopy', label: 'Rclone复制' },
   { value: 'rclone', label: 'Rclone移动' },
-  { value: 'miniocopy', label: 'Minio复制' },
-  { value: 'minio', label: 'Minio移动' }
+  { value: 'rustfscopy', label: 'rustfs复制' },
+  { value: 'rustfs', label: 'rustfs移动' }
 ]
 
 const activeTab = ref('system')

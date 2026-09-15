@@ -27,8 +27,8 @@ const SYNC_MODES = [
   { value: 'move', label: '移动' },
   { value: 'rclonecopy', label: 'Rclone复制' },
   { value: 'rclone', label: 'Rclone移动' },
-  { value: 'miniocopy', label: 'Minio复制' },
-  { value: 'minio', label: 'Minio移动' }
+  { value: 'rustfscopy', label: 'rustfs复制' },
+  { value: 'rustfs', label: 'rustfs移动' }
 ]
 
 const dialogVisible = ref(false)
@@ -183,7 +183,7 @@ async function toggle(row: SyncPath, flag: 'rename' | 'enable', checked: boolean
         <q-form @submit.prevent="submit"><q-card-section class="dialog-body">
           <q-banner rounded dense class="info-banner"><template #avatar><q-icon name="info_outline" color="primary" /></template>源目录必须配置；目的目录留空时会根据媒体库自动分类。移动模式会影响做种，请谨慎使用。</q-banner>
           <div class="path-grid q-mt-md"><q-input v-model="form.from" outlined dense label="源目录 *" placeholder="需要同步的目录" /><q-input v-model="form.to" outlined dense label="目的目录" placeholder="识别后存放目录" /><q-input v-model="form.unknown" outlined dense label="未识别目录" placeholder="无法识别时存放" /></div>
-          <q-select v-model="form.syncmod" outlined dense emit-value map-options label="同步方式" :options="SYNC_MODES" class="q-mt-md"><template #append><HelpTip text="硬链接要求源目录和目的目录在同一分区；移动模式会影响做种。Rclone 和 Minio 需要预先完成容器内配置。" /></template></q-select>
+          <q-select v-model="form.syncmod" outlined dense emit-value map-options label="同步方式" :options="SYNC_MODES" class="q-mt-md"><template #append><HelpTip text="硬链接要求源目录和目的目录在同一分区；移动模式会影响做种。Rclone 和 rustfs 需要预先完成容器内配置。" /></template></q-select>
           <div class="toggle-grid q-mt-md"><q-toggle v-model="form.rename" color="primary" label="识别并重命名" /><q-toggle v-model="form.enabled" color="positive" label="开启同步" /></div>
         </q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="saving" @click="dialogVisible = false" /><q-btn color="primary" unelevated label="确定" :loading="saving" type="submit" /></q-card-actions></q-form>
       </q-card>

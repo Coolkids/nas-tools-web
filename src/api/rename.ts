@@ -117,7 +117,7 @@ export function clearTmdbCache(): Promise<{ code: number; msg?: string }> {
   return doAction('clear_tmdb_cache', {})
 }
 
-export type TransferMode = 'copy' | 'link' | 'softlink' | 'move' | 'rclone' | 'rclonecopy' | 'minio' | 'miniocopy'
+export type TransferMode = 'copy' | 'link' | 'softlink' | 'move' | 'rclone' | 'rclonecopy' | 'rustfs' | 'rustfscopy'
 
 export type ManualMediaType = 'movie' | 'tv' | 'anime'
 
