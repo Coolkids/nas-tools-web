@@ -38,7 +38,7 @@ nas-tools-web/
 ├── .env.development          # 开发环境变量
 ├── .env.production           # 生产环境变量
 ├── src/
-│   ├── boot/app.ts           # Pinia、Viewer、VXETable 初始化
+│   ├── boot/app.ts           # Pinia、Viewer 初始化
 │   ├── App.vue               # 根据 route.meta.public 切换登录页/主布局
 │   ├── router/index.ts       # 全部路由 + 登录守卫
 │   ├── api/                  # Axios 封装 + 各业务 API 模块

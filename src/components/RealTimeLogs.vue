@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import {ref, watch, onUnmounted, nextTick, computed} from 'vue'
-import type { VxeTableDefines, VxeTableInstance } from 'vxe-table'
+import { ref, watch, onUnmounted, nextTick } from 'vue'
+import type { QTableProps } from 'quasar'
 import { getLogging, type LogEntry } from '@/api/system'
 import { useModalStore } from '@/stores/modal'
-import {useQuasar} from "quasar";
+import { useQuasar } from 'quasar'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -16,16 +16,18 @@ const followTail = ref(true)
 const newLogCount = ref(0)
 const loadedCount = ref(0)
 const loading = ref(false)
-const logBody = ref<VxeTableInstance<LogEntry> | null>(null)
+const logBody = ref<HTMLElement | null>(null)
 const modal = useModalStore()
 let timer: ReturnType<typeof setTimeout> | null = null
 const MAX_LOGS = 1000
 
 const LOG_SOURCES = ['All', 'System', 'Rss', 'Rmt', 'Meta', 'Sync', 'Sites', 'Brush', 'Douban', 'Spider', 'Message', 'Indexer', 'Searcher', 'Subscribe', 'Downloader', 'TorrentRemover']
 
-const historyTableHeight = computed(() => {
-
-})
+const logColumns: QTableProps['columns'] = [
+  { name: 'time', label: '时间', field: 'time', align: 'left', style: 'width: 100px', headerStyle: 'width: 100px' },
+  { name: 'source', label: '来源', field: 'source', align: 'left', style: 'width: 110px', headerStyle: 'width: 110px' },
+  { name: 'text', label: '内容', field: 'text', align: 'left' }
+]
 
 function stopPolling() {
   if (timer) {
@@ -88,14 +90,15 @@ function selectSource(s: string) {
   startPolling()
 }
 
-function onLogScroll({ target, isBottom, scrollTop, scrollHeight }: VxeTableDefines.ScrollEventParams<LogEntry>) {
-  const atBottom = isBottom || scrollHeight - scrollTop - target.clientHeight < 24
+function onLogScroll(event: Event) {
+  const target = event.target as HTMLElement
+  const atBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 24
   followTail.value = atBottom
   if (atBottom) newLogCount.value = 0
 }
 
 function scrollToBottom() {
-  if (logs.value.length) void logBody.value?.scrollToEndRow()
+  if (logs.value.length && logBody.value) logBody.value.scrollTop = logBody.value.scrollHeight
 }
 
 function jumpToBottom() {
@@ -168,26 +171,26 @@ onUnmounted(stopPolling)
         <div v-if="newLogCount && !followTail" class="new-log-banner">
           <q-btn flat color="primary" icon="south" :label="`有 ${newLogCount} 条新日志，回到底部`" @click="jumpToBottom" />
         </div>
-        <vxe-table
+        <div
           v-if="logs.length"
           ref="logBody"
-          class="vxe-quasar-table log-table"
-          :data="logs"
-          :virtual-y-config="{enabled: true, gt: 0}"
-          max-height="85%"
-          round
-          :scrollbar-config="{ y: { visible: false } }"
+          class="log-table-shell"
           @scroll="onLogScroll"
         >
-          <vxe-column field="time" title="时间" width="100" class-name="col-time" />
-          <vxe-column field="source" title="来源" width="110" class-name="col-source">
-            <template #default="{ row }"><q-badge outline :color="levelType(row.level)">{{ row.source }}</q-badge></template>
-          </vxe-column>
-          <vxe-column field="text" title="内容" min-width="0" class-name="col-text">
-            <template #default="{ row }"><div class="log-text">{{ row.text }}</div></template>
-          </vxe-column>
-          <template #empty><div class="log-empty"><q-spinner-dots v-if="loading" color="primary" size="28px" /><q-icon v-else name="receipt_long" size="42px" color="grey-5" /><span>{{ loading ? '正在读取日志…' : '暂无日志' }}</span></div></template>
-        </vxe-table>
+          <q-table
+            flat
+            hide-bottom
+            :rows="logs"
+            :columns="logColumns"
+            row-key="time"
+            :rows-per-page-options="[0]"
+            class="log-table"
+          >
+            <template #body-cell-time="props"><q-td :props="props" class="col-time">{{ props.row.time }}</q-td></template>
+            <template #body-cell-source="props"><q-td :props="props"><q-badge outline :color="levelType(props.row.level)">{{ props.row.source }}</q-badge></q-td></template>
+            <template #body-cell-text="props"><q-td :props="props"><div class="log-text">{{ props.row.text }}</div></q-td></template>
+          </q-table>
+        </div>
         <div v-else class="log-empty"><q-spinner-dots v-if="loading" color="primary" size="28px" /><q-icon v-else name="receipt_long" size="42px" color="grey-5" /><span>{{ loading ? '正在读取日志…' : '暂无日志' }}</span></div>
       </q-card-section>
     </q-card>
@@ -202,14 +205,13 @@ onUnmounted(stopPolling)
 .log-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .source-select { width: 180px; }
 .new-log-banner { margin: -4px 0 8px; text-align: center; }
-.log-table { min-height: 0; flex: 1 1 auto; overflow-x: hidden; font: 13px/1.55 Consolas, Monaco, monospace; --vxe-ui-table-row-height-default: 38px; --vxe-ui-table-row-height-medium: 38px; --vxe-ui-table-row-line-height: 20px; }
-.log-table :deep(.vxe-header--column) { height: 38px; padding: 7px 10px; }
-.log-table :deep(.vxe-body--column) { padding: 7px 10px; vertical-align: top; }
-.log-table :deep(.vxe-table--render-default) { height: 100%; }
-.log-table :deep(.vxe-table--header-wrapper), .log-table :deep(.vxe-table--body-wrapper) { overflow: hidden; }
-.log-table :deep(.vxe-table--body-inner-wrapper) { overflow-x: hidden; }
+.log-table-shell { min-height: 0; flex: 1 1 auto; overflow: auto; }
+.log-table { min-height: 100%; font: 13px/1.55 Consolas, Monaco, monospace; }
+.log-table :deep(table) { min-width: 100%; table-layout: fixed; }
+.log-table :deep(th) { position: sticky; top: 0; z-index: 1; height: 38px; padding: 7px 10px; background: var(--surface); color: var(--text-secondary); font-weight: 500; }
+.log-table :deep(td) { padding: 7px 10px; vertical-align: top; }
 .log-table :deep(.col-time) { white-space: nowrap; font-family: monospace; color: var(--text-secondary); }
 .log-text { display: -webkit-box; max-width: 100%; overflow: hidden; white-space: normal; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
 .log-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 240px; color: var(--text-secondary); }
-@media (max-width: 599px) { .log-dialog { width: 100%; height: 100dvh; max-height: none; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .log-content { padding: 16px; } .source-select { flex: 1; width: auto; } .log-toolbar :deep(.q-btn) { min-height: 42px; } .log-table :deep(.vxe-header--column), .log-table :deep(.vxe-body--column) { padding-inline: 8px; } .log-toolbar :deep(.q-btn:last-child) { margin-left: auto; } }
+@media (max-width: 599px) { .log-dialog { width: 100%; height: 100dvh; max-height: none; min-height: 100dvh; border-radius: 0; } .dialog-header { min-height: 56px; padding: 12px 16px; } .log-content { padding: 16px; } .source-select { flex: 1; width: auto; } .log-toolbar :deep(.q-btn) { min-height: 42px; } .log-table :deep(th), .log-table :deep(td) { padding-inline: 8px; } .log-toolbar :deep(.q-btn:last-child) { margin-left: auto; } }
 </style>

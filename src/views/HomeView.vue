@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useQuasar } from 'quasar'
+import { useQuasar, type QTableProps } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import { useModalStore } from '@/stores/modal'
 import {
@@ -31,6 +31,9 @@ const stat = ref<TransferStatisticsResult>({
   AnimeNums: []
 })
 const history = ref<PlayHistoryItem[]>([])
+const historyColumns: QTableProps['columns'] = [
+  { name: 'event', label: '事件', field: 'event', align: 'left' }
+]
 
 const quickActions = [
   { label: '文件管理', description: '浏览与整理媒体文件', icon: 'folder_open', color: 'primary', to: '/mediafile' },
@@ -332,30 +335,33 @@ onMounted(() => { void load() })
           </div>
           <q-icon name="history" size="24px" color="info" />
         </q-card-section>
-        <vxe-table
-          :data="history"
-          :height="historyTableHeight"
-          class="vxe-quasar-table history-table"
+        <q-table
+          flat
+          hide-header
+          hide-bottom
+          :rows="history"
+          :columns="historyColumns"
+          row-key="date"
           :loading="loading"
-          border="inner"
-          :row-config="{ keyField: 'date', isHover: true }"
-          :cell-config="{ minHeight: $q.screen.lt.sm ? 64 : 48 }"
-          :virtual-y-config="{ enabled: true, gt: 0, preSize: 8, oSize: 4 }"
-          :show-header="false"
+          :rows-per-page-options="[0]"
+          class="history-table"
+          :style="{ minHeight: historyTableHeight }"
         >
-          <vxe-column field="event" title="事件" min-width="100%">
-            <template #default="{ row }">
+          <template #body="props">
+            <q-tr :props="props">
+              <q-td :props="props">
               <div class="history-event">
-                <q-icon :name="row.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" />
+                <q-icon :name="props.row.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" />
                 <div class="history-event-copy">
-                  <div class="history-event-title">{{ row.event }}</div>
-                  <span class="history-event-date">{{ row.date }}</span>
+                  <div class="history-event-title">{{ props.row.event }}</div>
+                  <span class="history-event-date">{{ props.row.date }}</span>
                 </div>
               </div>
-            </template>
-          </vxe-column>
-          <template #empty><div class="history-empty">暂无播放记录</div></template>
-        </vxe-table>
+              </q-td>
+            </q-tr>
+          </template>
+          <template #no-data><div class="history-empty">暂无播放记录</div></template>
+        </q-table>
         <q-card-section v-if="!historyReady && !loading" class="text-caption text-grey-6 q-pt-none">播放历史暂不可用</q-card-section>
       </q-card>
     </div>
@@ -393,11 +399,12 @@ onMounted(() => { void load() })
 .quick-action-item :deep(.q-item__label) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quick-action-item :deep(.q-item__label--caption) { margin-top: 3px; color: var(--text-secondary); font-size: 11px; }
 .history-section { margin-top: 16px; }
-.history-table :deep(.vxe-table--empty-placeholder) { min-height: 180px; }
+.history-table :deep(.q-table__middle) { min-height: 180px; }
+.history-table :deep(tbody tr) { height: 48px; }
 .history-event { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .history-event-copy { min-width: 0; }
 .history-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-event-date { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.2; }
 @media (max-width: 1023px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 599px) { .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .quick-actions-grid { padding: 0 16px 16px; } .quick-action-item { padding-inline: 6px; } .metric-chart-legend { display: none; } .history-table :deep(.vxe-header--column), .history-table :deep(.vxe-body--column) { padding-inline: 12px; } .history-table :deep(.vxe-table--scroll-y-virtual) { width: 0 !important; } .history-table :deep(.vxe-table--scroll-y-wrapper) { display: none; } }
+@media (max-width: 599px) { .metric-grid { gap: 10px; } .metric-card { min-height: 96px; } .metric-card .q-card__section { padding: 14px 12px; } .metric-value { font-size: 22px; } .storage-summary { gap: 8px 16px; margin-top: 18px; } .history-section { margin-top: 10px; } .content-card .q-card__section { padding: 16px; } .quick-actions-grid { padding: 0 16px 16px; } .quick-action-item { padding-inline: 6px; } .metric-chart-legend { display: none; } .history-table :deep(td) { padding-inline: 12px; } .history-table :deep(tbody tr) { height: 64px; } }
 </style>

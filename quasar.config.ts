@@ -6,8 +6,7 @@ const FLASK_TARGET = process.env.FLASK_TARGET || 'http://localhost:3000'
 export default defineConfig(() => ({
   css: [
     '../styles/index.scss',
-    '~viewerjs/dist/viewer.css',
-    '~vxe-table/lib/style.css'
+    '~viewerjs/dist/viewer.css'
   ],
 
   extras: ['material-icons'],
