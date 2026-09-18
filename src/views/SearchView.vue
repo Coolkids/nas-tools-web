@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import type { QTableProps } from 'quasar'
+import { useQuasar, type QTableProps } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import AddDownloadDialog from '@/components/AddDownloadDialog.vue'
 import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
@@ -14,6 +14,7 @@ import PosterPreview from '@/components/PosterPreview.vue'
 
 const route = useRoute()
 const modal = useModalStore()
+const $q = useQuasar()
 
 const keyword = ref((route.query.q as string) || '')
 const searching = ref(false)
@@ -53,6 +54,7 @@ const resultColumns: QTableProps['columns'] = [
 const mobileResultColumns: QTableProps['columns'] = [
   { name: 'result', label: '搜索结果', field: 'id', align: 'left' }
 ]
+const VIRTUAL_SCROLL_THRESHOLD = 2000
 
 const uniqueSites = computed(() => Array.from(new Set(taskResults.value.map((item) => item.site).filter(Boolean))).sort())
 const filteredResults = computed(() => {
@@ -61,6 +63,12 @@ const filteredResults = computed(() => {
   const query = nameFilter.value.trim().toLowerCase()
   if (query) results = results.filter((item) => (item.torrent_name || '').toLowerCase().includes(query))
   return results
+})
+const useVirtualResults = computed(() => filteredResults.value.length > VIRTUAL_SCROLL_THRESHOLD)
+const resultTableHeight = computed(() => {
+  if ($q.screen.lt.sm) return '420px'
+  if ($q.screen.lt.md) return '460px'
+  return '520px'
 })
 
 function statusMeta(status: string): { color: 'positive' | 'warning' | 'info' | 'negative' | 'grey-7'; label: string } {
@@ -434,12 +442,16 @@ onBeforeUnmount(() => {
               <q-table
                 v-if="$q.screen.gt.xs"
                 flat
-                class="result-table"
+                :class="['result-table', { 'virtual-result-table': useVirtualResults }]"
                 :rows="filteredResults"
                 :columns="resultColumns"
                 row-key="id"
                 :rows-per-page-options="[0]"
                 hide-pagination
+                :style="{ height: resultTableHeight }"
+                :virtual-scroll="useVirtualResults"
+                :virtual-scroll-item-size="88"
+                :virtual-scroll-slice-size="30"
               >
                 <template #body-cell-site="props"><q-td :props="props"><q-badge color="grey-7" :label="props.row.site" /></q-td></template>
                 <template #body-cell-torrent_name="props">
@@ -475,15 +487,19 @@ onBeforeUnmount(() => {
                 flat
                 hide-header
                 hide-bottom
-                class="mobile-result-table"
+                :class="['mobile-result-table', { 'virtual-result-table': useVirtualResults }]"
                 :rows="filteredResults"
                 :columns="mobileResultColumns"
                 row-key="id"
                 :rows-per-page-options="[0]"
+                :style="{ height: resultTableHeight }"
+                :virtual-scroll="useVirtualResults"
+                :virtual-scroll-item-size="156"
+                :virtual-scroll-slice-size="20"
               >
                 <template #body="props">
                   <q-tr :props="props">
-                    <q-td :props="props" colspan="100%">
+                    <q-td key="result" :props="props" colspan="100%">
                       <q-card flat bordered class="mobile-result-card">
                         <q-card-section>
                           <div class="row items-center q-gutter-sm">
@@ -576,6 +592,7 @@ onBeforeUnmount(() => {
 .site-filter { width: 210px; }
 .name-filter { width: 240px; }
 .filter-count { margin-left: auto; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.result-table, .mobile-result-table { border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface); overflow: hidden; }
 .result-table :deep(th) { color: var(--text-secondary); font-weight: 500; }
 .result-table :deep(td) { color: var(--text-primary); }
 .mobile-result-table { width: 100%; background: transparent; }

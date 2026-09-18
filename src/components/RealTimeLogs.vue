@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, nextTick } from 'vue'
+import { computed, ref, watch, onUnmounted, nextTick } from 'vue'
 import type { QTableProps } from 'quasar'
 import { getLogging, type LogEntry } from '@/api/system'
 import { useModalStore } from '@/stores/modal'
@@ -19,7 +19,8 @@ const loading = ref(false)
 const logBody = ref<HTMLElement | null>(null)
 const modal = useModalStore()
 let timer: ReturnType<typeof setTimeout> | null = null
-const MAX_LOGS = 1000
+const MAX_LOGS = 5000
+const VIRTUAL_SCROLL_THRESHOLD = 2000
 
 const LOG_SOURCES = ['All', 'System', 'Rss', 'Rmt', 'Meta', 'Sync', 'Sites', 'Brush', 'Douban', 'Spider', 'Message', 'Indexer', 'Searcher', 'Subscribe', 'Downloader', 'TorrentRemover']
 
@@ -28,6 +29,7 @@ const logColumns: QTableProps['columns'] = [
   { name: 'source', label: '来源', field: 'source', align: 'left', style: 'width: 110px', headerStyle: 'width: 110px' },
   { name: 'text', label: '内容', field: 'text', align: 'left' }
 ]
+const useVirtualLogs = computed(() => logs.value.length > VIRTUAL_SCROLL_THRESHOLD)
 
 function stopPolling() {
   if (timer) {
@@ -184,7 +186,11 @@ onUnmounted(stopPolling)
             :columns="logColumns"
             row-key="time"
             :rows-per-page-options="[0]"
-            class="log-table"
+            :virtual-scroll="useVirtualLogs"
+            :virtual-scroll-target="useVirtualLogs ? '.log-table-shell' : undefined"
+            :virtual-scroll-item-size="48"
+            :virtual-scroll-slice-size="30"
+            :class="['log-table', { 'virtual-log-table': useVirtualLogs }]"
           >
             <template #body-cell-time="props"><q-td :props="props" class="col-time">{{ props.row.time }}</q-td></template>
             <template #body-cell-source="props"><q-td :props="props"><q-badge outline :color="levelType(props.row.level)">{{ props.row.source }}</q-badge></q-td></template>
@@ -205,7 +211,7 @@ onUnmounted(stopPolling)
 .log-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .source-select { width: 180px; }
 .new-log-banner { margin: -4px 0 8px; text-align: center; }
-.log-table-shell { min-height: 0; flex: 1 1 auto; overflow: auto; }
+.log-table-shell { min-height: 0; flex: 1 1 auto; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface); }
 .log-table { min-height: 100%; font: 13px/1.55 Consolas, Monaco, monospace; }
 .log-table :deep(table) { min-width: 100%; table-layout: fixed; }
 .log-table :deep(th) { position: sticky; top: 0; z-index: 1; height: 38px; padding: 7px 10px; background: var(--surface); color: var(--text-secondary); font-weight: 500; }

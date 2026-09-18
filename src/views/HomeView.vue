@@ -345,11 +345,11 @@ onMounted(() => { void load() })
           :loading="loading"
           :rows-per-page-options="[0]"
           class="history-table"
-          :style="{ minHeight: historyTableHeight }"
+          :style="{ height: historyTableHeight }"
         >
           <template #body="props">
             <q-tr :props="props">
-              <q-td :props="props">
+              <q-td key="event" :props="props">
               <div class="history-event">
                 <q-icon :name="props.row.type === 'LG' ? 'person' : 'play_circle'" color="primary" size="20px" />
                 <div class="history-event-copy">
@@ -399,7 +399,8 @@ onMounted(() => { void load() })
 .quick-action-item :deep(.q-item__label) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quick-action-item :deep(.q-item__label--caption) { margin-top: 3px; color: var(--text-secondary); font-size: 11px; }
 .history-section { margin-top: 16px; }
-.history-table :deep(.q-table__middle) { min-height: 180px; }
+.history-table { overflow: hidden; }
+.history-table :deep(.q-table__middle) { min-height: 0; overflow-y: auto; }
 .history-table :deep(tbody tr) { height: 48px; }
 .history-event { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .history-event-copy { min-width: 0; }
