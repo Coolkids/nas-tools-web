@@ -181,6 +181,7 @@ function onAddError(message: string) {
         :columns="columns"
         row-key="id"
         hide-pagination
+        :rows-per-page-options="[0]"
         flat
         :loading="loading"
         class="task-table"
@@ -247,6 +248,10 @@ function onAddError(message: string) {
 .empty-card { min-height: 240px; }
 .task-card { overflow: hidden; }
 .task-table :deep(.q-table__top), .task-table :deep(th) { color: var(--text-secondary); }
+@media (min-width: 600px) {
+  .task-table :deep(.q-table__middle) { max-height: clamp(360px, calc(100vh - 220px), 860px); overflow-y: auto; }
+  .task-table :deep(thead tr) { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+}
 .task-cell { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .task-poster { width: 44px; height: 60px; flex: 0 0 44px; border-radius: 6px; overflow: hidden; background: var(--surface-muted); }
 .task-info { min-width: 0; }

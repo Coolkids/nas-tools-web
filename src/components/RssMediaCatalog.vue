@@ -97,6 +97,8 @@ function progressOf(item: RssMediaItem) {
 function openDetail(item: RssMediaItem) { selectedItem.value = item; detailDialogVisible.value = true }
 function openEdit(id: string | number) { editRssid.value = id; editDialogVisible.value = true }
 function goHistory() { void router.push({ path: '/rss_history', query: { t: props.type } }) }
+function searchByName() { nameFilter.value = nameFilter.value.trim() }
+function clearNameFilter() { nameFilter.value = '' }
 function onSuccess(message: string) { modal.success(message); addDialogVisible.value = false; void load() }
 function onEditSuccess() { modal.success('编辑订阅成功'); editDialogVisible.value = false; void load() }
 
@@ -107,7 +109,7 @@ onMounted(() => { void loadFilterRules(); void load() })
   <div class="rss-page">
     <PageHeader :title="title" :description="description">
       <template #actions>
-        <q-input v-model="nameFilter" outlined dense clearable class="search-input" placeholder="搜索标题"><template #prepend><q-icon name="search" /></template></q-input>
+        <q-input v-model="nameFilter" outlined dense clearable class="search-input" placeholder="搜索标题" @keyup.enter="searchByName" @clear="clearNameFilter"><template #prepend><q-icon name="search" /></template></q-input>
         <span class="filter-count">共 {{ filteredItems.length }} 条</span>
         <q-btn color="primary" unelevated icon="add" label="新增订阅" @click="addDialogVisible = true" />
         <q-btn outline icon="table_view" label="Excel 导入" @click="importDialogVisible = true" />

@@ -55,7 +55,7 @@ async function submit() {
     <q-card class="download-dialog"><q-card-section class="row items-center"><div class="text-h6">{{ dialogTitle }}</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator />
       <q-card-section class="dialog-form"><q-select v-model="form.dl_setting" outlined clearable label="下载设置" :options="[{ label: '默认', value: '' }, ...downloadSettings.map((setting) => ({ label: setting.name, value: setting.id }))]" emit-value map-options :disable="submitting || uploading" @update:model-value="onDownloadSettingChange" /><q-select v-model="form.dl_dir" outlined clearable label="保存目录" :options="[{ label: '自动', value: '' }, ...savePaths.map((path) => ({ label: path, value: path }))]" emit-value map-options :disable="submitting || uploading" />
         <template v-if="mode === 'manual' && manualType === 'torrent'"><q-file v-model="torrentFiles" outlined multiple use-chips accept=".torrent" label="种子文件" :disable="submitting || uploading" @update:model-value="onTorrentFilesChange"><template #prepend><q-icon name="upload_file" /></template><template #hint>可选择多个 .torrent 文件，选择后会立即上传</template></q-file><div v-if="uploading" class="row items-center q-gutter-sm text-caption text-secondary"><q-spinner-dots color="primary" />正在上传种子文件…</div><div v-else-if="uploadedNames.length" class="text-caption text-positive">已上传 {{ uploadedNames.length }} 个种子文件</div></template>
-        <template v-else-if="mode === 'manual' && manualType === 'magnet'"><q-input v-model="form.magnets" outlined type="textarea" autogrow label="磁力链接" placeholder="magnet:?xt=urn:btih:xxx，每行添加一个磁链" :disable="submitting" /></template>
+        <template v-else-if="mode === 'manual' && manualType === 'magnet'"><q-input v-model="form.magnets" outlined type="textarea" autogrow maxlength="4096" class="magnet-input" label="磁力链接" placeholder="magnet:?xt=urn:btih:xxx，每行添加一个磁链" :disable="submitting" /></template>
         <q-banner v-else-if="mode === 'search'" rounded dense><template #avatar><q-icon name="info_outline" color="primary" /></template>选择下载设置与保存目录后点击“下载”，即可添加该种子到下载器。</q-banner>
       </q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="submitting || uploading" v-close-popup /><q-btn color="primary" unelevated icon="download" label="下载" :loading="submitting" :disable="uploading" @click="submit" /></q-card-actions>
     </q-card>
@@ -64,7 +64,9 @@ async function submit() {
 
 <style scoped>
 .download-dialog { width: min(560px, calc(100vw - 32px)); max-width: none; border-radius: 16px; }
-.dialog-form { display: grid; gap: 16px; }
+.dialog-form { display: grid; gap: 16px; min-width: 0; }
+.magnet-input { min-width: 0; max-width: 100%; }
+.magnet-input :deep(.q-field__native) { overflow-wrap: anywhere; word-break: break-all; }
 .dialog-actions { gap: 8px; }
 @media (max-width: 599px) { .download-dialog { width: 100%; min-height: 100dvh; border-radius: 0; } .dialog-actions { position: sticky; bottom: 0; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); } .dialog-actions :deep(.q-btn) { min-height: 44px; } }
 </style>
