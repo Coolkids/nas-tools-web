@@ -89,6 +89,7 @@ export function truncateRsshistory(): Promise<TruncateResult> {
 
 export interface NameTestData {
   type: string
+  recognition_source: 'original' | 'ai' | string
   name: string
   title: string
   year: string | number

@@ -187,6 +187,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '基础设置' }
   },
   {
+    path: '/ai_recognition',
+    name: 'ai_recognition',
+    component: () => import('@/views/setting/AiRecognitionView.vue'),
+    meta: { title: 'AI识别记录' }
+  },
+  {
     path: '/customwords',
     name: 'customwords',
     component: () => import('@/views/setting/CustomWordsQuasarView.vue'),

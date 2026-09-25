@@ -57,7 +57,7 @@ const SECURITY_KEYS = [
   'security.synology_webhook_allow_ip.ipv4', 'security.synology_webhook_allow_ip.ipv6', 'security.api_key'
 ]
 const LAB_KEYS = [
-  'laboratory.search_keyword', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
+  'laboratory.ai_inference', 'laboratory.ai_inference_url', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
   'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy'
 ]
 
@@ -149,7 +149,8 @@ const SECURITY_FIELDS: SettingField[] = [
   { key: 'security.api_key', label: 'API密钥' }
 ]
 const LAB_FIELDS: SettingField[] = [
-  { key: 'laboratory.search_keyword', label: '辅助识别', kind: 'toggle' },
+  { key: 'laboratory.ai_inference', label: '使用AI推理解析', kind: 'toggle', help: '同时使用本地解析和 AI 推理解析标题，并以本地解析结果优先。' },
+  { key: 'laboratory.ai_inference_url', label: 'AI推理接口地址', placeholder: 'http://127.0.0.1:8000', help: '填写 anitopy-ml 服务地址，支持直接填写 /v1/parse 地址。' },
   { key: 'laboratory.search_tmdbweb', label: '增强识别', kind: 'toggle' },
   { key: 'laboratory.tmdb_cache_expire', label: 'TMDB缓存过期策略', kind: 'toggle' },
   { key: 'laboratory.use_douban_titles', label: '使用豆瓣名称联想', kind: 'toggle' },
@@ -190,7 +191,8 @@ const SETTING_DESCRIPTIONS: Record<string, string> = {
   'security.synology_webhook_allow_ip.ipv4': '允许访问 Synology Chat Webhook 的 IPv4 网段，支持 CIDR。',
   'security.synology_webhook_allow_ip.ipv6': '允许访问 Synology Chat Webhook 的 IPv6 网段，支持 CIDR。',
   'security.api_key': '外部 API 调用使用的密钥，请妥善保管并避免分享。',
-  'laboratory.search_keyword': '使用文件名中的关键词辅助查找媒体信息。',
+  'laboratory.ai_inference': '同时使用本地解析和 AI 推理解析标题。本地结果优先，AI 结果用于补充和差异核对。',
+  'laboratory.ai_inference_url': 'anitopy-ml 接口服务地址，例如 http://127.0.0.1:8000。',
   'laboratory.search_tmdbweb': '在 API 匹配失败时，尝试通过 TMDB 网页结果增强识别。',
   'laboratory.tmdb_cache_expire': '启用 TMDB 缓存过期处理，避免长期使用过期结果。',
   'laboratory.use_douban_titles': '使用豆瓣标题作为额外名称，提高中文名称匹配率。',
@@ -252,7 +254,9 @@ function syncForm() {
   form['pt.search_no_result_rss'] = sw('pt.search_no_result_rss')
   SECURITY_KEYS.forEach((key) => { form[key] = str(key) })
   form['pt.download_order'] = str('pt.download_order', '')
-  LAB_KEYS.forEach((key) => { form[key] = sw(key) })
+  LAB_KEYS.forEach((key) => {
+    form[key] = key === 'laboratory.ai_inference_url' ? str(key) : sw(key)
+  })
   SCRAPER_KEYS.forEach((key) => { form[key] = sw(key) })
   releaseGroups.value = str('laboratory.release_groups')
 }
@@ -348,10 +352,13 @@ onMounted(loadData)
       <q-tab-panels v-model="activeTab" animated>
         <q-tab-panel v-for="(fields, tab) in { system: SYSTEM_FIELDS, media: MEDIA_FIELDS, service: SERVICE_FIELDS, security: SECURITY_FIELDS, laboratory: LAB_FIELDS }" :key="tab" :name="tab">
           <div class="setting-grid">
-            <div v-for="field in fields" :key="field.key" class="setting-field">
-              <q-toggle v-if="field.kind === 'toggle'" :model-value="Boolean(form[field.key])" color="primary" :label="field.label" class="toggle-field" @update:model-value="setBoolean(field.key, $event)">
-                <HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" />
-              </q-toggle>
+            <div v-for="field in fields" v-show="field.key !== 'laboratory.ai_inference_url' || Boolean(form['laboratory.ai_inference'])" :key="field.key" class="setting-field">
+              <div v-if="field.kind === 'toggle'" class="setting-toggle-row">
+                <q-toggle :model-value="Boolean(form[field.key])" color="primary" :label="field.label" class="toggle-field" @update:model-value="setBoolean(field.key, $event)">
+                  <HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" />
+                </q-toggle>
+                <q-btn v-if="field.key === 'laboratory.ai_inference'" flat dense color="primary" icon="fact_check" label="识别记录" to="/ai_recognition" />
+              </div>
               <q-select v-else-if="field.kind === 'select'" :model-value="String(form[field.key] ?? '')" outlined dense emit-value map-options :label="field.label" :options="field.options" @update:model-value="setValue(field.key, $event)">
                 <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
               </q-select>
@@ -404,6 +411,7 @@ onMounted(loadData)
 .setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .setting-field { min-width: 0; }
 .toggle-field { min-height: 42px; align-items: center; }
+.setting-toggle-row { display: flex; align-items: center; gap: 8px; min-height: 42px; }
 .card-footer { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border-subtle); padding: 16px 0 0; margin-top: 8px; }
 .dialog-card { width: min(92vw, 800px); max-width: none; }
 .scraper-dialog { width: min(92vw, 720px); }

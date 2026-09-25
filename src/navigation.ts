@@ -49,6 +49,7 @@ export const navigationGroups: NavigationGroup[] = [
   {
     label: '设置', icon: 'settings', items: [
       { label: '基础设置', icon: 'tune', to: '/basic' },
+      { label: 'AI识别记录', icon: 'fact_check', to: '/ai_recognition' },
       { label: '自定义识别词', icon: 'spellcheck', to: '/customwords' },
       { label: '下载器', icon: 'cloud_download', to: '/downloader' },
       { label: '下载设置', icon: 'download_for_offline', to: '/download_setting' },

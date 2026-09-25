@@ -45,10 +45,13 @@ function toArray(value: unknown): string[] {
 }
 
 const replacedWords = computed(() => toArray(data.value?.replaced_words))
+const ignoredWords = computed(() => toArray(data.value?.ignored_words))
+const offsetWords = computed(() => toArray(data.value?.offset_words))
+const recognitionSource = computed(() => data.value?.recognition_source === 'ai' ? 'AI推理' : '原始解析')
 const compactFields = computed(() => parsedFields.value.slice(0, 4))
 const detailsOpen = ref(false)
-watch([data, replacedWords], ([value, words]) => {
-  if (value) detailsOpen.value = !value.tmdbid || words.length > 0
+watch([data, replacedWords, ignoredWords, offsetWords], ([value, replaced, ignored, offset]) => {
+  if (value) detailsOpen.value = !value.tmdbid || replaced.length > 0 || ignored.length > 0 || offset.length > 0
 }, { immediate: true })
 
 function mediaPath() {
@@ -129,7 +132,7 @@ function searchName() {
           <q-btn v-if="data.season_episode && seasonUrl()" class="result-action" flat dense no-caps color="warning" icon="open_in_new" :label="`季集：${data.season_episode}`" :title="`打开 ${seasonUrl()}`" @click="openUrl(seasonUrl())" />
           <span v-else-if="data.season_episode" class="result-static">季集：{{ data.season_episode }} · 暂无可用链接</span>
         </div>
-        <div class="conclusion-meta"><span v-if="data.type">类型：{{ data.type }}</span><span v-if="data.year">年份：{{ data.year }}</span></div>
+        <div class="conclusion-meta"><span>来源：{{ recognitionSource }}</span><span v-if="data.type">类型：{{ data.type }}</span><span v-if="data.year">年份：{{ data.year }}</span></div>
       </section>
 
       <section class="result-section parsed-section">
@@ -142,9 +145,12 @@ function searchName() {
 
       <q-expansion-item v-if="!compact" v-model="detailsOpen" dense icon="account_tree" label="识别过程" class="process-section">
         <div class="process-grid">
+          <div class="process-row"><span class="field-label">识别来源</span><span class="field-value">{{ recognitionSource }}</span></div>
           <div v-if="data.org_string" class="process-row"><span class="field-label">原始识别用名</span><span class="field-value">{{ data.org_string }}</span></div>
+          <div v-if="ignoredWords.length" class="process-row"><span class="field-label">应用屏蔽词</span><span class="field-value process-values"><q-chip v-for="word in ignoredWords" :key="`ignore-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
           <div v-if="replacedWords.length" class="process-row"><span class="field-label">应用替换词</span><span class="field-value process-values"><q-chip v-for="word in replacedWords" :key="`replace-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
-          <div v-if="!data.org_string && !replacedWords.length" class="text-caption text-secondary">未返回额外处理记录。</div>
+          <div v-if="offsetWords.length" class="process-row"><span class="field-label">应用集数偏移</span><span class="field-value process-values"><q-chip v-for="word in offsetWords" :key="`offset-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
+          <div v-if="!data.org_string && !ignoredWords.length && !replacedWords.length && !offsetWords.length" class="text-caption text-secondary">未返回额外处理记录。</div>
         </div>
       </q-expansion-item>
     </template>
