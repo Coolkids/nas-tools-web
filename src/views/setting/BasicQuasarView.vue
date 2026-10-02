@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import { useConfigForm } from '@/composables/useConfigForm'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api'
 import { getSystemConfig } from '@/api/config'
+import { getRecognitionProviders } from '@/api/recognition'
 
 type Option = { value: string; label: string }
 type SettingField = {
@@ -16,6 +17,26 @@ type SettingField = {
   placeholder?: string
   help?: string
   options?: Option[]
+}
+type ProviderConfigField = {
+  type: string
+  title?: string
+  label?: string
+  description?: string
+  help?: string
+  default?: unknown
+  enum?: unknown[]
+  secret?: boolean
+  required?: boolean
+  minimum?: number
+  maximum?: number
+  minLength?: number
+  maxLength?: number
+}
+type RecognitionProvider = {
+  provider_id: string
+  display_name: string
+  config_schema: Record<string, ProviderConfigField>
 }
 
 const { config, loading, load, save } = useConfigForm()
@@ -34,6 +55,12 @@ const RMT_MODES: Option[] = [
 
 const activeTab = ref('system')
 const form = reactive<Record<string, unknown>>({})
+const recognitionProviders = ref<RecognitionProvider[]>([])
+const extensionProviders = computed(() => recognitionProviders.value.filter(
+  (provider) => !['local_rules', 'anitopy_ml'].includes(provider.provider_id)
+))
+const extensionProviderKeys = ref<string[]>([])
+const extensionProviderSchemas = ref<Record<string, ProviderConfigField>>({})
 
 const SYSTEM_KEYS = [
   'app.logtype', 'app.logpath', 'app.logserver', 'app.loglevel', 'app.wallpaper',
@@ -60,13 +87,17 @@ const LAB_KEYS = [
   'laboratory.ai_inference', 'laboratory.ai_inference_url', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
   'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy',
   'recognition.decision.strategy', 'recognition.decision.shadow.enabled',
+  'recognition.execution.total_timeout_seconds',
   'recognition.decision.title_evidence.min_cjk_chars_for_strong',
   'recognition.decision.title_evidence.min_latin_chars_for_strong',
   'recognition.decision.title_evidence.allow_fuzzy_fallback',
   'recognition.decision.title_evidence.fuzzy_min_score',
   'recognition.decision.weights.title_match', 'recognition.decision.weights.year_match',
   'recognition.decision.weights.type_match', 'recognition.decision.weights.season_episode_match',
-  'recognition.decision.weights.input_evidence', 'recognition.decision.weights.provider_reliability'
+  'recognition.decision.weights.input_evidence', 'recognition.decision.weights.provider_reliability',
+  'recognition.decision.agreement_bonus',
+  'recognition.providers.local_rules.reliability',
+  'recognition.providers.anitopy_ml.reliability'
 ]
 
 const SCRAPER_NFO = [
@@ -161,6 +192,7 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'laboratory.ai_inference_url', label: 'AI推理接口地址', placeholder: 'http://127.0.0.1:8000', help: '填写 anitopy-ml 服务地址，支持直接填写 /v1/parse 地址。' },
   { key: 'recognition.decision.strategy', label: '名称识别策略', kind: 'select', options: [{ label: '兼容现有决策', value: 'legacy' }, { label: 'TMDB名称命中', value: 'title_evidence' }], help: 'TMDB 名称唯一命中时可接受；多个不同 TMDB 条目命中时识别失败。' },
   { key: 'recognition.decision.shadow.enabled', label: '记录影子决策结果', kind: 'toggle', help: '同时记录名称证据策略的模拟结果，不改变当前选择结果。' },
+  { key: 'recognition.execution.total_timeout_seconds', label: '识别方式总超时(秒)', type: 'number', help: '限制 AI 与扩展解析器的执行预算；AI HTTP 请求会遵守剩余时间。' },
   { key: 'recognition.decision.title_evidence.min_cjk_chars_for_strong', label: '中文完整名称最少字数', type: 'number' },
   { key: 'recognition.decision.title_evidence.min_latin_chars_for_strong', label: '拉丁文完整名称最少字符数', type: 'number' },
   { key: 'recognition.decision.title_evidence.allow_fuzzy_fallback', label: '启用模糊名称回退', kind: 'toggle', help: '默认关闭；开启后按下方分数阈值执行唯一候选检查。' },
@@ -171,6 +203,9 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'recognition.decision.weights.season_episode_match', label: '季集匹配权重', type: 'number' },
   { key: 'recognition.decision.weights.input_evidence', label: '输入证据权重', type: 'number' },
   { key: 'recognition.decision.weights.provider_reliability', label: '识别方式权重', type: 'number', help: '默认值为 0，不会固定偏向本地或 AI。' },
+  { key: 'recognition.providers.local_rules.reliability', label: '本地规则可信度', type: 'number', help: '范围 0 到 1；只参与同一 TMDB 条目的解析结果排序。' },
+  { key: 'recognition.providers.anitopy_ml.reliability', label: 'AI解析可信度', type: 'number', help: '范围 0 到 1；只参与同一 TMDB 条目的解析结果排序。' },
+  { key: 'recognition.decision.agreement_bonus', label: '多解析器一致性加分', type: 'number', help: '范围 0 到 1，用于记录同一 TMDB 条目被多个解析器命中的信心分；不会消除不同条目的歧义。' },
   { key: 'laboratory.search_tmdbweb', label: '增强识别', kind: 'toggle' },
   { key: 'laboratory.tmdb_cache_expire', label: 'TMDB缓存过期策略', kind: 'toggle' },
   { key: 'laboratory.use_douban_titles', label: '使用豆瓣名称联想', kind: 'toggle' },
@@ -286,6 +321,25 @@ function syncForm() {
     else if (labNumberKeys.has(key)) form[key] = Number(getCfg(key) ?? 0)
     else form[key] = sw(key)
   })
+  const providerKeys: string[] = []
+  const providerSchemas: Record<string, ProviderConfigField> = {}
+  extensionProviders.value.forEach((provider) => {
+    const enabledKey = `recognition.providers.${provider.provider_id}.enabled`
+    form[enabledKey] = Boolean(getCfg(enabledKey))
+    providerKeys.push(enabledKey)
+    Object.entries(provider.config_schema || {}).forEach(([name, schema]) => {
+      const key = `recognition.providers.${provider.provider_id}.${name}`
+      const configured = getCfg(key)
+      const value = configured === undefined ? schema.default : configured
+      form[key] = ['array', 'object'].includes(schema.type)
+        ? JSON.stringify(value ?? (schema.type === 'array' ? [] : {}), null, 2)
+        : value ?? (schema.type === 'boolean' ? false : schema.type === 'number' || schema.type === 'integer' ? 0 : '')
+      providerKeys.push(key)
+      providerSchemas[key] = schema
+    })
+  })
+  extensionProviderKeys.value = providerKeys
+  extensionProviderSchemas.value = providerSchemas
   SCRAPER_KEYS.forEach((key) => { form[key] = sw(key) })
   releaseGroups.value = str('laboratory.release_groups')
 }
@@ -300,12 +354,76 @@ function setBoolean(key: string, value: boolean | null) {
 
 async function loadData() {
   await load()
+  try {
+    const result = await getRecognitionProviders()
+    recognitionProviders.value = result.providers as unknown as RecognitionProvider[] || []
+  } catch {
+    recognitionProviders.value = []
+  }
   syncForm()
 }
 
 async function saveSection(keys: string[]) {
   const items: Record<string, unknown> = {}
   keys.forEach((key) => { items[key] = form[key] })
+  await save(items)
+}
+
+function providerFieldOptions(field: ProviderConfigField): Option[] {
+  return (Array.isArray(field.enum) ? field.enum : []).map((value) => ({
+    value: String(value), label: String(value)
+  }))
+}
+
+function setProviderValue(key: string, value: unknown) {
+  const schema = extensionProviderSchemas.value[key]
+  if (schema?.type === 'number' || schema?.type === 'integer') form[key] = Number(value)
+  else if (schema?.type === 'boolean') form[key] = value === true || value === 'true'
+  else form[key] = value
+}
+
+async function saveLaboratory() {
+  const items: Record<string, unknown> = {}
+  ;[...LAB_KEYS, ...extensionProviderKeys.value].forEach((key) => { items[key] = form[key] })
+  for (const key of extensionProviderKeys.value) {
+    const schema = extensionProviderSchemas.value[key]
+    const value = form[key]
+    if (schema?.required && (value === undefined || value === null || value === '')) {
+      modal.error(`${key} 为必填项`)
+      return
+    }
+    if (Array.isArray(schema?.enum) && !schema.enum.some((option) => String(option) === String(value))) {
+      modal.error(`${key} 的值不在允许范围内`)
+      return
+    }
+    if ((schema?.type === 'number' || schema?.type === 'integer') && value !== undefined && value !== null) {
+      const number = Number(value)
+      if (!Number.isFinite(number) || (schema.type === 'integer' && !Number.isInteger(number))
+        || (schema.minimum !== undefined && number < schema.minimum)
+        || (schema.maximum !== undefined && number > schema.maximum)) {
+        modal.error(`${key} 数值不符合 schema 范围`)
+        return
+      }
+    }
+    if (schema?.type === 'string' && typeof value === 'string'
+      && ((schema.minLength !== undefined && value.length < schema.minLength)
+        || (schema.maxLength !== undefined && value.length > schema.maxLength))) {
+      modal.error(`${key} 长度不符合 schema 范围`)
+      return
+    }
+    if (schema && ['array', 'object'].includes(schema.type)) {
+      try {
+        const parsed = JSON.parse(String(form[key] || (schema.type === 'array' ? '[]' : '{}')))
+        if (schema.type === 'array' ? !Array.isArray(parsed) : !parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+          throw new Error('JSON 类型与配置 schema 不匹配')
+        }
+        items[key] = parsed
+      } catch {
+        modal.error(`${key} 不是有效的 ${schema.type === 'array' ? 'JSON 数组' : 'JSON 对象'}`)
+        return
+      }
+    }
+  }
   await save(items)
 }
 
@@ -396,10 +514,31 @@ onMounted(loadData)
               </q-input>
             </div>
           </div>
+          <section v-if="tab === 'laboratory' && extensionProviders.length" class="extension-provider-settings">
+            <div class="text-subtitle1 q-mb-sm">第三方识别方式</div>
+            <div v-for="provider in extensionProviders" :key="provider.provider_id" class="extension-provider-card">
+              <q-toggle :model-value="Boolean(form[`recognition.providers.${provider.provider_id}.enabled`])" color="primary" :label="`${provider.display_name} (${provider.provider_id})`" @update:model-value="setBoolean(`recognition.providers.${provider.provider_id}.enabled`, $event)" />
+              <div v-if="Boolean(form[`recognition.providers.${provider.provider_id}.enabled`])" class="extension-provider-fields">
+                <div v-for="(schema, name) in provider.config_schema" :key="name" class="setting-field">
+                  <q-select v-if="Array.isArray(schema.enum) && schema.enum.length" :model-value="String(form[`recognition.providers.${provider.provider_id}.${name}`] ?? '')" outlined dense emit-value map-options :label="schema.title || schema.label || name" :options="providerFieldOptions(schema)" @update:model-value="setProviderValue(`recognition.providers.${provider.provider_id}.${name}`, $event)">
+                    <template #append><HelpTip v-if="schema.description || schema.help" :text="schema.description || schema.help || ''" /></template>
+                  </q-select>
+                  <q-toggle v-else-if="schema.type === 'boolean'" :model-value="Boolean(form[`recognition.providers.${provider.provider_id}.${name}`])" color="primary" :label="schema.title || schema.label || name" @update:model-value="setBoolean(`recognition.providers.${provider.provider_id}.${name}`, $event)" />
+                  <q-input v-else-if="schema.type === 'array' || schema.type === 'object'" :model-value="String(form[`recognition.providers.${provider.provider_id}.${name}`] ?? '')" type="textarea" outlined dense autogrow :label="schema.title || schema.label || name" @update:model-value="setProviderValue(`recognition.providers.${provider.provider_id}.${name}`, $event)">
+                    <template #append><HelpTip v-if="schema.description || schema.help" :text="schema.description || schema.help || ''" /></template>
+                  </q-input>
+                  <q-input v-else :model-value="String(form[`recognition.providers.${provider.provider_id}.${name}`] ?? '')" outlined dense :required="schema.required" :min="schema.minimum" :max="schema.maximum" :maxlength="schema.maxLength" :type="schema.secret ? 'password' : schema.type === 'number' || schema.type === 'integer' ? 'number' : 'text'" :label="schema.title || schema.label || name" @update:model-value="setProviderValue(`recognition.providers.${provider.provider_id}.${name}`, $event)">
+                    <template #append><HelpTip v-if="schema.description || schema.help" :text="schema.description || schema.help || ''" /></template>
+                  </q-input>
+                </div>
+                <div v-if="!Object.keys(provider.config_schema || {}).length" class="text-caption text-secondary">此识别方式没有额外参数。</div>
+              </div>
+            </div>
+          </section>
           <div class="card-footer">
             <template v-if="tab === 'system'"><q-btn outline color="primary" label="自定义 CSS/JavaScript" @click="openScript" /></template>
             <template v-if="tab === 'media'"><q-btn outline color="primary" label="刮削设置" @click="openScraper" /><q-btn outline color="primary" label="自定义制作组/字幕组" @click="openReleaseGroups" /></template>
-            <q-btn color="primary" unelevated label="保存" :loading="loading" @click="saveSection(tab === 'system' ? SYSTEM_KEYS : tab === 'media' ? MEDIA_KEYS : tab === 'service' ? SERVICE_KEYS : tab === 'security' ? SECURITY_KEYS : LAB_KEYS)" />
+            <q-btn color="primary" unelevated label="保存" :loading="loading" @click="tab === 'laboratory' ? saveLaboratory() : saveSection(tab === 'system' ? SYSTEM_KEYS : tab === 'media' ? MEDIA_KEYS : tab === 'service' ? SERVICE_KEYS : SECURITY_KEYS)" />
           </div>
         </q-tab-panel>
       </q-tab-panels>
@@ -439,6 +578,9 @@ onMounted(loadData)
 .settings-card { overflow: hidden; }
 .setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .setting-field { min-width: 0; }
+.extension-provider-settings { margin-top: 24px; border-top: 1px solid var(--border-subtle); padding-top: 16px; }
+.extension-provider-card { margin-top: 10px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 8px; }
+.extension-provider-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 8px; }
 .toggle-field { min-height: 42px; align-items: center; }
 .setting-toggle-row { display: flex; align-items: center; gap: 8px; min-height: 42px; }
 .card-footer { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border-subtle); padding: 16px 0 0; margin-top: 8px; }
@@ -451,6 +593,7 @@ onMounted(loadData)
 .scraper-section :deep(.q-checkbox) { margin-right: 16px; min-width: 120px; }
 @media (max-width: 700px) {
   .setting-grid { grid-template-columns: 1fr; gap: 10px; }
+  .extension-provider-fields { grid-template-columns: 1fr; gap: 10px; }
   .card-footer { justify-content: stretch; }
   .card-footer .q-btn { flex: 1; min-height: 44px; }
   .dialog-card { width: 100%; min-height: 100dvh; }

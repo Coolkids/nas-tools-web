@@ -78,3 +78,11 @@ export async function downloadRecognitionJsonl(filters: Record<string, string>):
   })
   return response.data as Blob
 }
+
+export async function downloadRecognitionXlsx(filters: Record<string, string>): Promise<Blob> {
+  const response = await instance.get('/recognition_export.xlsx', {
+    params: filters,
+    responseType: 'blob'
+  })
+  return response.data as Blob
+}
