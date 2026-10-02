@@ -12,7 +12,7 @@ type SettingField = {
   key: string
   label: string
   kind?: 'input' | 'select' | 'toggle'
-  type?: 'text' | 'password'
+  type?: 'text' | 'password' | 'number'
   placeholder?: string
   help?: string
   options?: Option[]
@@ -58,7 +58,15 @@ const SECURITY_KEYS = [
 ]
 const LAB_KEYS = [
   'laboratory.ai_inference', 'laboratory.ai_inference_url', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
-  'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy'
+  'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy',
+  'recognition.decision.strategy', 'recognition.decision.shadow.enabled',
+  'recognition.decision.title_evidence.min_cjk_chars_for_strong',
+  'recognition.decision.title_evidence.min_latin_chars_for_strong',
+  'recognition.decision.title_evidence.allow_fuzzy_fallback',
+  'recognition.decision.title_evidence.fuzzy_min_score',
+  'recognition.decision.weights.title_match', 'recognition.decision.weights.year_match',
+  'recognition.decision.weights.type_match', 'recognition.decision.weights.season_episode_match',
+  'recognition.decision.weights.input_evidence', 'recognition.decision.weights.provider_reliability'
 ]
 
 const SCRAPER_NFO = [
@@ -149,8 +157,20 @@ const SECURITY_FIELDS: SettingField[] = [
   { key: 'security.api_key', label: 'API密钥' }
 ]
 const LAB_FIELDS: SettingField[] = [
-  { key: 'laboratory.ai_inference', label: '使用AI推理解析', kind: 'toggle', help: '同时使用本地解析和 AI 推理解析标题，并以本地解析结果优先。' },
+  { key: 'laboratory.ai_inference', label: '使用AI推理解析', kind: 'toggle', help: '同时运行本地规则和 AI 解析，并记录两种方式与 TMDB 的结果。' },
   { key: 'laboratory.ai_inference_url', label: 'AI推理接口地址', placeholder: 'http://127.0.0.1:8000', help: '填写 anitopy-ml 服务地址，支持直接填写 /v1/parse 地址。' },
+  { key: 'recognition.decision.strategy', label: '名称识别策略', kind: 'select', options: [{ label: '兼容现有决策', value: 'legacy' }, { label: 'TMDB名称命中', value: 'title_evidence' }], help: 'TMDB 名称唯一命中时可接受；多个不同 TMDB 条目命中时识别失败。' },
+  { key: 'recognition.decision.shadow.enabled', label: '记录影子决策结果', kind: 'toggle', help: '同时记录名称证据策略的模拟结果，不改变当前选择结果。' },
+  { key: 'recognition.decision.title_evidence.min_cjk_chars_for_strong', label: '中文完整名称最少字数', type: 'number' },
+  { key: 'recognition.decision.title_evidence.min_latin_chars_for_strong', label: '拉丁文完整名称最少字符数', type: 'number' },
+  { key: 'recognition.decision.title_evidence.allow_fuzzy_fallback', label: '启用模糊名称回退', kind: 'toggle', help: '默认关闭；开启后按下方分数阈值执行唯一候选检查。' },
+  { key: 'recognition.decision.title_evidence.fuzzy_min_score', label: '模糊回退最低分数', type: 'number' },
+  { key: 'recognition.decision.weights.title_match', label: '标题匹配权重', type: 'number' },
+  { key: 'recognition.decision.weights.year_match', label: '年份匹配权重', type: 'number' },
+  { key: 'recognition.decision.weights.type_match', label: '媒体类型权重', type: 'number' },
+  { key: 'recognition.decision.weights.season_episode_match', label: '季集匹配权重', type: 'number' },
+  { key: 'recognition.decision.weights.input_evidence', label: '输入证据权重', type: 'number' },
+  { key: 'recognition.decision.weights.provider_reliability', label: '识别方式权重', type: 'number', help: '默认值为 0，不会固定偏向本地或 AI。' },
   { key: 'laboratory.search_tmdbweb', label: '增强识别', kind: 'toggle' },
   { key: 'laboratory.tmdb_cache_expire', label: 'TMDB缓存过期策略', kind: 'toggle' },
   { key: 'laboratory.use_douban_titles', label: '使用豆瓣名称联想', kind: 'toggle' },
@@ -191,7 +211,7 @@ const SETTING_DESCRIPTIONS: Record<string, string> = {
   'security.synology_webhook_allow_ip.ipv4': '允许访问 Synology Chat Webhook 的 IPv4 网段，支持 CIDR。',
   'security.synology_webhook_allow_ip.ipv6': '允许访问 Synology Chat Webhook 的 IPv6 网段，支持 CIDR。',
   'security.api_key': '外部 API 调用使用的密钥，请妥善保管并避免分享。',
-  'laboratory.ai_inference': '同时使用本地解析和 AI 推理解析标题。本地结果优先，AI 结果用于补充和差异核对。',
+  'laboratory.ai_inference': '同时运行本地规则和 AI 解析，并记录每种方式的原始输出、TMDB 结果和整体决策。',
   'laboratory.ai_inference_url': 'anitopy-ml 接口服务地址，例如 http://127.0.0.1:8000。',
   'laboratory.search_tmdbweb': '在 API 匹配失败时，尝试通过 TMDB 网页结果增强识别。',
   'laboratory.tmdb_cache_expire': '启用 TMDB 缓存过期处理，避免长期使用过期结果。',
@@ -254,8 +274,17 @@ function syncForm() {
   form['pt.search_no_result_rss'] = sw('pt.search_no_result_rss')
   SECURITY_KEYS.forEach((key) => { form[key] = str(key) })
   form['pt.download_order'] = str('pt.download_order', '')
+  const labToggleKeys = new Set([
+    'laboratory.ai_inference', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
+    'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy',
+    'recognition.decision.shadow.enabled', 'recognition.decision.title_evidence.allow_fuzzy_fallback'
+  ])
+  const labNumberKeys = new Set(LAB_KEYS.filter((key) => key.startsWith('recognition.') && !labToggleKeys.has(key) && key !== 'recognition.decision.strategy'))
   LAB_KEYS.forEach((key) => {
-    form[key] = key === 'laboratory.ai_inference_url' ? str(key) : sw(key)
+    if (key === 'laboratory.ai_inference_url' || key === 'recognition.decision.strategy') form[key] = str(key)
+    else if (labToggleKeys.has(key)) form[key] = sw(key)
+    else if (labNumberKeys.has(key)) form[key] = Number(getCfg(key) ?? 0)
+    else form[key] = sw(key)
   })
   SCRAPER_KEYS.forEach((key) => { form[key] = sw(key) })
   releaseGroups.value = str('laboratory.release_groups')
@@ -357,12 +386,12 @@ onMounted(loadData)
                 <q-toggle :model-value="Boolean(form[field.key])" color="primary" :label="field.label" class="toggle-field" @update:model-value="setBoolean(field.key, $event)">
                   <HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" />
                 </q-toggle>
-                <q-btn v-if="field.key === 'laboratory.ai_inference'" flat dense color="primary" icon="fact_check" label="识别记录" to="/ai_recognition" />
+                <q-btn v-if="field.key === 'laboratory.ai_inference'" flat dense color="primary" icon="fact_check" label="媒体识别记录" to="/recognition" />
               </div>
               <q-select v-else-if="field.kind === 'select'" :model-value="String(form[field.key] ?? '')" outlined dense emit-value map-options :label="field.label" :options="field.options" @update:model-value="setValue(field.key, $event)">
                 <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
               </q-select>
-              <q-input v-else :model-value="String(form[field.key] ?? '')" outlined dense :label="field.label" :type="field.type || 'text'" :placeholder="field.placeholder" @update:model-value="setValue(field.key, $event)">
+              <q-input v-else :model-value="String(form[field.key] ?? '')" outlined dense :label="field.label" :type="field.type || 'text'" :placeholder="field.placeholder" @update:model-value="setValue(field.key, field.type === 'number' ? Number($event) : $event)">
                 <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
               </q-input>
             </div>

@@ -187,10 +187,15 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '基础设置' }
   },
   {
-    path: '/ai_recognition',
-    name: 'ai_recognition',
+    path: '/recognition',
+    name: 'recognition',
     component: () => import('@/views/setting/AiRecognitionView.vue'),
-    meta: { title: 'AI识别记录' }
+    meta: { title: '媒体识别记录' }
+  },
+  {
+    path: '/ai_recognition',
+    redirect: '/recognition',
+    meta: { title: '媒体识别记录' }
   },
   {
     path: '/customwords',
