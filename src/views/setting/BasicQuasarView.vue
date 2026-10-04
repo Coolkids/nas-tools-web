@@ -14,6 +14,8 @@ type SettingField = {
   label: string
   kind?: 'input' | 'select' | 'toggle'
   type?: 'text' | 'password' | 'number'
+  min?: number
+  step?: number | 'any'
   placeholder?: string
   help?: string
   options?: Option[]
@@ -57,7 +59,14 @@ const activeTab = ref('system')
 const form = reactive<Record<string, unknown>>({})
 const recognitionProviders = ref<RecognitionProvider[]>([])
 const parseCacheInfo = ref<{ entries: number; bytes: number; generation: number; max_entries?: number; max_bytes?: number } | null>(null)
+const MIB_BYTES = 1024 * 1024
+const BYTE_CAPACITY_KEYS = new Set([
+  'recognition.cache.parse.max_bytes', 'recognition.cache.parse.max_entry_bytes'
+])
 const clearingParseCache = ref(false)
+const aiInferenceEnabled = computed(() => Boolean(form['laboratory.ai_inference']))
+const recognitionCacheEnabled = computed(() => Boolean(form['recognition.cache.enabled']))
+const aiParseCacheEnabled = computed(() => Boolean(form['recognition.cache.parse.enabled']))
 const extensionProviders = computed(() => recognitionProviders.value.filter(
   (provider) => !['local_rules', 'anitopy_ml'].includes(provider.provider_id)
 ))
@@ -76,7 +85,7 @@ const MEDIA_KEYS = [
   'media.filesize_cover', 'media.refresh_mediaserver', 'media.nfo_poster'
 ]
 const SERVICE_KEYS = [
-  'pt.ptsignin_cron', 'pt.pt_check_interval', 'pt.search_rss_interval',
+  'pt.search_rss_interval',
   'media.mediasync_interval', 'pt.pt_monitor', 'pt.pt_monitor_only',
   'pt.search_auto', 'pt.search_no_result_rss'
 ]
@@ -178,8 +187,6 @@ const MEDIA_FIELDS: SettingField[] = [
   { key: 'media.nfo_poster', label: '刮削元数据及图片', kind: 'toggle', help: '自动生成 nfo 描述文件及图片。' }
 ]
 const SERVICE_FIELDS: SettingField[] = [
-  { key: 'pt.ptsignin_cron', label: '站点签到时间', placeholder: '留空关闭自动签到' },
-  { key: 'pt.pt_check_interval', label: '订阅RSS周期(秒)', placeholder: '留空关闭RSS订阅' },
   { key: 'pt.search_rss_interval', label: '订阅搜索周期(小时)', placeholder: '留空关闭订阅定时搜索' },
   { key: 'media.mediasync_interval', label: '媒体库同步周期(小时)', placeholder: '留空关闭媒体库同步' },
   { key: 'pt.pt_monitor', label: '下载软件监控', kind: 'toggle' },
@@ -220,8 +227,8 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'recognition.cache.parse.singleflight', label: '合并相同在途请求', kind: 'toggle', help: '并发解析相同标题时共用一次 AI 请求。' },
   { key: 'recognition.cache.parse.ttl_seconds', label: 'AI解析缓存有效期(秒)', type: 'number' },
   { key: 'recognition.cache.parse.max_entries', label: 'AI解析缓存最大条数', type: 'number' },
-  { key: 'recognition.cache.parse.max_bytes', label: 'AI解析缓存总容量(字节)', type: 'number' },
-  { key: 'recognition.cache.parse.max_entry_bytes', label: 'AI解析缓存单条上限(字节)', type: 'number' },
+  { key: 'recognition.cache.parse.max_bytes', label: 'AI解析缓存总容量 (MiB)', type: 'number', min: 0.01, step: 0.01, help: '以 MiB 设置，保存时自动换算为字节；1 MiB = 1,048,576 字节。' },
+  { key: 'recognition.cache.parse.max_entry_bytes', label: 'AI解析缓存单条上限 (MiB)', type: 'number', min: 0.01, step: 0.01, help: '以 MiB 设置，保存时自动换算为字节；单条上限不能大于总容量。' },
   { key: 'recognition.profiles.parse_only.network_allowed', label: 'parse_only 允许联网解析', kind: 'toggle', help: '关闭后跳过需要网络的解析器；parse_only 始终不查询 TMDB。' },
   { key: 'recognition.profiles.resolve.network_allowed', label: 'resolve 允许联网解析', kind: 'toggle' },
   { key: 'recognition.profiles.resolve.tmdb_allowed', label: 'resolve 允许查询 TMDB', kind: 'toggle' },
@@ -230,6 +237,58 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'laboratory.use_douban_titles', label: '使用豆瓣名称联想', kind: 'toggle' },
   { key: 'laboratory.search_en_title', label: '搜索优先使用英文名', kind: 'toggle' },
   { key: 'laboratory.tmdb_proxy', label: '使用TMDB代理服务', kind: 'toggle' }
+]
+const LAB_FIELD_GROUPS = [
+  {
+    title: 'AI 推理',
+    description: '配置 AI 解析服务及本次识别的执行预算。',
+    keys: [
+      'laboratory.ai_inference', 'laboratory.ai_inference_url',
+      'recognition.execution.total_timeout_seconds'
+    ]
+  },
+  {
+    title: '识别决策与权重',
+    description: '控制候选匹配规则，以及不同识别方式结果的评分。',
+    keys: [
+      'recognition.decision.strategy', 'recognition.decision.shadow.enabled',
+      'recognition.decision.title_evidence.min_cjk_chars_for_strong',
+      'recognition.decision.title_evidence.min_latin_chars_for_strong',
+      'recognition.decision.title_evidence.allow_fuzzy_fallback',
+      'recognition.decision.title_evidence.fuzzy_min_score',
+      'recognition.decision.weights.title_match', 'recognition.decision.weights.year_match',
+      'recognition.decision.weights.type_match', 'recognition.decision.weights.season_episode_match',
+      'recognition.decision.weights.input_evidence', 'recognition.decision.weights.provider_reliability',
+      'recognition.providers.local_rules.reliability', 'recognition.providers.anitopy_ml.reliability',
+      'recognition.decision.agreement_bonus'
+    ]
+  },
+  {
+    title: 'AI 解析缓存',
+    description: '缓存 AI 解析结果，并合并相同的并发请求。',
+    keys: [
+      'recognition.cache.enabled', 'recognition.cache.parse.enabled',
+      'recognition.cache.parse.singleflight', 'recognition.cache.parse.ttl_seconds',
+      'recognition.cache.parse.max_entries', 'recognition.cache.parse.max_bytes',
+      'recognition.cache.parse.max_entry_bytes'
+    ]
+  },
+  {
+    title: '识别器范围',
+    description: '分别设置 parse_only 与 resolve 阶段可用的网络和识别器。',
+    keys: [
+      'recognition.profiles.parse_only.network_allowed',
+      'recognition.profiles.resolve.network_allowed', 'recognition.profiles.resolve.tmdb_allowed'
+    ]
+  },
+  {
+    title: '其他实验室功能',
+    description: 'TMDB 搜索及名称处理相关选项。',
+    keys: [
+      'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
+      'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy'
+    ]
+  }
 ]
 
 const SETTING_DESCRIPTIONS: Record<string, string> = {
@@ -250,8 +309,6 @@ const SETTING_DESCRIPTIONS: Record<string, string> = {
   'pt.download_order': '同一媒体有多个候选资源时，用于决定优先下载的规则。',
   'media.movie_name_format': '电影整理后的目录和文件名格式，可使用标题、年份、制作组等变量。',
   'media.tv_name_format': '电视剧整理后的目录和文件名格式，可使用季集等变量。',
-  'pt.ptsignin_cron': '按 Cron 时间执行站点签到，留空表示关闭自动签到。',
-  'pt.pt_check_interval': '检查 RSS 订阅的间隔，单位为秒；留空表示关闭。',
   'pt.search_rss_interval': '执行订阅搜索的间隔，单位为小时；留空表示关闭。',
   'media.mediasync_interval': '同步媒体服务器媒体库的间隔，单位为小时；留空表示关闭。',
   'pt.pt_monitor': '定时读取下载软件任务，并处理已完成的下载。',
@@ -340,11 +397,13 @@ const labNumberKeys = new Set(LAB_KEYS.filter((key) => key.startsWith('recogniti
 const profileProviderKeys = new Set([
   'recognition.profiles.parse_only.providers', 'recognition.profiles.resolve.providers'
 ])
+
   LAB_KEYS.forEach((key) => {
     if (profileProviderKeys.has(key)) {
       const configured = getCfg(key)
       form[key] = Array.isArray(configured) ? [...configured] : ['all_enabled']
-    } else if (key === 'laboratory.ai_inference_url' || key === 'recognition.decision.strategy') form[key] = str(key)
+    } else if (BYTE_CAPACITY_KEYS.has(key)) form[key] = Number(getCfg(key) ?? 0) / MIB_BYTES
+    else if (key === 'laboratory.ai_inference_url' || key === 'recognition.decision.strategy') form[key] = str(key)
     else if (labToggleKeys.has(key)) form[key] = sw(key)
     else if (labNumberKeys.has(key)) form[key] = Number(getCfg(key) ?? 0)
     else form[key] = sw(key)
@@ -372,8 +431,32 @@ const profileProviderKeys = new Set([
   releaseGroups.value = str('laboratory.release_groups')
 }
 
+function isLaboratoryFieldVisible(key: string): boolean {
+  if (key === 'laboratory.ai_inference_url' || key === 'recognition.providers.anitopy_ml.reliability') {
+    return aiInferenceEnabled.value
+  }
+  if (key === 'recognition.cache.parse.enabled') {
+    return aiInferenceEnabled.value && recognitionCacheEnabled.value
+  }
+  if (key.startsWith('recognition.cache.parse.')) {
+    return aiInferenceEnabled.value && recognitionCacheEnabled.value && aiParseCacheEnabled.value
+  }
+  if (key === 'recognition.decision.title_evidence.fuzzy_min_score') {
+    return Boolean(form['recognition.decision.title_evidence.allow_fuzzy_fallback'])
+  }
+  if (key === 'recognition.profiles.resolve.tmdb_allowed') {
+    return Boolean(form['recognition.profiles.resolve.network_allowed'])
+  }
+  return true
+}
+
+const laboratoryFieldSections = computed(() => LAB_FIELD_GROUPS.map((section) => ({
+  ...section,
+  fields: LAB_FIELDS.filter((field) => section.keys.includes(field.key) && isLaboratoryFieldVisible(field.key))
+})).filter((section) => section.fields.length))
+
 function setValue(key: string, value: unknown) {
-  form[key] = value
+  form[key] = value === '' && BYTE_CAPACITY_KEYS.has(key) ? 0 : value
 }
 
 function setBoolean(key: string, value: boolean | null) {
@@ -382,8 +465,8 @@ function setBoolean(key: string, value: boolean | null) {
 
 function profileProviderSelection(stage: 'parse_only' | 'resolve'): string[] {
   const selected = form[`recognition.profiles.${stage}.providers`]
-  return selected === 'all_enabled' || !Array.isArray(selected)
-    ? ['all_enabled'] : selected as string[]
+  if (selected === 'all_enabled' || !Array.isArray(selected)) return ['all_enabled']
+  return aiInferenceEnabled.value ? selected as string[] : (selected as string[]).filter((id) => id !== 'anitopy_ml')
 }
 
 function setProfileProviders(stage: 'parse_only' | 'resolve', selected: string[]) {
@@ -396,7 +479,7 @@ function setProfileProviders(stage: 'parse_only' | 'resolve', selected: string[]
 
 const profileProviderOptions = computed(() => [
   { value: 'all_enabled', label: '所有已启用识别器' },
-  ...recognitionProviders.value.map((provider) => ({
+  ...recognitionProviders.value.filter((provider) => aiInferenceEnabled.value || provider.provider_id !== 'anitopy_ml').map((provider) => ({
     value: provider.provider_id,
     label: `${provider.display_name} (${provider.provider_id})`
   }))
@@ -459,8 +542,22 @@ function setProviderValue(key: string, value: unknown) {
 }
 
 async function saveLaboratory() {
+  const maxMiB = Number(form['recognition.cache.parse.max_bytes'])
+  const maxEntryMiB = Number(form['recognition.cache.parse.max_entry_bytes'])
+  if (!Number.isFinite(maxMiB) || !Number.isFinite(maxEntryMiB) || maxMiB <= 0 || maxEntryMiB <= 0) {
+    modal.error('AI解析缓存容量必须大于 0 MiB')
+    return
+  }
+  if (maxEntryMiB > maxMiB) {
+    modal.error('AI解析缓存单条上限不能大于缓存总容量')
+    return
+  }
   const items: Record<string, unknown> = {}
-  ;[...LAB_KEYS, ...extensionProviderKeys.value].forEach((key) => { items[key] = form[key] })
+  ;[...LAB_KEYS, ...extensionProviderKeys.value].forEach((key) => {
+    items[key] = BYTE_CAPACITY_KEYS.has(key)
+      ? Math.round(Number(form[key]) * MIB_BYTES)
+      : form[key]
+  })
   for (const key of extensionProviderKeys.value) {
     const schema = extensionProviderSchemas.value[key]
     const value = form[key]
@@ -574,21 +671,46 @@ onMounted(loadData)
       <q-separator />
       <q-tab-panels v-model="activeTab" animated>
         <q-tab-panel v-for="(fields, tab) in { system: SYSTEM_FIELDS, media: MEDIA_FIELDS, service: SERVICE_FIELDS, security: SECURITY_FIELDS, laboratory: LAB_FIELDS }" :key="tab" :name="tab">
-          <div class="setting-grid">
-            <div v-for="field in fields" v-show="field.key !== 'laboratory.ai_inference_url' || Boolean(form['laboratory.ai_inference'])" :key="field.key" class="setting-field">
-              <div v-if="field.kind === 'toggle'" class="setting-toggle-row">
-                <q-toggle :model-value="Boolean(form[field.key])" color="primary" :label="field.label" class="toggle-field" @update:model-value="setBoolean(field.key, $event)">
-                  <HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" />
-                </q-toggle>
-                <q-btn v-if="field.key === 'laboratory.ai_inference'" flat dense color="primary" icon="fact_check" label="媒体识别记录" to="/recognition" />
+          <template v-if="tab === 'laboratory'">
+            <section v-for="section in laboratoryFieldSections" :key="section.title" class="laboratory-settings-group">
+              <div class="laboratory-group-heading">
+                <div class="text-subtitle1">{{ section.title }}</div>
+                <div class="text-caption text-secondary">{{ section.description }}</div>
               </div>
-              <q-select v-else-if="field.kind === 'select'" :model-value="String(form[field.key] ?? '')" outlined dense emit-value map-options :label="field.label" :options="field.options" @update:model-value="setValue(field.key, $event)">
-                <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
-              </q-select>
-              <q-input v-else :model-value="String(form[field.key] ?? '')" outlined dense :label="field.label" :type="field.type || 'text'" :placeholder="field.placeholder" @update:model-value="setValue(field.key, field.type === 'number' ? Number($event) : $event)">
-                <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
-              </q-input>
-            </div>
+              <div class="setting-grid">
+                <div v-for="field in section.fields" :key="field.key" class="setting-field">
+                  <div v-if="field.kind === 'toggle'" class="setting-toggle-row">
+                    <q-toggle :model-value="Boolean(form[field.key])" color="primary" :label="field.label" class="toggle-field" @update:model-value="setBoolean(field.key, $event)">
+                      <HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" />
+                    </q-toggle>
+                    <q-btn v-if="field.key === 'laboratory.ai_inference'" flat dense color="primary" icon="fact_check" label="媒体识别记录" to="/recognition" />
+                  </div>
+                  <q-select v-else-if="field.kind === 'select'" :model-value="String(form[field.key] ?? '')" outlined dense emit-value map-options :label="field.label" :options="field.options" @update:model-value="setValue(field.key, $event)">
+                    <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
+                  </q-select>
+                  <q-input v-else :model-value="String(form[field.key] ?? '')" outlined dense :label="field.label" :type="field.type || 'text'" :min="field.min" :step="field.step" :placeholder="field.placeholder" @update:model-value="setValue(field.key, field.type === 'number' ? Number($event) : $event)">
+                    <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
+                  </q-input>
+                </div>
+              </div>
+            </section>
+          </template>
+          <div v-else class="setting-grid">
+            <template v-for="field in fields" :key="field.key">
+              <div class="setting-field">
+                <div v-if="field.kind === 'toggle'" class="setting-toggle-row">
+                  <q-toggle :model-value="Boolean(form[field.key])" color="primary" :label="field.label" class="toggle-field" @update:model-value="setBoolean(field.key, $event)">
+                    <HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" />
+                  </q-toggle>
+                </div>
+                <q-select v-else-if="field.kind === 'select'" :model-value="String(form[field.key] ?? '')" outlined dense emit-value map-options :label="field.label" :options="field.options" @update:model-value="setValue(field.key, $event)">
+                  <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
+                </q-select>
+                <q-input v-else :model-value="String(form[field.key] ?? '')" outlined dense :label="field.label" :type="field.type || 'text'" :placeholder="field.placeholder" @update:model-value="setValue(field.key, field.type === 'number' ? Number($event) : $event)">
+                  <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
+                </q-input>
+              </div>
+            </template>
           </div>
           <section v-if="tab === 'laboratory'" class="extension-provider-settings">
             <div class="text-subtitle1 q-mb-sm">识别 profile 的解析器范围</div>
@@ -627,8 +749,10 @@ onMounted(loadData)
             <template v-if="tab === 'system'"><q-btn outline color="primary" label="自定义 CSS/JavaScript" @click="openScript" /></template>
             <template v-if="tab === 'media'"><q-btn outline color="primary" label="刮削设置" @click="openScraper" /><q-btn outline color="primary" label="自定义制作组/字幕组" @click="openReleaseGroups" /></template>
             <template v-if="tab === 'laboratory'">
-              <div v-if="parseCacheInfo" class="text-caption text-secondary cache-summary">解析缓存 {{ parseCacheInfo.entries }} / {{ parseCacheInfo.max_entries || '—' }} 条，{{ (parseCacheInfo.bytes / 1048576).toFixed(2) }} / {{ parseCacheInfo.max_bytes ? (parseCacheInfo.max_bytes / 1048576).toFixed(0) : '—' }} MiB</div>
-              <q-btn outline color="negative" label="清理 AI 解析缓存" :loading="clearingParseCache" @click="clearParseCache" />
+              <template v-if="aiInferenceEnabled && recognitionCacheEnabled">
+                <div v-if="parseCacheInfo" class="text-caption text-secondary cache-summary">解析缓存 {{ parseCacheInfo.entries }} / {{ parseCacheInfo.max_entries || '—' }} 条，{{ (parseCacheInfo.bytes / 1048576).toFixed(2) }} / {{ parseCacheInfo.max_bytes ? (parseCacheInfo.max_bytes / 1048576).toFixed(0) : '—' }} MiB</div>
+                <q-btn v-if="aiParseCacheEnabled" outline color="negative" label="清理 AI 解析缓存" :loading="clearingParseCache" @click="clearParseCache" />
+              </template>
             </template>
             <q-btn color="primary" unelevated label="保存" :loading="loading" @click="tab === 'laboratory' ? saveLaboratory() : saveSection(tab === 'system' ? SYSTEM_KEYS : tab === 'media' ? MEDIA_KEYS : tab === 'service' ? SERVICE_KEYS : SECURITY_KEYS)" />
           </div>
@@ -670,6 +794,9 @@ onMounted(loadData)
 .settings-card { overflow: hidden; }
 .setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .setting-field { min-width: 0; }
+.laboratory-settings-group { margin-top: 18px; padding: 16px; border: 1px solid var(--border-subtle); border-radius: 10px; }
+.laboratory-settings-group:first-child { margin-top: 0; }
+.laboratory-group-heading { margin-bottom: 14px; }
 .extension-provider-settings { margin-top: 24px; border-top: 1px solid var(--border-subtle); padding-top: 16px; }
 .extension-provider-card { margin-top: 10px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 8px; }
 .extension-provider-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 8px; }
@@ -685,6 +812,9 @@ onMounted(loadData)
 .scraper-section :deep(.q-checkbox) { margin-right: 16px; min-width: 120px; }
 @media (max-width: 700px) {
   .setting-grid { grid-template-columns: 1fr; gap: 10px; }
+  .laboratory-settings-group { margin-top: 12px; padding: 12px; }
+  .laboratory-settings-group:first-child { margin-top: 0; }
+  .laboratory-group-heading { margin-bottom: 10px; }
   .extension-provider-fields { grid-template-columns: 1fr; gap: 10px; }
   .card-footer { justify-content: stretch; }
   .card-footer .q-btn { flex: 1; min-height: 44px; }

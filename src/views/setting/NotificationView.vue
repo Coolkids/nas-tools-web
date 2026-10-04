@@ -147,10 +147,6 @@ const SWITCHS = [
   { id: 'transfer_fail', name: '入库失败' },
   { id: 'rss_added', name: '新增订阅' },
   { id: 'rss_finished', name: '订阅完成' },
-  { id: 'site_signin', name: '站点签到' },
-  { id: 'site_message', name: '站点消息' },
-  { id: 'brushtask_added', name: '刷流下种' },
-  { id: 'brushtask_remove', name: '刷流删种' },
   { id: 'mediaserver_message', name: '媒体服务' },
   { id: 'custom_message', name: '自定义消息' }
 ]

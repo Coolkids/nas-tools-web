@@ -146,12 +146,6 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/download/TorrentRemoveView.vue'),
     meta: { title: '自动删种' }
   },
-  {
-    path: '/userdownloader',
-    name: 'userdownloader',
-    component: () => import('@/views/download/UserDownloaderView.vue'),
-    meta: { title: '自定义下载器' }
-  },
 
   // 媒体整理
   {

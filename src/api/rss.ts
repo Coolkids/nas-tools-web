@@ -23,7 +23,6 @@ export interface RssMediaItem {
   tmdbid: string
   image: string
   overview: string
-  rss_sites: string[]
   search_sites: string[]
   over_edition: boolean
   filter_restype: string
@@ -159,7 +158,7 @@ export interface UserRssTask {
   download_setting?: string | number
   recognization?: string
   over_edition?: number | string
-  sites?: { rss_sites: Array<string | number>; search_sites: Array<string | number> }
+  sites?: { search_sites: Array<string | number> }
   filter_args?: { restype?: string; pix?: string; team?: string }
   update_time?: string
   counter?: number
@@ -218,7 +217,7 @@ export interface UpdateUserRssTaskParams {
   download_setting?: string | number
   recognization?: string
   over_edition?: string | number
-  sites?: { rss_sites: Array<string | number>; search_sites: Array<string | number> }
+  sites?: { search_sites: Array<string | number> }
   restype?: string
   pix?: string
   team?: string
@@ -285,7 +284,6 @@ export interface AddRssMediaParams {
   fuzzy_match?: boolean
   mediaid?: string | number
   over_edition?: boolean
-  rss_sites?: Array<string | number>
   search_sites?: Array<string | number>
   filter_restype?: string
   filter_pix?: string
@@ -304,16 +302,8 @@ export function addRssMedia(params: AddRssMediaParams): Promise<SimpleResult> {
   return doAction<SimpleResult>('add_rss_media', params)
 }
 
-export interface RssSiteItem {
-  name: string
-}
-
 export interface IndexerItem {
   name: string
-}
-
-export function getRssSites(): Promise<{ code: number; sites: RssSiteItem[] }> {
-  return doAction<{ code: number; sites: RssSiteItem[] }>('get_sites', { rss: true, basic: true })
 }
 
 export function getIndexers(): Promise<{ code: number; indexers: IndexerItem[] }> {
@@ -336,7 +326,6 @@ export interface RssImportValues {
   keyword?: string
   season?: string
   fuzzy_match?: boolean
-  rss_sites?: string[]
   search_sites?: string[]
   over_edition?: boolean
   filter_restype?: string

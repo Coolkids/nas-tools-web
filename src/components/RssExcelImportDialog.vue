@@ -118,7 +118,7 @@ async function exportErrors() {
 
 function resetEditor(values: RssImportValues) {
   Object.assign(editor, {
-    name: '', year: '', keyword: '', season: '', fuzzy_match: false, rss_sites: [], search_sites: [], over_edition: false,
+    name: '', year: '', keyword: '', season: '', fuzzy_match: false, search_sites: [], over_edition: false,
     filter_restype: '', filter_pix: '', filter_team: '', filter_rule: '', download_setting: '', save_path: '', total_ep: '', current_ep: ''
   }, values)
 }
@@ -138,7 +138,7 @@ async function saveAndRetry() {
     return
   }
   const row = editingRow.value
-  row.values = { ...editor, name: editor.name.trim(), rss_sites: Array.isArray(editor.rss_sites) ? editor.rss_sites : [], search_sites: Array.isArray(editor.search_sites) ? editor.search_sites : [] }
+  row.values = { ...editor, name: editor.name.trim(), search_sites: Array.isArray(editor.search_sites) ? editor.search_sites : [] }
   editingRow.value = null
   await retryRows([row])
 }
@@ -226,8 +226,7 @@ onBeforeUnmount(clearPolling)
         <q-input v-model="editor.year" outlined label="年份" />
         <q-input v-if="type === 'TV'" v-model="editor.season" outlined label="季号" />
         <q-input v-model="editor.keyword" outlined label="自定义搜索词" />
-        <q-input :model-value="siteText(editor.rss_sites)" outlined label="RSS 站点（逗号分隔）" @update:model-value="editor.rss_sites = parseSites(String($event || ''))" />
-        <q-input :model-value="siteText(editor.search_sites)" outlined label="搜索站点（逗号分隔）" @update:model-value="editor.search_sites = parseSites(String($event || ''))" />
+        <q-input :model-value="siteText(editor.search_sites)" outlined label="索引器（逗号分隔）" @update:model-value="editor.search_sites = parseSites(String($event || ''))" />
         <q-input v-model="editor.filter_restype" outlined label="资源类型" />
         <q-input v-model="editor.filter_pix" outlined label="分辨率" />
         <q-input v-model="editor.filter_team" outlined label="制作组/字幕组" />

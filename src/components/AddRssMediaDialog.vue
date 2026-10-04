@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import HelpTip from '@/components/HelpTip.vue'
-import { addRssMedia, getRssSites, getIndexers, getRssDetail, type AddRssMediaParams, type RssSiteItem, type IndexerItem } from '@/api/rss'
+import { addRssMedia, getIndexers, getRssDetail, type AddRssMediaParams, type IndexerItem } from '@/api/rss'
 import { getDownloadDirs, getDownloadSettings, type DownloadSettingOption } from '@/api/download'
 
 const props = defineProps<{
@@ -55,9 +55,7 @@ const form = reactive({
   save_path: ''
 })
 
-const rssSites = ref<RssSiteItem[]>([])
 const searchSites = ref<IndexerItem[]>([])
-const rssSitesSelected = ref<string[]>([])
 const searchSitesSelected = ref<string[]>([])
 const downloadSettings = ref<DownloadSettingOption[]>([])
 const savePaths = ref<string[]>([])
@@ -69,11 +67,11 @@ const restypeOptions = [{ label: '全部', value: '' }, ...RESTYPE_OPTIONS.map((
 const pixOptions = [{ label: '全部', value: '' }, ...PIX_OPTIONS.map((value) => ({ label: value, value }))]
 const seasonOptions = SEASON_OPTIONS
 const ruleOptions = computed(() => [
-  { label: '站点/默认规则', value: '' },
+  { label: '默认规则', value: '' },
   ...ruleGroups.value.map((rule) => ({ label: rule.name, value: rule.id }))
 ])
 const downloadSettingOptions = computed(() => [
-  { label: '站点设置', value: '' },
+  { label: '默认', value: '' },
   ...downloadSettings.value.map((setting) => ({ label: setting.name, value: setting.id }))
 ])
 const savePathOptions = computed(() => [
@@ -124,7 +122,6 @@ async function loadEditDetail() {
     form.download_setting = d.download_setting ?? ''
     if (form.download_setting) await fetchSavePaths(form.download_setting)
     form.save_path = d.save_path || ''
-    rssSitesSelected.value = d.rss_sites?.length ? d.rss_sites : rssSites.value.map((s) => s.name)
     searchSitesSelected.value = d.search_sites?.length ? d.search_sites : searchSites.value.map((s) => s.name)
   } catch {
     /* ignore */
@@ -146,7 +143,6 @@ function resetForm() {
   form.filter_rule = ''
   form.download_setting = ''
   form.save_path = ''
-  rssSitesSelected.value = []
   searchSitesSelected.value = []
   savePaths.value = []
 }
@@ -154,8 +150,7 @@ function resetForm() {
 async function loadOptions() {
   optionsLoading.value = true
   try {
-    const [rssRes, idxRes, dsRes, ruleRes] = await Promise.all([
-      getRssSites(),
+    const [idxRes, dsRes, ruleRes] = await Promise.all([
       getIndexers(),
       getDownloadSettings(),
       (await import('@/api/request')).doAction<{
@@ -164,7 +159,6 @@ async function loadOptions() {
         initRules?: Array<{ id: number | string; name: string }>
       }>('get_filterrules', {})
     ])
-    if (rssRes.code === 0) rssSites.value = rssRes.sites || []
     if (idxRes.code === 0) searchSites.value = idxRes.indexers || []
     if (dsRes.code === 0) downloadSettings.value = dsRes.data || []
     if (ruleRes.code === 0) {
@@ -183,7 +177,7 @@ async function loadSaved() {
   try {
     const raw = localStorage.getItem(storageKey.value)
     if (!raw) return
-    const saved = JSON.parse(raw) as Partial<typeof form> & { rss_sites?: string[]; search_sites?: string[] }
+    const saved = JSON.parse(raw) as Partial<typeof form> & { search_sites?: string[] }
     form.filter_restype = saved.filter_restype ?? ''
     form.filter_pix = saved.filter_pix ?? ''
     form.filter_team = saved.filter_team ?? ''
@@ -191,7 +185,6 @@ async function loadSaved() {
     form.download_setting = saved.download_setting ?? ''
     if (form.download_setting) await fetchSavePaths(form.download_setting)
     form.save_path = saved.save_path ?? ''
-    rssSitesSelected.value = saved.rss_sites?.length ? saved.rss_sites : rssSites.value.map((s) => s.name)
     searchSitesSelected.value = saved.search_sites?.length ? saved.search_sites : searchSites.value.map((s) => s.name)
   } catch {
     /* ignore */
@@ -214,10 +207,6 @@ async function fetchSavePaths(sid: string | number) {
 async function onDownloadSettingChange(val: string | number) {
   form.save_path = ''
   await fetchSavePaths(val)
-}
-
-function toggleAllRssSites() {
-  rssSitesSelected.value = rssSites.value.map((s) => s.name)
 }
 
 function toggleAllSearchSites() {
@@ -261,10 +250,8 @@ async function submit(keepOpen = false) {
     return
   }
 
-  const allRss = rssSitesSelected.value.length === rssSites.value.length
   const allSearch = searchSitesSelected.value.length === searchSites.value.length
 
-  const rss_sites = allRss ? [] : rssSitesSelected.value
   const search_sites = form.fuzzy_match ? [] : allSearch ? [] : searchSitesSelected.value
 
   // 保存本次订阅设置
@@ -277,7 +264,6 @@ async function submit(keepOpen = false) {
       filter_rule: form.filter_rule,
       save_path: form.save_path,
       download_setting: form.download_setting,
-      rss_sites: allRss ? [] : rssSitesSelected.value,
       search_sites: allSearch ? [] : searchSitesSelected.value
     })
   )
@@ -290,7 +276,6 @@ async function submit(keepOpen = false) {
     season: form.season,
     fuzzy_match: form.fuzzy_match,
     over_edition: form.over_edition,
-    rss_sites,
     search_sites,
     filter_restype: form.filter_restype,
     filter_pix: form.filter_pix,
@@ -378,14 +363,14 @@ async function submit(keepOpen = false) {
               <q-input v-model="form.filter_team" outlined dense label="制作组 / 字幕组" placeholder="支持正则表达式" :disable="submitting" />
             </div>
             <div class="form-grid row-dl q-mt-md">
-              <q-select v-model="form.filter_rule" outlined dense emit-value map-options clearable label="过滤规则" :options="ruleOptions" :disable="submitting"><template #append><HelpTip text="质量、分辨率与过滤规则为“与”的关系；未选择时使用站点规则，站点未设置时使用默认规则。" /></template></q-select>
+              <q-select v-model="form.filter_rule" outlined dense emit-value map-options clearable label="过滤规则" :options="ruleOptions" :disable="submitting"><template #append><HelpTip text="质量、分辨率与过滤规则为“与”的关系；未选择时使用默认规则。" /></template></q-select>
               <q-select v-model="form.download_setting" outlined dense emit-value map-options clearable label="下载设置" :options="downloadSettingOptions" :disable="submitting" @update:model-value="onDownloadSettingChange" />
             </div>
             <q-select v-model="form.save_path" outlined dense emit-value map-options clearable label="保存路径" :options="savePathOptions" class="q-mt-md" :disable="submitting || !form.download_setting" />
           </section>
 
           <section v-if="!form.fuzzy_match" class="form-section">
-            <div class="section-head"><span class="section-title">搜索站点</span><span class="section-line" /><div class="section-actions"><q-btn flat dense color="primary" size="sm" :label="searchToggleLabel" @click="toggleAllSearchSites" /><q-btn flat dense color="primary" size="sm" label="反选" @click="invertSearchSites" /></div></div>
+            <div class="section-head"><span class="section-title">索引器</span><span class="section-line" /><div class="section-actions"><q-btn flat dense color="primary" size="sm" :label="searchToggleLabel" @click="toggleAllSearchSites" /><q-btn flat dense color="primary" size="sm" label="反选" @click="invertSearchSites" /></div></div>
             <div class="sites-box">
               <div v-if="searchSites.length" class="site-list">
                 <q-btn
@@ -400,10 +385,10 @@ async function submit(keepOpen = false) {
                   @click="toggleSearchSite(site.name)"
                 />
               </div>
-              <q-banner v-else rounded dense class="bg-grey-2 text-grey-7"><template #avatar><q-icon name="info_outline" /></template>暂无可用搜索站点</q-banner>
+              <q-banner v-else rounded dense class="bg-grey-2 text-grey-7"><template #avatar><q-icon name="info_outline" /></template>暂无可用索引器</q-banner>
             </div>
           </section>
-          <q-banner v-else rounded dense class="fuzzy-banner"><template #avatar><q-icon name="tune" color="primary" /></template>已启用模糊匹配，将跳过搜索站点选择并按标题、年份和种子名称匹配。</q-banner>
+          <q-banner v-else rounded dense class="fuzzy-banner"><template #avatar><q-icon name="tune" color="primary" /></template>已启用模糊匹配，将跳过索引器选择并按标题、年份和种子名称匹配。</q-banner>
         </q-card-section>
 
         <q-separator />

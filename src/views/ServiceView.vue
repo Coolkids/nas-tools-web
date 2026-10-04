@@ -23,7 +23,7 @@ interface ServiceItem {
   type: 'scheduler' | 'manual'
   interval: string
   state: boolean
-  editable?: 'rss' | 'search' | 'recognition-cleanup'
+  editable?: 'search' | 'recognition-cleanup'
 }
 
 interface NetTestRow {
@@ -74,9 +74,6 @@ function buildServices(config: AppConfig): ServiceItem[] {
   const records = (recognition.records || {}) as Record<string, unknown>
   const cleanup = (records.cleanup || {}) as Record<string, unknown>
   const list: ServiceItem[] = []
-  const rss = asDigit(pt.pt_check_interval)
-  const rssEnabled = rss !== null && rss > 0
-  list.push({ id: 'rssdownload', name: 'RSS订阅', type: 'scheduler', editable: 'rss', interval: rssEnabled ? `每 ${Math.max(5, Math.round(rss / 60))} 分钟` : '未启用', state: rssEnabled })
   let search = asDigit(pt.search_rss_interval)
   const searchEnabled = search !== null && search > 0
   if (searchEnabled && search !== null && search < 6) search = 6
@@ -87,9 +84,6 @@ function buildServices(config: AppConfig): ServiceItem[] {
   const monitor = !!pt.pt_monitor
   list.push({ id: 'pttransfer', name: '下载文件转移', type: 'scheduler', interval: monitor ? '5 分钟' : '未启用', state: monitor })
   list.push({ id: 'autoremovetorrents', name: '自动删种', type: 'scheduler', interval: '需配置删种任务', state: false })
-  const signin = pt.ptsignin_cron
-  const signinInterval = signin ? (String(signin).includes(':') ? String(signin) : `${signin} 小时`) : '未启用'
-  list.push({ id: 'ptsignin', name: '站点签到', type: 'scheduler', interval: signinInterval, state: !!signin })
   list.push({ id: 'sync', name: '目录同步', type: 'scheduler', interval: '实时监控', state: true })
   const doubanInterval = douban.interval
   list.push({ id: 'douban', name: '豆瓣想看', type: 'scheduler', interval: doubanInterval ? `${doubanInterval} 小时` : '未启用', state: !!doubanInterval })
@@ -165,12 +159,7 @@ function openScheduleEditor(service: ServiceItem) {
   const recognition = (config.recognition || {}) as Record<string, unknown>
   const records = (recognition.records || {}) as Record<string, unknown>
   const cleanup = (records.cleanup || {}) as Record<string, unknown>
-  if (service.editable === 'rss') {
-    const seconds = asDigit(pt.pt_check_interval) || 1800
-    scheduleForm.value = { id: service.editable, name: service.name,
-      enabled: (asDigit(pt.pt_check_interval) || 0) > 0,
-      interval: Math.max(5, Math.round(seconds / 60)), retentionDays: 30 }
-  } else if (service.editable === 'search') {
+  if (service.editable === 'search') {
     const hours = asDigit(pt.search_rss_interval) || 6
     scheduleForm.value = { id: service.editable, name: service.name,
       enabled: (asDigit(pt.search_rss_interval) || 0) > 0,
@@ -187,14 +176,7 @@ async function saveSchedule() {
   if (scheduleSaving.value) return
   const form = scheduleForm.value
   const items: Record<string, unknown> = {}
-  if (form.id === 'rss') {
-    const minutes = Number(form.interval)
-    if (form.enabled && (!Number.isInteger(minutes) || minutes < 5 || minutes > 525600)) {
-      modal.warning('RSS 订阅周期须为 5 分钟至 365 天')
-      return
-    }
-    items['pt.pt_check_interval'] = form.enabled ? minutes * 60 : 0
-  } else if (form.id === 'search') {
+  if (form.id === 'search') {
     const hours = Number(form.interval)
     if (form.enabled && (!Number.isInteger(hours) || hours < 6 || hours > 8760)) {
       modal.warning('订阅搜索周期须为 6 小时至 365 天')
@@ -323,8 +305,7 @@ onMounted(() => {
         <q-separator />
         <q-card-section class="q-gutter-md">
           <q-toggle v-model="scheduleForm.enabled" color="primary" label="启用定时任务" />
-          <q-input v-if="scheduleForm.id === 'rss'" v-model.number="scheduleForm.interval" outlined type="number" min="5" max="525600" label="运行间隔（分钟）" :disable="!scheduleForm.enabled" hint="最短 5 分钟，最长 365 天" />
-          <q-input v-else-if="scheduleForm.id === 'search'" v-model.number="scheduleForm.interval" outlined type="number" min="6" max="8760" label="运行间隔（小时）" :disable="!scheduleForm.enabled" hint="最短 6 小时，最长 365 天" />
+          <q-input v-if="scheduleForm.id === 'search'" v-model.number="scheduleForm.interval" outlined type="number" min="6" max="8760" label="运行间隔（小时）" :disable="!scheduleForm.enabled" hint="最短 6 小时，最长 365 天" />
           <template v-else-if="scheduleForm.id === 'recognition-cleanup'">
             <div class="text-body2 text-secondary">每天执行一次，删除超过保留期限的识别记录及其解析明细；正在运行的识别请求会跳过。</div>
             <q-input v-model.number="scheduleForm.retentionDays" outlined type="number" min="1" max="36500" label="最长数据保存时间（天）" hint="范围 1 至 36500 天；关闭任务不会自动删除记录" />

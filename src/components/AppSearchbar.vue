@@ -11,7 +11,7 @@ const showAdvanced = ref(false)
 const filterRules = ref<Array<{ id: number; name: string }>>([])
 
 const advancedForm = reactive({
-  type: '', name: '', year: '', season: '', restype: '', pix: '', sp_state: '* *', rule: ''
+  type: '', name: '', year: '', season: '', restype: '', pix: '', rule: ''
 })
 
 const restypeOptions = [
@@ -22,11 +22,6 @@ const restypeOptions = [
 const pixOptions = [
   { label: '全部', value: '' }, { label: '8K', value: '8k' }, { label: '4K', value: '4k' },
   { label: '1080p', value: '1080p' }, { label: '720p', value: '720p' }
-]
-const spStates = [
-  { value: '* *', label: '全部' }, { value: '1.0 1.0', label: '普通' }, { value: '1.0 0.0', label: '免费' },
-  { value: '2.0 1.0', label: '2X' }, { value: '2.0 0.0', label: '2X免费' }, { value: '1.0 0.5', label: '50%' },
-  { value: '2.0 0.5', label: '2X 50%' }, { value: '1.0 0.7', label: '70%' }, { value: '1.0 0.3', label: '30%' }
 ]
 const seasonOptions = computed(() => [
   { label: '全部', value: '' },
@@ -46,7 +41,6 @@ async function openAdvanced() {
   advancedForm.season = ''
   advancedForm.restype = ''
   advancedForm.pix = ''
-  advancedForm.sp_state = '* *'
   advancedForm.rule = ''
   try {
     const res: any = await doAction('get_filterrules', {})
@@ -70,7 +64,6 @@ function doAdvancedSearch() {
   const filters: Record<string, string> = {}
   if (advancedForm.restype) filters.restype = advancedForm.restype
   if (advancedForm.pix) filters.pix = advancedForm.pix
-  if (advancedForm.sp_state !== '* *') filters.sp_state = advancedForm.sp_state
   if (advancedForm.rule) filters.rule = advancedForm.rule
   showAdvanced.value = false
   router.push({ path: '/search', query: { q, filters: JSON.stringify(filters), unident: 'true' } })
@@ -112,7 +105,6 @@ function doAdvancedSearch() {
             <div class="form-grid form-grid--three">
               <q-input v-model="advancedForm.year" outlined label="年份" placeholder="20xx" />
               <q-select v-model="advancedForm.season" outlined emit-value map-options label="季" :options="seasonOptions" />
-              <q-select v-model="advancedForm.sp_state" outlined emit-value map-options label="促销" :options="spStates" />
             </div>
             <div class="form-grid form-grid--three">
               <q-select v-model="advancedForm.restype" outlined emit-value map-options label="质量" :options="restypeOptions" />

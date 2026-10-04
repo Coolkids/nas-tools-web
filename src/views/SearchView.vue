@@ -268,14 +268,9 @@ function onRssSuccess() { modal.success('添加订阅成功'); rssDialogVisible.
 function onRssError(message: string) { modal.error(message || '添加订阅失败') }
 
 const showAdvanced = ref(false)
-const advancedForm = reactive({ type: '', name: '', year: '', season: '', restype: '', pix: '', sp_state: '* *', rule: '' as string | number })
+const advancedForm = reactive({ type: '', name: '', year: '', season: '', restype: '', pix: '', rule: '' as string | number })
 const restypeDict: Record<string, string> = { BLURAY: 'BluRay', REMUX: 'REMUX', DOLBY: 'Dolby', WEB: 'WEB-DL', HDTV: 'HDTV', UHD: 'UHD', HDR: 'HDR', '3D': '3D' }
 const pixDict: Record<string, string> = { '8k': '8K', '4k': '4K', '1080p': '1080p', '720p': '720p' }
-const spStates = [
-  { value: '* *', label: '全部' }, { value: '1.0 1.0', label: '普通' }, { value: '1.0 0.0', label: '免费' },
-  { value: '2.0 1.0', label: '2X' }, { value: '2.0 0.0', label: '2X免费' }, { value: '1.0 0.5', label: '50%' },
-  { value: '2.0 0.5', label: '2X 50%' }, { value: '1.0 0.7', label: '70%' }, { value: '1.0 0.3', label: '30%' }
-]
 const seasonOptions = computed(() => [{ value: '', label: '全部' }, ...Array.from({ length: 20 }, (_, index) => ({ value: `S${String(index + 1).padStart(2, '0')}`, label: `第${index + 1}季` }))])
 const filterRules = ref<Array<{ id: number; name: string }>>([])
 
@@ -295,7 +290,6 @@ function openAdvancedDialog() {
   advancedForm.season = ''
   advancedForm.restype = ''
   advancedForm.pix = ''
-  advancedForm.sp_state = '* *'
   advancedForm.rule = ''
   void loadFilterRules()
   showAdvanced.value = true
@@ -314,7 +308,6 @@ function doAdvancedSearch() {
   const filters: Record<string, unknown> = {}
   if (advancedForm.restype) filters.restype = advancedForm.restype
   if (advancedForm.pix) filters.pix = advancedForm.pix
-  if (advancedForm.sp_state !== '* *') filters.sp_state = advancedForm.sp_state
   if (advancedForm.rule) filters.rule = advancedForm.rule
   showAdvanced.value = false
   keyword.value = query
@@ -555,7 +548,6 @@ onBeforeUnmount(() => {
             <q-select v-model="advancedForm.season" outlined label="季" :options="seasonOptions" emit-value map-options />
             <q-select v-model="advancedForm.restype" outlined label="质量" :options="[{ label: '全部', value: '' }, ...Object.entries(restypeDict).map(([value, label]) => ({ label, value }))]" emit-value map-options />
             <q-select v-model="advancedForm.pix" outlined label="分辨率" :options="[{ label: '全部', value: '' }, ...Object.entries(pixDict).map(([value, label]) => ({ label, value }))]" emit-value map-options />
-            <q-select v-model="advancedForm.sp_state" outlined label="促销" :options="spStates" emit-value map-options />
             <q-select v-model="advancedForm.rule" outlined label="规则" :options="[{ id: '', name: '全部' }, ...filterRules]" option-label="name" option-value="id" emit-value map-options />
           </q-card-section>
           <q-card-actions align="right"><q-btn flat label="取消" v-close-popup /><q-btn color="primary" unelevated type="submit" label="开始搜索" :loading="searching" /></q-card-actions>
