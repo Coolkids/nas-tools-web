@@ -6,7 +6,7 @@ import { useConfigForm } from '@/composables/useConfigForm'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api'
 import { getSystemConfig } from '@/api/config'
-import { getRecognitionProviders } from '@/api/recognition'
+import { clearRecognitionParseCache, getRecognitionParseCacheInfo, getRecognitionProviders } from '@/api/recognition'
 
 type Option = { value: string; label: string }
 type SettingField = {
@@ -56,6 +56,8 @@ const RMT_MODES: Option[] = [
 const activeTab = ref('system')
 const form = reactive<Record<string, unknown>>({})
 const recognitionProviders = ref<RecognitionProvider[]>([])
+const parseCacheInfo = ref<{ entries: number; bytes: number; generation: number; max_entries?: number; max_bytes?: number } | null>(null)
+const clearingParseCache = ref(false)
 const extensionProviders = computed(() => recognitionProviders.value.filter(
   (provider) => !['local_rules', 'anitopy_ml'].includes(provider.provider_id)
 ))
@@ -97,7 +99,14 @@ const LAB_KEYS = [
   'recognition.decision.weights.input_evidence', 'recognition.decision.weights.provider_reliability',
   'recognition.decision.agreement_bonus',
   'recognition.providers.local_rules.reliability',
-  'recognition.providers.anitopy_ml.reliability'
+  'recognition.providers.anitopy_ml.reliability',
+  'recognition.cache.enabled', 'recognition.cache.parse.enabled',
+  'recognition.cache.parse.singleflight', 'recognition.cache.parse.ttl_seconds',
+  'recognition.cache.parse.max_entries', 'recognition.cache.parse.max_bytes',
+  'recognition.cache.parse.max_entry_bytes',
+  'recognition.profiles.parse_only.network_allowed',
+  'recognition.profiles.resolve.network_allowed', 'recognition.profiles.resolve.tmdb_allowed',
+  'recognition.profiles.parse_only.providers', 'recognition.profiles.resolve.providers'
 ]
 
 const SCRAPER_NFO = [
@@ -206,6 +215,16 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'recognition.providers.local_rules.reliability', label: '本地规则可信度', type: 'number', help: '范围 0 到 1；只参与同一 TMDB 条目的解析结果排序。' },
   { key: 'recognition.providers.anitopy_ml.reliability', label: 'AI解析可信度', type: 'number', help: '范围 0 到 1；只参与同一 TMDB 条目的解析结果排序。' },
   { key: 'recognition.decision.agreement_bonus', label: '多解析器一致性加分', type: 'number', help: '范围 0 到 1，用于记录同一 TMDB 条目被多个解析器命中的信心分；不会消除不同条目的歧义。' },
+  { key: 'recognition.cache.enabled', label: '启用识别缓存', kind: 'toggle', help: '关闭后不读取或写入解析缓存。' },
+  { key: 'recognition.cache.parse.enabled', label: '启用 AI 解析缓存', kind: 'toggle' },
+  { key: 'recognition.cache.parse.singleflight', label: '合并相同在途请求', kind: 'toggle', help: '并发解析相同标题时共用一次 AI 请求。' },
+  { key: 'recognition.cache.parse.ttl_seconds', label: 'AI解析缓存有效期(秒)', type: 'number' },
+  { key: 'recognition.cache.parse.max_entries', label: 'AI解析缓存最大条数', type: 'number' },
+  { key: 'recognition.cache.parse.max_bytes', label: 'AI解析缓存总容量(字节)', type: 'number' },
+  { key: 'recognition.cache.parse.max_entry_bytes', label: 'AI解析缓存单条上限(字节)', type: 'number' },
+  { key: 'recognition.profiles.parse_only.network_allowed', label: 'parse_only 允许联网解析', kind: 'toggle', help: '关闭后跳过需要网络的解析器；parse_only 始终不查询 TMDB。' },
+  { key: 'recognition.profiles.resolve.network_allowed', label: 'resolve 允许联网解析', kind: 'toggle' },
+  { key: 'recognition.profiles.resolve.tmdb_allowed', label: 'resolve 允许查询 TMDB', kind: 'toggle' },
   { key: 'laboratory.search_tmdbweb', label: '增强识别', kind: 'toggle' },
   { key: 'laboratory.tmdb_cache_expire', label: 'TMDB缓存过期策略', kind: 'toggle' },
   { key: 'laboratory.use_douban_titles', label: '使用豆瓣名称联想', kind: 'toggle' },
@@ -312,11 +331,20 @@ function syncForm() {
   const labToggleKeys = new Set([
     'laboratory.ai_inference', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
     'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy',
-    'recognition.decision.shadow.enabled', 'recognition.decision.title_evidence.allow_fuzzy_fallback'
+    'recognition.decision.shadow.enabled', 'recognition.decision.title_evidence.allow_fuzzy_fallback',
+    'recognition.cache.enabled', 'recognition.cache.parse.enabled',
+    'recognition.cache.parse.singleflight', 'recognition.profiles.parse_only.network_allowed',
+    'recognition.profiles.resolve.network_allowed', 'recognition.profiles.resolve.tmdb_allowed'
   ])
-  const labNumberKeys = new Set(LAB_KEYS.filter((key) => key.startsWith('recognition.') && !labToggleKeys.has(key) && key !== 'recognition.decision.strategy'))
+const labNumberKeys = new Set(LAB_KEYS.filter((key) => key.startsWith('recognition.') && !labToggleKeys.has(key) && key !== 'recognition.decision.strategy'))
+const profileProviderKeys = new Set([
+  'recognition.profiles.parse_only.providers', 'recognition.profiles.resolve.providers'
+])
   LAB_KEYS.forEach((key) => {
-    if (key === 'laboratory.ai_inference_url' || key === 'recognition.decision.strategy') form[key] = str(key)
+    if (profileProviderKeys.has(key)) {
+      const configured = getCfg(key)
+      form[key] = Array.isArray(configured) ? [...configured] : ['all_enabled']
+    } else if (key === 'laboratory.ai_inference_url' || key === 'recognition.decision.strategy') form[key] = str(key)
     else if (labToggleKeys.has(key)) form[key] = sw(key)
     else if (labNumberKeys.has(key)) form[key] = Number(getCfg(key) ?? 0)
     else form[key] = sw(key)
@@ -352,6 +380,28 @@ function setBoolean(key: string, value: boolean | null) {
   form[key] = Boolean(value)
 }
 
+function profileProviderSelection(stage: 'parse_only' | 'resolve'): string[] {
+  const selected = form[`recognition.profiles.${stage}.providers`]
+  return selected === 'all_enabled' || !Array.isArray(selected)
+    ? ['all_enabled'] : selected as string[]
+}
+
+function setProfileProviders(stage: 'parse_only' | 'resolve', selected: string[]) {
+  if (selected.includes('all_enabled')) {
+    form[`recognition.profiles.${stage}.providers`] = 'all_enabled'
+    return
+  }
+  form[`recognition.profiles.${stage}.providers`] = [...new Set(['local_rules', ...selected])]
+}
+
+const profileProviderOptions = computed(() => [
+  { value: 'all_enabled', label: '所有已启用识别器' },
+  ...recognitionProviders.value.map((provider) => ({
+    value: provider.provider_id,
+    label: `${provider.display_name} (${provider.provider_id})`
+  }))
+])
+
 async function loadData() {
   await load()
   try {
@@ -361,6 +411,32 @@ async function loadData() {
     recognitionProviders.value = []
   }
   syncForm()
+  await loadParseCacheInfo()
+}
+
+async function loadParseCacheInfo() {
+  try {
+    const response = await getRecognitionParseCacheInfo()
+    if (response.code === 0 && response.cache) parseCacheInfo.value = response.cache
+  } catch {
+    parseCacheInfo.value = null
+  }
+}
+
+async function clearParseCache() {
+  if (!await modal.confirm('清理后会重新请求 AI 解析；TMDB 缓存和识别记录不会受影响。', '清理 AI 解析缓存')) return
+  clearingParseCache.value = true
+  try {
+    const response = await clearRecognitionParseCache()
+    if (response.code === 0) {
+      modal.success(`已清理 ${response.cleared_entries || 0} 条 AI 解析缓存`)
+      await loadParseCacheInfo()
+    } else modal.error(response.msg || '清理 AI 解析缓存失败')
+  } catch {
+    modal.error('清理 AI 解析缓存失败')
+  } finally {
+    clearingParseCache.value = false
+  }
 }
 
 async function saveSection(keys: string[]) {
@@ -514,6 +590,18 @@ onMounted(loadData)
               </q-input>
             </div>
           </div>
+          <section v-if="tab === 'laboratory'" class="extension-provider-settings">
+            <div class="text-subtitle1 q-mb-sm">识别 profile 的解析器范围</div>
+            <div class="setting-grid">
+              <div class="setting-field">
+                <q-select :model-value="profileProviderSelection('parse_only')" multiple use-chips outlined dense emit-value map-options label="parse_only 使用的识别器" :options="profileProviderOptions" @update:model-value="setProfileProviders('parse_only', $event || [])" />
+              </div>
+              <div class="setting-field">
+                <q-select :model-value="profileProviderSelection('resolve')" multiple use-chips outlined dense emit-value map-options label="resolve 使用的识别器" :options="profileProviderOptions" @update:model-value="setProfileProviders('resolve', $event || [])" />
+              </div>
+            </div>
+            <div class="text-caption text-secondary">手动选择时会自动保留本地规则解析器；parse_only 始终不查询 TMDB。</div>
+          </section>
           <section v-if="tab === 'laboratory' && extensionProviders.length" class="extension-provider-settings">
             <div class="text-subtitle1 q-mb-sm">第三方识别方式</div>
             <div v-for="provider in extensionProviders" :key="provider.provider_id" class="extension-provider-card">
@@ -538,6 +626,10 @@ onMounted(loadData)
           <div class="card-footer">
             <template v-if="tab === 'system'"><q-btn outline color="primary" label="自定义 CSS/JavaScript" @click="openScript" /></template>
             <template v-if="tab === 'media'"><q-btn outline color="primary" label="刮削设置" @click="openScraper" /><q-btn outline color="primary" label="自定义制作组/字幕组" @click="openReleaseGroups" /></template>
+            <template v-if="tab === 'laboratory'">
+              <div v-if="parseCacheInfo" class="text-caption text-secondary cache-summary">解析缓存 {{ parseCacheInfo.entries }} / {{ parseCacheInfo.max_entries || '—' }} 条，{{ (parseCacheInfo.bytes / 1048576).toFixed(2) }} / {{ parseCacheInfo.max_bytes ? (parseCacheInfo.max_bytes / 1048576).toFixed(0) : '—' }} MiB</div>
+              <q-btn outline color="negative" label="清理 AI 解析缓存" :loading="clearingParseCache" @click="clearParseCache" />
+            </template>
             <q-btn color="primary" unelevated label="保存" :loading="loading" @click="tab === 'laboratory' ? saveLaboratory() : saveSection(tab === 'system' ? SYSTEM_KEYS : tab === 'media' ? MEDIA_KEYS : tab === 'service' ? SERVICE_KEYS : SECURITY_KEYS)" />
           </div>
         </q-tab-panel>

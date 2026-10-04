@@ -71,6 +71,23 @@ export function getRecognitionRecordDetail(requestId: string): Promise<Recogniti
   return doAction<RecognitionDetailResult>('get_recognition_record_detail', { request_id: requestId })
 }
 
+export function getRecognitionParseCacheInfo(): Promise<{
+  code: number
+  cache?: { entries: number; bytes: number; generation: number; max_entries: number; max_bytes: number }
+  msg?: string
+}> {
+  return doAction('get_recognition_parse_cache_info', {})
+}
+
+export function clearRecognitionParseCache(): Promise<{
+  code: number
+  cleared_entries?: number
+  cache?: { entries: number; bytes: number; generation: number }
+  msg?: string
+}> {
+  return doAction('clear_recognition_parse_cache', {})
+}
+
 export async function downloadRecognitionJsonl(filters: Record<string, string>): Promise<Blob> {
   const response = await instance.get('/recognition_export.jsonl', {
     params: filters,

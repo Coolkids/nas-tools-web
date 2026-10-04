@@ -5,7 +5,7 @@ import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import NameTestResult from '@/components/NameTestResult.vue'
 import { useModalStore } from '@/stores/modal'
-import { getConfig, type AppConfig } from '@/api/config'
+import { getConfig, updateConfig, type AppConfig } from '@/api/config'
 import {
   runScheduler,
   truncateBlacklist,
@@ -23,6 +23,7 @@ interface ServiceItem {
   type: 'scheduler' | 'manual'
   interval: string
   state: boolean
+  editable?: 'rss' | 'search' | 'recognition-cleanup'
 }
 
 interface NetTestRow {
@@ -38,6 +39,16 @@ const loading = ref(false)
 const loadError = ref('')
 const services = ref<ServiceItem[]>([])
 const actionBusy = ref('')
+const configSnapshot = ref<AppConfig>({})
+const scheduleDialog = ref(false)
+const scheduleSaving = ref(false)
+const scheduleForm = ref({
+  id: '' as ServiceItem['editable'],
+  name: '',
+  enabled: true,
+  interval: 30,
+  retentionDays: 30
+})
 
 const runningCount = computed(() => services.value.filter((service) => service.state).length)
 const schedulerCount = computed(() => services.value.filter((service) => service.type === 'scheduler').length)
@@ -51,19 +62,28 @@ const columns: QTableColumn<ServiceItem>[] = [
 ]
 
 function asDigit(value: unknown): number | null {
-  const stringValue = String(value ?? '')
-  return /^\d+$/.test(stringValue) ? Number(stringValue) : null
+  const stringValue = String(value ?? '').trim()
+  if (!/^\d+$/.test(stringValue)) return null
+  return Number(stringValue)
 }
 
 function buildServices(config: AppConfig): ServiceItem[] {
   const pt = (config.pt || {}) as Record<string, unknown>
   const douban = (config.douban || {}) as Record<string, unknown>
+  const recognition = (config.recognition || {}) as Record<string, unknown>
+  const records = (recognition.records || {}) as Record<string, unknown>
+  const cleanup = (records.cleanup || {}) as Record<string, unknown>
   const list: ServiceItem[] = []
   const rss = asDigit(pt.pt_check_interval)
-  list.push({ id: 'rssdownload', name: 'RSS订阅', type: 'scheduler', interval: rss !== null ? `${Math.round(rss / 60)} 分钟` : '未启用', state: rss !== null })
+  const rssEnabled = rss !== null && rss > 0
+  list.push({ id: 'rssdownload', name: 'RSS订阅', type: 'scheduler', editable: 'rss', interval: rssEnabled ? `每 ${Math.max(5, Math.round(rss / 60))} 分钟` : '未启用', state: rssEnabled })
   let search = asDigit(pt.search_rss_interval)
-  if (search !== null && search < 6) search = 6
-  list.push({ id: 'subscribe_search_all', name: '订阅搜索', type: 'scheduler', interval: search !== null ? `${search} 小时` : '未启用', state: search !== null })
+  const searchEnabled = search !== null && search > 0
+  if (searchEnabled && search !== null && search < 6) search = 6
+  list.push({ id: 'subscribe_search_all', name: '订阅搜索', type: 'scheduler', editable: 'search', interval: searchEnabled ? `每 ${search} 小时` : '未启用', state: searchEnabled })
+  const cleanupEnabled = Boolean(cleanup.enabled)
+  const retentionDays = asDigit(cleanup.retention_days) || 30
+  list.push({ id: 'recognition_record_cleanup', name: '清理过期媒体识别记录', type: 'scheduler', editable: 'recognition-cleanup', interval: `每天清理，保留 ${retentionDays} 天`, state: cleanupEnabled })
   const monitor = !!pt.pt_monitor
   list.push({ id: 'pttransfer', name: '下载文件转移', type: 'scheduler', interval: monitor ? '5 分钟' : '未启用', state: monitor })
   list.push({ id: 'autoremovetorrents', name: '自动删种', type: 'scheduler', interval: '需配置删种任务', state: false })
@@ -84,7 +104,10 @@ async function load() {
   loadError.value = ''
   try {
     const response = await getConfig()
-    if (response.code === 0) services.value = buildServices(response.config || {})
+    if (response.code === 0) {
+      configSnapshot.value = response.config || {}
+      services.value = buildServices(configSnapshot.value)
+    }
     else loadError.value = '加载服务配置失败'
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '加载服务配置失败'
@@ -115,7 +138,14 @@ async function runService(service: ServiceItem) {
     }
     return
   }
-  if (!await modal.confirm(`是否立即运行 ${service.name}？`)) return
+  const recognition = (configSnapshot.value.recognition || {}) as Record<string, unknown>
+  const records = (recognition.records || {}) as Record<string, unknown>
+  const cleanup = (records.cleanup || {}) as Record<string, unknown>
+  const retentionDays = asDigit(cleanup.retention_days) || 30
+  const runMessage = service.id === 'recognition_record_cleanup'
+    ? `将立即删除超过 ${retentionDays} 天的媒体识别记录及其解析明细，仍在运行的请求会跳过。是否继续？`
+    : `是否立即运行 ${service.name}？`
+  if (!await modal.confirm(runMessage)) return
   actionBusy.value = service.id
   try {
     const response = await runScheduler(service.id)
@@ -125,6 +155,74 @@ async function runService(service: ServiceItem) {
     modal.error(error instanceof Error ? error.message : '服务启动失败')
   } finally {
     actionBusy.value = ''
+  }
+}
+
+function openScheduleEditor(service: ServiceItem) {
+  if (!service.editable) return
+  const config = configSnapshot.value
+  const pt = (config.pt || {}) as Record<string, unknown>
+  const recognition = (config.recognition || {}) as Record<string, unknown>
+  const records = (recognition.records || {}) as Record<string, unknown>
+  const cleanup = (records.cleanup || {}) as Record<string, unknown>
+  if (service.editable === 'rss') {
+    const seconds = asDigit(pt.pt_check_interval) || 1800
+    scheduleForm.value = { id: service.editable, name: service.name,
+      enabled: (asDigit(pt.pt_check_interval) || 0) > 0,
+      interval: Math.max(5, Math.round(seconds / 60)), retentionDays: 30 }
+  } else if (service.editable === 'search') {
+    const hours = asDigit(pt.search_rss_interval) || 6
+    scheduleForm.value = { id: service.editable, name: service.name,
+      enabled: (asDigit(pt.search_rss_interval) || 0) > 0,
+      interval: Math.max(6, hours), retentionDays: 30 }
+  } else {
+    scheduleForm.value = { id: service.editable, name: service.name,
+      enabled: Boolean(cleanup.enabled), interval: 24,
+      retentionDays: asDigit(cleanup.retention_days) || 30 }
+  }
+  scheduleDialog.value = true
+}
+
+async function saveSchedule() {
+  if (scheduleSaving.value) return
+  const form = scheduleForm.value
+  const items: Record<string, unknown> = {}
+  if (form.id === 'rss') {
+    const minutes = Number(form.interval)
+    if (form.enabled && (!Number.isInteger(minutes) || minutes < 5 || minutes > 525600)) {
+      modal.warning('RSS 订阅周期须为 5 分钟至 365 天')
+      return
+    }
+    items['pt.pt_check_interval'] = form.enabled ? minutes * 60 : 0
+  } else if (form.id === 'search') {
+    const hours = Number(form.interval)
+    if (form.enabled && (!Number.isInteger(hours) || hours < 6 || hours > 8760)) {
+      modal.warning('订阅搜索周期须为 6 小时至 365 天')
+      return
+    }
+    items['pt.search_rss_interval'] = form.enabled ? hours : 0
+  } else if (form.id === 'recognition-cleanup') {
+    const days = Number(form.retentionDays)
+    if (!Number.isInteger(days) || days < 1 || days > 36500) {
+      modal.warning('保留时间须为 1 至 36500 天')
+      return
+    }
+    items['recognition.records.cleanup.enabled'] = form.enabled
+    items['recognition.records.cleanup.retention_days'] = days
+  } else return
+
+  scheduleSaving.value = true
+  try {
+    const response = await updateConfig(items)
+    if (response.code === 0) {
+      modal.success('服务周期已保存，定时任务已重载')
+      scheduleDialog.value = false
+      await load()
+    } else modal.error(response.msg || '保存服务周期失败')
+  } catch (error) {
+    modal.error(error instanceof Error ? error.message : '保存服务周期失败')
+  } finally {
+    scheduleSaving.value = false
   }
 }
 
@@ -209,15 +307,33 @@ onMounted(() => {
       <q-table v-if="!$q.screen.lt.sm" flat :rows="services" :columns="columns" row-key="id" :loading="loading" hide-pagination :rows-per-page-options="[0]" no-data-label="没有开启任何后台服务">
         <template #body-cell-type="slotProps"><q-td :props="slotProps"><q-badge outline :color="slotProps.row.type === 'scheduler' ? 'primary' : 'grey-7'" :label="slotProps.row.type === 'scheduler' ? '定时任务' : '手动操作'" /></q-td></template>
         <template #body-cell-state="slotProps"><q-td :props="slotProps"><q-badge :color="slotProps.row.state ? 'positive' : 'grey-6'" :label="slotProps.row.state ? 'ON' : 'OFF'" /></q-td></template>
-        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn flat dense :color="slotProps.row.type === 'manual' ? 'negative' : 'primary'" :icon="slotProps.row.type === 'manual' ? 'delete' : 'play_arrow'" :label="slotProps.row.type === 'manual' ? '清理' : '运行'" :loading="actionBusy === slotProps.row.id" @click="runService(slotProps.row)" /></q-td></template>
+        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn v-if="slotProps.row.editable" flat dense color="primary" icon="edit" label="周期设置" @click="openScheduleEditor(slotProps.row)" /><q-btn flat dense :color="slotProps.row.type === 'manual' ? 'negative' : 'primary'" :icon="slotProps.row.type === 'manual' ? 'delete' : 'play_arrow'" :label="slotProps.row.type === 'manual' ? '清理' : '运行'" :loading="actionBusy === slotProps.row.id" @click="runService(slotProps.row)" /></q-td></template>
       </q-table>
       <div v-else class="mobile-service-list">
         <q-card v-for="service in services" :key="service.id" flat bordered class="service-item">
           <q-card-section class="row items-center q-gutter-sm"><q-icon :name="service.type === 'manual' ? 'cleaning_services' : 'schedule'" :color="service.state ? 'positive' : 'grey-6'" size="26px" /><div class="col"><div class="text-subtitle1 text-weight-medium">{{ service.name }}</div><div class="row items-center q-gutter-xs q-mt-xs"><q-badge outline :color="service.type === 'scheduler' ? 'primary' : 'grey-7'" :label="service.type === 'scheduler' ? '定时任务' : '手动操作'" /><span class="text-caption text-secondary">{{ service.interval }}</span></div></div><q-badge :color="service.state ? 'positive' : 'grey-6'" :label="service.state ? 'ON' : 'OFF'" /></q-card-section>
-          <q-separator /><q-card-actions align="right"><q-btn flat :color="service.type === 'manual' ? 'negative' : 'primary'" :icon="service.type === 'manual' ? 'delete' : 'play_arrow'" :label="service.type === 'manual' ? '清理' : '立即运行'" :loading="actionBusy === service.id" @click="runService(service)" /></q-card-actions>
+          <q-separator /><q-card-actions align="right"><q-btn v-if="service.editable" flat color="primary" icon="edit" label="周期设置" @click="openScheduleEditor(service)" /><q-btn flat :color="service.type === 'manual' ? 'negative' : 'primary'" :icon="service.type === 'manual' ? 'delete' : 'play_arrow'" :label="service.type === 'manual' ? '清理' : '立即运行'" :loading="actionBusy === service.id" @click="runService(service)" /></q-card-actions>
         </q-card>
       </div>
     </q-card>
+
+    <q-dialog v-model="scheduleDialog" :maximized="$q.screen.lt.sm" persistent>
+      <q-card class="tool-dialog schedule-dialog">
+        <q-card-section class="row items-center"><div class="text-h6">{{ scheduleForm.name }}周期设置</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="scheduleDialog = false" /></q-card-section>
+        <q-separator />
+        <q-card-section class="q-gutter-md">
+          <q-toggle v-model="scheduleForm.enabled" color="primary" label="启用定时任务" />
+          <q-input v-if="scheduleForm.id === 'rss'" v-model.number="scheduleForm.interval" outlined type="number" min="5" max="525600" label="运行间隔（分钟）" :disable="!scheduleForm.enabled" hint="最短 5 分钟，最长 365 天" />
+          <q-input v-else-if="scheduleForm.id === 'search'" v-model.number="scheduleForm.interval" outlined type="number" min="6" max="8760" label="运行间隔（小时）" :disable="!scheduleForm.enabled" hint="最短 6 小时，最长 365 天" />
+          <template v-else-if="scheduleForm.id === 'recognition-cleanup'">
+            <div class="text-body2 text-secondary">每天执行一次，删除超过保留期限的识别记录及其解析明细；正在运行的识别请求会跳过。</div>
+            <q-input v-model.number="scheduleForm.retentionDays" outlined type="number" min="1" max="36500" label="最长数据保存时间（天）" hint="范围 1 至 36500 天；关闭任务不会自动删除记录" />
+          </template>
+        </q-card-section>
+        <q-separator />
+        <q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="scheduleSaving" @click="scheduleDialog = false" /><q-btn color="primary" unelevated label="保存并重载定时任务" :loading="scheduleSaving" @click="saveSchedule" /></q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <q-card flat bordered class="content-card">
       <q-card-section class="row items-center"><div><div class="text-subtitle1 text-weight-medium">测试工具</div><div class="text-caption text-secondary q-mt-xs">诊断名称识别与外部服务网络连通性</div></div></q-card-section>
