@@ -401,7 +401,11 @@ const profileProviderKeys = new Set([
   LAB_KEYS.forEach((key) => {
     if (profileProviderKeys.has(key)) {
       const configured = getCfg(key)
-      form[key] = Array.isArray(configured) ? [...configured] : ['all_enabled']
+      form[key] = Array.isArray(configured)
+        ? (configured.length === 1 && configured[0] === 'all_enabled'
+          ? 'all_enabled'
+          : [...configured])
+        : 'all_enabled'
     } else if (BYTE_CAPACITY_KEYS.has(key)) form[key] = Number(getCfg(key) ?? 0) / MIB_BYTES
     else if (key === 'laboratory.ai_inference_url' || key === 'recognition.decision.strategy') form[key] = str(key)
     else if (labToggleKeys.has(key)) form[key] = sw(key)
