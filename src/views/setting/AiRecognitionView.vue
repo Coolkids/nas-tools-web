@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref, shallowRef } from 'vue'
-import type { QTableColumn } from 'quasar'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { useQuasar, type QTableColumn } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import RecognitionJsonViewer from '@/components/RecognitionJsonViewer.vue'
 import ScrollToTop from '@/components/ScrollToTop.vue'
@@ -15,6 +15,7 @@ import {
 } from '@/api/recognition'
 
 const modal = useModalStore()
+const quasar = useQuasar()
 const loading = ref(false)
 const exportingFormat = ref('')
 const exportMessage = ref('')
@@ -31,6 +32,13 @@ const providers = ref<Array<Record<string, unknown>>>([])
 const records = shallowRef<RecognitionRecord[]>([])
 const details = ref<Record<string, RecognitionRecord & { context?: unknown; attempts?: unknown[] }>>({})
 const detailLoading = ref<Record<string, boolean>>({})
+const detailErrors = ref<Record<string, string>>({})
+type DetailTab = 'overview' | 'actions' | 'providers' | 'tmdb'
+const detailOpen = ref(false)
+const detailTab = ref<DetailTab>('overview')
+const activeRecord = shallowRef<RecognitionRecord | null>(null)
+const activeRequestId = computed(() => activeRecord.value?.request_id || '')
+const activeDetail = computed(() => details.value[activeRequestId.value])
 const page = ref(1)
 const pageSize = 20
 const total = ref(0)
@@ -109,17 +117,80 @@ const providerReasonLabels: Record<string, string> = {
 }
 
 const columns: QTableColumn<RecognitionRecord>[] = [
-  { name: 'original_name', label: '原始名称', field: 'original_name', align: 'left' },
-  { name: 'actions', label: '识别动作', field: 'actions', align: 'left' },
-  { name: 'providers', label: '识别方式结果', field: 'provider_results', align: 'left', style: 'width: 190px; max-width: 190px; white-space: normal', headerStyle: 'width: 190px' },
-  { name: 'overall', label: '整体结果', field: 'overall_result', align: 'left', style: 'width: 160px; max-width: 160px; white-space: normal', headerStyle: 'width: 160px' },
-  { name: 'tmdb', label: 'TMDB', field: 'tmdb_results', align: 'left' },
-  { name: 'created_at', label: '记录时间', field: 'created_at', align: 'left', style: 'width: 170px; white-space: nowrap', headerStyle: 'width: 170px' },
-  { name: 'detail', label: '详情', field: 'request_id', align: 'right' }
+  { name: 'original_name', label: '原始名称', field: 'original_name', align: 'left', headerStyle: 'width: 24%' },
+  { name: 'actions', label: '识别动作', field: 'actions', align: 'left', headerStyle: 'width: 14%' },
+  { name: 'providers', label: '识别方式结果', field: 'provider_results', align: 'left', headerStyle: 'width: 17%' },
+  { name: 'overall', label: '整体结果', field: 'overall_result', align: 'left', headerStyle: 'width: 11%' },
+  { name: 'tmdb', label: 'TMDB', field: 'tmdb_results', align: 'left', headerStyle: 'width: 18%' },
+  { name: 'created_at', label: '记录时间', field: 'created_at', align: 'left', headerStyle: 'width: 10%' },
+  { name: 'detail', label: '详情', field: 'request_id', align: 'center', headerStyle: 'width: 6%' }
 ]
 
-function actionSummary(record: RecognitionRecord): string {
-  return record.actions.map((action) => actionLabels[String(action.action_type)] || String(action.action_type || '未知动作')).join(' → ')
+interface TmdbSummaryGroup {
+  key: string
+  providerId: string
+  label: string
+  count: number
+}
+
+// Summarize once per list update; rendering cost and row height stay bounded.
+const summaryRows = computed(() => records.value.map((record) => {
+  const actions = new Map<string, { type: string; label: string; count: number }>()
+  for (const action of record.actions) {
+    const type = String(action.action_type || 'unknown')
+    const group = actions.get(type)
+    if (group) group.count += 1
+    else actions.set(type, { type, label: actionLabels[type] || type, count: 1 })
+  }
+  const tmdb = new Map<string, TmdbSummaryGroup>()
+  const finalTmdb = new Map<string, TmdbSummaryGroup>()
+  for (const item of record.tmdb_results) {
+    const result = asObject(item.result)
+    const label = tmdbSummary(item)
+    const providerId = String(item.provider_id || 'unknown')
+    const key = JSON.stringify([providerId, item.status, result.media_type, result.id, label])
+    const group = tmdb.get(key)
+    if (group) group.count += 1
+    else tmdb.set(key, { key, providerId, label, count: 1 })
+
+    // Calls are ordered. Ignore successful boolean/list responses, which do not
+    // identify a media item; a later failed query supersedes earlier candidates.
+    if (item.status === 'success' && result.id) {
+      finalTmdb.set(providerId, { key, providerId, label, count: 1 })
+    } else if (item.status && item.status !== 'success') {
+      finalTmdb.set(providerId, tmdb.get(key)!)
+    }
+  }
+  const selectedProvider = String(record.overall_result.selected_provider || '')
+  const selectedResult = asObject(record.overall_result.tmdb_result)
+  if (record.overall_result.status === 'success' && selectedProvider && selectedResult.id) {
+    finalTmdb.set(selectedProvider, {
+      key: `final:${selectedProvider}`, providerId: selectedProvider,
+      label: tmdbSummary({ result: selectedResult }), count: 1
+    })
+  }
+  const tmdbGroups = [...tmdb.values()].sort((a, b) => b.count - a.count)
+  const tmdbFinalResults = record.overall_result.status === 'success'
+    ? [...new Set(['local_rules', 'anitopy_ml', ...finalTmdb.keys()])]
+        .flatMap((providerId) => finalTmdb.has(providerId) ? [finalTmdb.get(providerId)!] : [])
+        .slice(0, 2)
+    : []
+  return {
+    ...record,
+    actionGroups: [...actions.values()].sort((a, b) => b.count - a.count),
+    tmdbGroups,
+    tmdbFinalResults,
+    tmdbPreview: tmdbFinalResults.length ? tmdbFinalResults : tmdbGroups.slice(0, 2)
+  }
+}))
+
+function statusLabel(statusValue: unknown): string {
+  const labels: Record<string, string> = {
+    success: '成功', failed: '失败', unknown: '历史状态未知',
+    running: '处理中断待恢复', interrupted: '进程中断', skipped: '已跳过'
+  }
+  const status = String(statusValue || 'unknown')
+  return labels[status] || `未知状态 (${status})`
 }
 
 function overallLabel(record: RecognitionRecord): string {
@@ -132,11 +203,7 @@ function overallLabel(record: RecognitionRecord): string {
   const business = businessReason
     ? ` · ${recognitionReasonLabels[businessReason] || providerReasonLabels[businessReason] || businessReason}`
     : ''
-  const labels: Record<string, string> = {
-    success: '成功', failed: '失败', unknown: '历史状态未知',
-    running: '处理中断待恢复', interrupted: '进程中断', skipped: '已跳过'
-  }
-  return `${labels[statusValue] || `未知状态 (${statusValue})`}${reason}${business}`
+  return `${statusLabel(statusValue)}${reason}${business}`
 }
 
 function statusColor(statusValue: unknown): string {
@@ -213,24 +280,34 @@ function actionList(requestId: string): Array<Record<string, unknown>> {
 function selectedAction(requestId: string): Record<string, unknown> | undefined {
   const actions = actionList(requestId)
   const selectedId = selectedActionIds.value[requestId]
-  return actions.find((action) => action.action_id === selectedId) || actions[0]
+  return actions.find((action) => actionKey(action) === selectedId) || actions[0]
+}
+
+function actionKey(action: Record<string, unknown>): string {
+  return String(action.action_id || action.sequence || '')
 }
 
 function selectAction(requestId: string, action: Record<string, unknown>) {
-  selectedActionIds.value[requestId] = String(action.action_id || '')
+  selectedActionIds.value[requestId] = actionKey(action)
 }
 
 function selectAttemptAction(requestId: string, attemptId: string, providerId: string) {
   const action = actionList(requestId).find((item) => item.attempt_id === attemptId)
     || actionList(requestId).find((item) => item.action_type === 'provider_parse' && item.provider_id === providerId)
-  if (action) selectAction(requestId, action)
+  if (action) {
+    selectAction(requestId, action)
+    detailTab.value = 'actions'
+  }
 }
 
 function selectTmdbAction(requestId: string, resultIndex: number, providerId: string) {
   const matches = actionList(requestId).filter((action) => action.action_type === 'tmdb_query' && action.provider_id === providerId)
   const results = recordDetail(requestId)?.tmdb_results || []
   const providerIndex = results.slice(0, resultIndex).filter((item) => item.provider_id === providerId).length
-  if (matches[providerIndex]) selectAction(requestId, matches[providerIndex])
+  if (matches[providerIndex]) {
+    selectAction(requestId, matches[providerIndex])
+    detailTab.value = 'actions'
+  }
 }
 
 function titleEvidenceSegments(requestId: string): Array<{ text: string; matched: boolean }> {
@@ -341,7 +418,7 @@ async function load(append = false): Promise<boolean> {
         records.value = mergedRows
       } else {
         records.value = rows
-        details.value = {}
+        clearDetailCache()
       }
       total.value = response.total || 0
       hasMore.value = rows.length > 0 && requestPage < Math.ceil(total.value / pageSize)
@@ -367,11 +444,21 @@ function search() {
   loadGeneration += 1
   page.value = 1
   records.value = []
-  details.value = {}
+  clearDetailCache()
   total.value = 0
   hasMore.value = false
   void load()
 }
+
+function clearDetailCache() {
+  const currentDetail = activeDetail.value
+  details.value = detailOpen.value && currentDetail
+    ? { [currentDetail.request_id]: currentDetail }
+    : {}
+}
+
+// Both list modes start on page one; keep an open detail visible during rotation.
+watch(() => quasar.screen.lt.sm, search)
 
 function pageChange(nextPage: number) {
   page.value = nextPage
@@ -397,17 +484,25 @@ function retryLoad() {
 }
 
 async function loadDetail(requestId: string) {
-  if (details.value[requestId]) return
+  if (details.value[requestId] || detailLoading.value[requestId]) return
   detailLoading.value[requestId] = true
+  detailErrors.value[requestId] = ''
   try {
     const response = await getRecognitionRecordDetail(requestId)
     if (response.code === 0 && response.record) details.value[requestId] = response.record
-    else modal.error(response.msg || '读取识别详情失败')
+    else detailErrors.value[requestId] = response.msg || '读取识别详情失败'
   } catch (error) {
-    modal.error(error instanceof Error ? error.message : '读取识别详情失败')
+    detailErrors.value[requestId] = error instanceof Error ? error.message : '读取识别详情失败'
   } finally {
     detailLoading.value[requestId] = false
   }
+}
+
+function openDetail(record: RecognitionRecord, tab: DetailTab = 'overview') {
+  activeRecord.value = record
+  detailTab.value = tab
+  detailOpen.value = true
+  void loadDetail(record.request_id)
 }
 
 async function exportRecords(format: 'jsonl' | 'xlsx') {
@@ -497,80 +592,91 @@ onMounted(async () => {
         {{ loadError }}
         <template #action><q-btn flat color="primary" label="重试" :disable="loading" @click="retryLoad" /></template>
       </q-banner>
-      <q-infinite-scroll :disable="!$q.screen.lt.sm || !hasMore || loading" :offset="180" @load="loadNextPage">
-      <div class="recognition-table-scroll">
-      <q-table :rows="records" :columns="columns" row-key="request_id" flat :loading="loading" hide-pagination :rows-per-page-options="[0]" no-data-label="暂无媒体识别记录">
-        <template #body="props">
-          <q-tr :props="props">
-            <q-td v-for="col in props.cols" :key="col.name" :props="props" :data-label="col.label"><template v-if="col.name === 'original_name'"><div class="original-name">{{ props.row.original_name || '（空名称）' }}</div><div class="text-caption text-secondary">{{ props.row.source || '来源未知' }} · {{ props.row.stage || '阶段未知' }}</div></template><template v-else-if="col.name === 'actions'"><div class="action-summary">{{ actionSummary(props.row) || '无动作' }}</div><div class="text-caption">{{ props.row.actions.length }} 个动作</div></template><template v-else-if="col.name === 'providers'"><div v-for="item in props.row.provider_results" :key="item.attempt_id" class="provider-summary"><div class="provider-summary-heading"><span class="text-caption text-secondary">{{ providerLabel(item.provider_id) }}</span><q-badge :color="providerStatusColor(item.status)" :label="providerStatusLabels[item.status] || item.status" /></div><div class="provider-result-title">{{ providerResultSummary(item.normalized_result).title }}</div><div v-if="providerResultSummary(item.normalized_result).seasonEpisode" class="text-caption">{{ providerResultSummary(item.normalized_result).seasonEpisode }}</div><div v-if="item.error" class="text-caption provider-error">{{ providerReasonLabel(item.error) }}</div></div><div v-if="!props.row.provider_results.length" class="text-caption text-secondary">无解析器结果</div></template><template v-else-if="col.name === 'overall'"><div class="overall-summary"><q-badge :color="statusColor(props.row.overall_result.status)" :label="overallLabel(props.row)" /></div></template><template v-else-if="col.name === 'tmdb'"><div v-for="(item, index) in props.row.tmdb_results" :key="index" class="result-summary">{{ providerLabel(item.provider_id) }}：{{ tmdbSummary(item) }}</div><div v-if="!props.row.tmdb_results.length" class="text-caption text-secondary">无 TMDB 请求</div></template><template v-else-if="col.name === 'created_at'">{{ formatCreatedAt(props.row.created_at) }}</template><template v-else-if="col.name === 'detail'"><q-btn flat dense icon="visibility" label="查看" :loading="detailLoading[props.row.request_id]" @click="loadDetail(props.row.request_id)" /></template><template v-else>{{ col.value }}</template></q-td>
-          </q-tr>
-          <q-tr v-if="details[props.row.request_id]" :props="props" class="detail-row">
-            <q-td colspan="100%">
-              <div class="detail-grid">
-                <section class="wide-section"><div class="detail-title">原始名称与上下文</div><RecognitionJsonViewer :value="{ original_name: details[props.row.request_id].original_name, source: details[props.row.request_id].source, stage: details[props.row.request_id].stage, context: details[props.row.request_id].context }" /></section>
-                <section>
-                  <div class="detail-title">识别动作时间线</div>
-                  <div class="action-list">
-                    <q-btn v-for="action in actionList(props.row.request_id)" :key="String(action.action_id || action.sequence)" dense no-caps flat align="left" class="action-button" :color="selectedAction(props.row.request_id)?.action_id === action.action_id ? 'primary' : 'grey-8'" @click="selectAction(props.row.request_id, action)">
-                      <span class="action-sequence">{{ action.sequence }}</span>
-                      {{ actionLabels[String(action.action_type)] || String(action.action_type || '未知动作') }}
-                      <q-badge class="q-ml-sm" :label="String(action.status || 'unknown')" />
-                    </q-btn>
-                  </div>
-                </section>
-                <section>
-                  <div class="detail-title">所选动作输入 / 输出</div>
-                  <template v-if="selectedAction(props.row.request_id)">
-                    <RecognitionJsonViewer :value="{ input: selectedAction(props.row.request_id)?.input, output: selectedAction(props.row.request_id)?.output, reason: selectedAction(props.row.request_id)?.reason, time: selectedAction(props.row.request_id)?.time }" />
-                    <div v-if="titleEvidenceSegments(props.row.request_id).length" class="evidence-title q-mt-sm">
-                      名称证据：<template v-for="(segment, index) in titleEvidenceSegments(props.row.request_id)" :key="index"><mark v-if="segment.matched">{{ segment.text }}</mark><span v-else>{{ segment.text }}</span></template>
-                    </div>
-                  </template>
-                  <div v-else class="text-secondary">此记录没有动作</div>
-                </section>
-                <section>
-                  <div class="detail-title">解析器结果与动作定位</div>
-                  <q-banner v-if="anitopyDiagnostic(props.row.request_id)" rounded dense class="q-mb-sm bg-grey-2 text-dark">
-                    {{ anitopyDiagnostic(props.row.request_id) }}
-                  </q-banner>
-                  <div v-if="details[props.row.request_id].provider_results.length" class="provider-list">
-                    <div v-for="item in details[props.row.request_id].provider_results" :key="item.attempt_id" class="provider-card">
-                      <q-btn dense flat no-caps color="primary" :label="`${item.provider_id} · ${item.status}`" @click="selectAttemptAction(props.row.request_id, item.attempt_id, item.provider_id)" />
-                      <div class="provider-attempt-status"><q-badge :color="providerStatusColor(item.status)" :label="providerStatusLabels[item.status] || item.status" /><span v-if="item.error" class="text-caption">{{ providerReasonLabel(item.error) }}</span><span class="text-caption">耗时：{{ item.elapsed_ms ?? '未知' }} ms</span></div>
-                      <details><summary>标准化结果 / 原始响应</summary><RecognitionJsonViewer :value="{ normalized: item.normalized_result, raw: item.raw_result, input: item.input, error: item.error }" /></details>
-                    </div>
-                  </div>
-                  <div v-else class="text-secondary">没有解析器结果</div>
-                </section>
-                <section>
-                  <div class="detail-title">整体结果</div>
-                  <q-banner v-if="isAmbiguous(props.row)" dense rounded class="bg-orange-1 text-orange-10 q-mb-sm">
-                    多个 TMDB 条目均命中，识别失败；未选择胜出项。
-                  </q-banner>
-                  <RecognitionJsonViewer :value="details[props.row.request_id].overall_result" />
-                </section>
-                <section class="wide-section">
-                  <div class="detail-title">TMDB 原始结果与名称证据</div>
-                  <div v-if="details[props.row.request_id].tmdb_results.length" class="tmdb-list">
-                    <div v-for="(item, index) in details[props.row.request_id].tmdb_results" :key="index" class="tmdb-card">
-                      <div class="row items-center q-gutter-sm">
-                        <q-btn dense flat no-caps color="primary" :label="`${item.provider_id || '未知方式'} · ${tmdbSummary(item)}`" @click="selectTmdbAction(props.row.request_id, index, String(item.provider_id || ''))" />
-                        <q-badge :label="tmdbStatusLabels[String(item.status || 'unknown')] || String(item.status || 'unknown')" />
-                      </div>
-                      <details><summary>查询条件 / TMDB 返回原文</summary><RecognitionJsonViewer :value="{ query: item.query, result: item.result, reason: item.reason }" /></details>
-                    </div>
-                  </div>
-                  <div v-else class="text-secondary">没有 TMDB 查询结果</div>
-                </section>
-              </div>
-            </q-td>
-          </q-tr>
-        </template>
-      </q-table>
+      <div v-if="!$q.screen.lt.sm" class="recognition-table-scroll">
+        <q-table :rows="summaryRows" :columns="columns" row-key="request_id" flat :loading="loading" hide-pagination :rows-per-page-options="[0]" no-data-label="暂无媒体识别记录">
+          <template #body="props">
+            <q-tr :props="props">
+              <q-td key="original_name" :props="props">
+                <div class="original-name summary-clamp" :title="props.row.original_name">{{ props.row.original_name || '（空名称）' }}</div>
+                <div class="record-source text-caption text-secondary">{{ props.row.source || '来源未知' }} · {{ props.row.stage || '阶段未知' }}</div>
+              </q-td>
+              <q-td key="actions" :props="props">
+                <div v-for="group in props.row.actionGroups.slice(0, 3)" :key="group.type" class="action-count">
+                  <span class="ellipsis" :title="group.label">{{ group.label }}</span><span class="summary-count">×{{ group.count }}</span>
+                </div>
+                <q-btn v-if="props.row.actions.length" flat dense no-caps color="primary" class="summary-link" :label="`共 ${props.row.actions.length} 个动作`" icon-right="chevron_right" @click="openDetail(props.row, 'actions')" />
+                <span v-else class="text-caption text-secondary">无动作</span>
+              </q-td>
+              <q-td key="providers" :props="props">
+                <div v-for="item in props.row.provider_results.slice(0, 2)" :key="item.attempt_id" class="provider-summary">
+                  <div class="provider-summary-heading"><span class="ellipsis text-caption text-secondary">{{ providerLabel(item.provider_id) }}</span><q-badge :color="providerStatusColor(item.status)" :label="providerStatusLabels[item.status] || item.status" /></div>
+                  <div class="ellipsis" :title="providerResultSummary(item.normalized_result).title">{{ providerResultSummary(item.normalized_result).title }}</div>
+                  <div v-if="providerResultSummary(item.normalized_result).seasonEpisode" class="ellipsis text-caption text-secondary">{{ providerResultSummary(item.normalized_result).seasonEpisode }}</div>
+                  <div v-if="item.error" class="ellipsis text-caption text-secondary" :title="providerReasonLabel(item.error)">{{ providerReasonLabel(item.error) }}</div>
+                </div>
+                <q-btn v-if="props.row.provider_results.length > 2" flat dense color="primary" class="summary-link" :label="`还有 ${props.row.provider_results.length - 2} 条结果`" @click="openDetail(props.row, 'providers')" />
+                <span v-if="!props.row.provider_results.length" class="text-caption text-secondary">无解析器结果</span>
+              </q-td>
+              <q-td key="overall" :props="props">
+                <q-badge class="status-badge" :color="statusColor(props.row.overall_result.status)" :label="statusLabel(props.row.overall_result.status)" />
+                <div v-if="overallLabel(props.row) !== statusLabel(props.row.overall_result.status)" class="overall-reason summary-clamp text-caption" :title="overallLabel(props.row)">{{ overallLabel(props.row) }}</div>
+              </q-td>
+              <q-td key="tmdb" :props="props">
+                <div v-for="group in props.row.tmdbPreview" :key="group.key" class="tmdb-summary">
+                  <div class="summary-clamp" :title="group.label">{{ group.label }}</div>
+                  <div class="tmdb-summary-meta text-caption text-secondary"><span class="ellipsis">{{ providerLabel(group.providerId) }}</span><span v-if="group.count > 1" class="summary-count">×{{ group.count }}</span></div>
+                </div>
+                <q-btn v-if="props.row.tmdb_results.length" flat dense no-caps color="primary" class="summary-link" :label="`全部 ${props.row.tmdb_results.length} 条`" icon-right="chevron_right" @click="openDetail(props.row, 'tmdb')" />
+                <span v-else-if="!props.row.tmdbPreview.length" class="text-caption text-secondary">无 TMDB 请求</span>
+              </q-td>
+              <q-td key="created_at" :props="props"><div class="record-time">{{ formatCreatedAt(props.row.created_at) }}</div></q-td>
+              <q-td key="detail" :props="props"><q-btn flat dense color="primary" label="查看" @click="openDetail(props.row)" /></q-td>
+            </q-tr>
+          </template>
+        </q-table>
       </div>
-      <template #loading>
-        <div class="mobile-list-loading"><q-spinner-dots color="primary" size="24px" /><span>加载下一页…</span></div>
-      </template>
+      <q-infinite-scroll v-else :disable="!hasMore || loading" :offset="180" @load="loadNextPage">
+        <div class="mobile-record-list">
+          <article v-for="record in summaryRows" :key="record.request_id" class="mobile-record">
+            <div class="mobile-record-heading">
+              <span class="record-time text-caption text-secondary">{{ formatCreatedAt(record.created_at) }}</span>
+              <q-badge class="status-badge" :color="statusColor(record.overall_result.status)" :label="statusLabel(record.overall_result.status)" />
+            </div>
+            <button type="button" class="mobile-record-title summary-clamp" @click="openDetail(record)">{{ record.original_name || '（空名称）' }}</button>
+            <div class="record-source text-caption text-secondary">{{ record.source || '来源未知' }} · {{ record.stage || '阶段未知' }}</div>
+            <div v-if="overallLabel(record) !== statusLabel(record.overall_result.status)" class="overall-reason summary-clamp text-caption">{{ overallLabel(record) }}</div>
+            <div v-if="record.provider_results.length" class="mobile-providers">
+              <div v-for="item in record.provider_results.slice(0, 2)" :key="item.attempt_id" class="provider-summary">
+                <div class="provider-summary-heading"><span class="ellipsis text-caption text-secondary">{{ providerLabel(item.provider_id) }}</span><q-badge :color="providerStatusColor(item.status)" :label="providerStatusLabels[item.status] || item.status" /></div>
+                <div class="summary-clamp">{{ providerResultSummary(item.normalized_result).title }}</div>
+                <div v-if="providerResultSummary(item.normalized_result).seasonEpisode" class="ellipsis text-caption text-secondary">{{ providerResultSummary(item.normalized_result).seasonEpisode }}</div>
+              </div>
+            </div>
+            <div v-if="record.tmdbFinalResults.length" class="mobile-tmdb-results">
+              <div class="text-caption text-secondary">TMDB 最终结果</div>
+              <div v-for="result in record.tmdbFinalResults" :key="result.key" class="mobile-tmdb-result">
+                <span class="text-caption text-secondary">{{ providerLabel(result.providerId) }}</span>
+                <span class="summary-clamp">{{ result.label }}</span>
+                <span v-if="result.count > 1" class="summary-count">×{{ result.count }}</span>
+              </div>
+            </div>
+            <div v-else-if="record.tmdbGroups.length" class="mobile-tmdb-summary">
+              <span class="text-caption text-secondary">TMDB</span><span class="ellipsis">{{ record.tmdbGroups[0].label }}</span>
+              <span v-if="record.tmdbGroups.length > 1" class="summary-count">等 {{ record.tmdbGroups.length }} 组</span>
+            </div>
+            <div class="mobile-record-metrics">
+              <q-btn flat no-caps align="left" icon="format_list_numbered" :label="`${record.actions.length} 个动作`" icon-right="chevron_right" @click="openDetail(record, 'actions')" />
+              <q-btn flat no-caps align="left" icon="movie" :label="`${record.tmdb_results.length} 条 TMDB`" icon-right="chevron_right" @click="openDetail(record, 'tmdb')" />
+            </div>
+            <div class="mobile-record-footer">
+              <q-btn flat dense no-caps color="primary" :label="`识别方式 (${record.provider_results.length})`" @click="openDetail(record, 'providers')" />
+              <q-btn flat dense color="primary" label="查看详情" icon-right="arrow_forward" @click="openDetail(record)" />
+            </div>
+          </article>
+          <div v-if="loading && !records.length" class="list-state"><q-spinner-dots color="primary" size="28px" /><span>加载识别记录…</span></div>
+          <div v-else-if="!records.length && !loadError" class="list-state"><q-icon name="fact_check" size="32px" /><span>暂无媒体识别记录</span></div>
+        </div>
+        <template #loading><div class="mobile-list-loading"><q-spinner-dots color="primary" size="24px" /><span>加载下一页…</span></div></template>
       </q-infinite-scroll>
       <div v-if="$q.screen.lt.sm && records.length && !hasMore && !loading && !loadError" class="mobile-list-end">已加载全部 {{ records.length }} 条记录</div>
       <div v-if="!$q.screen.lt.sm && total > pageSize" class="row justify-center q-pa-md">
@@ -578,52 +684,188 @@ onMounted(async () => {
         <div class="pagination-count">第 {{ page }} / {{ Math.ceil(total / pageSize) }} 页 · 共 {{ total }} 条</div>
       </div>
     </q-card>
-    <ScrollToTop v-if="$q.screen.lt.sm" />
+    <q-dialog v-model="detailOpen" :maximized="$q.screen.lt.sm" aria-labelledby="recognition-detail-title">
+      <q-card class="recognition-detail-dialog">
+        <q-card-section class="detail-header">
+          <div class="detail-header-copy">
+            <div id="recognition-detail-title" class="text-h6">识别记录详情</div>
+            <div class="detail-filename summary-clamp text-caption text-secondary">{{ activeRecord?.original_name || '（空名称）' }}</div>
+          </div>
+          <q-btn flat round dense icon="close" aria-label="关闭详情" v-close-popup />
+        </q-card-section>
+        <q-tabs v-model="detailTab" dense no-caps align="left" active-color="primary" indicator-color="primary" class="detail-tabs">
+          <q-tab name="overview" label="概览" />
+          <q-tab name="actions" :label="`动作 (${(activeDetail || activeRecord)?.actions.length || 0})`" />
+          <q-tab name="providers" label="识别方式" />
+          <q-tab name="tmdb" :label="`TMDB (${(activeDetail || activeRecord)?.tmdb_results.length || 0})`" />
+        </q-tabs>
+        <q-separator />
+        <div v-if="detailLoading[activeRequestId]" class="list-state detail-state"><q-spinner-dots color="primary" size="32px" /><span>加载完整详情…</span></div>
+        <div v-else-if="detailErrors[activeRequestId]" class="list-state detail-state">
+          <q-icon name="error_outline" color="negative" size="32px" /><span>{{ detailErrors[activeRequestId] }}</span>
+          <q-btn outline color="primary" label="重试" @click="loadDetail(activeRequestId)" />
+        </div>
+        <q-tab-panels v-else-if="activeDetail" v-model="detailTab" class="detail-panels">
+          <q-tab-panel name="overview" class="detail-panel">
+            <div class="overview-grid">
+              <section class="wide-section">
+                <div class="detail-title">原始名称</div><div class="full-record-name">{{ activeDetail.original_name || '（空名称）' }}</div>
+                <div class="record-source text-caption text-secondary">{{ activeDetail.source || '来源未知' }} · {{ activeDetail.stage || '阶段未知' }} · {{ formatCreatedAt(activeDetail.created_at) }}</div>
+              </section>
+              <section class="wide-section">
+                <div class="detail-title">整体结果</div>
+                <q-badge class="status-badge" :color="statusColor(activeDetail.overall_result.status)" :label="statusLabel(activeDetail.overall_result.status)" />
+                <div class="q-mt-sm">{{ overallLabel(activeDetail) }}</div>
+                <q-banner v-if="isAmbiguous(activeDetail)" dense rounded class="bg-orange-1 text-orange-10 q-mt-sm">多个 TMDB 条目均命中，识别失败；未选择胜出项。</q-banner>
+                <details class="raw-data"><summary>整体结果原文</summary><RecognitionJsonViewer :value="activeDetail.overall_result" /></details>
+              </section>
+              <section class="wide-section"><div class="detail-title">请求上下文</div><RecognitionJsonViewer :value="activeDetail.context" /></section>
+            </div>
+          </q-tab-panel>
+          <q-tab-panel name="actions" class="detail-panel actions-panel">
+            <div v-if="actionList(activeRequestId).length" class="actions-layout">
+              <q-select v-if="$q.screen.lt.sm" :model-value="actionKey(selectedAction(activeRequestId) || {})" :options="actionList(activeRequestId).map((action) => ({ value: actionKey(action), label: `${action.sequence || ''} · ${actionLabels[String(action.action_type)] || action.action_type} · ${action.status || 'unknown'}` }))" outlined dense emit-value map-options label="选择动作查看输入 / 输出" @update:model-value="selectedActionIds[activeRequestId] = $event" />
+              <div v-else class="action-list">
+                <q-btn v-for="action in actionList(activeRequestId)" :key="actionKey(action)" flat no-caps align="left" class="action-button" :class="{ 'is-active': actionKey(selectedAction(activeRequestId) || {}) === actionKey(action) }" :aria-pressed="actionKey(selectedAction(activeRequestId) || {}) === actionKey(action)" @click="selectAction(activeRequestId, action)">
+                  <span class="action-sequence">{{ action.sequence }}</span><span class="action-label">{{ actionLabels[String(action.action_type)] || action.action_type }}</span><q-badge :label="String(action.status || 'unknown')" />
+                </q-btn>
+              </div>
+              <section class="action-output">
+                <div class="detail-title">{{ selectedAction(activeRequestId)?.sequence }} · {{ actionLabels[String(selectedAction(activeRequestId)?.action_type)] || selectedAction(activeRequestId)?.action_type }}</div>
+                <div class="text-caption text-secondary q-mb-sm">所选动作输入 / 输出</div>
+                <RecognitionJsonViewer :value="{ input: selectedAction(activeRequestId)?.input, output: selectedAction(activeRequestId)?.output, reason: selectedAction(activeRequestId)?.reason, time: selectedAction(activeRequestId)?.time }" />
+                <div v-if="titleEvidenceSegments(activeRequestId).length" class="evidence-title q-mt-md">
+                  名称证据：<template v-for="(segment, index) in titleEvidenceSegments(activeRequestId)" :key="index"><mark v-if="segment.matched">{{ segment.text }}</mark><span v-else>{{ segment.text }}</span></template>
+                </div>
+              </section>
+            </div>
+            <div v-else class="list-state">此记录没有动作</div>
+          </q-tab-panel>
+          <q-tab-panel name="providers" class="detail-panel">
+            <q-banner v-if="anitopyDiagnostic(activeRequestId)" rounded dense class="diagnostic-banner q-mb-md">{{ anitopyDiagnostic(activeRequestId) }}</q-banner>
+            <div v-if="activeDetail.provider_results.length" class="provider-list">
+              <section v-for="item in activeDetail.provider_results" :key="item.attempt_id" class="provider-card">
+                <div class="detail-entry-heading"><strong>{{ providerLabel(item.provider_id) }}</strong><q-badge :color="providerStatusColor(item.status)" :label="providerStatusLabels[item.status] || item.status" /></div>
+                <div class="q-mt-sm">{{ providerResultSummary(item.normalized_result).title }}</div>
+                <div class="text-caption">{{ providerResultSummary(item.normalized_result).seasonEpisode }}</div>
+                <div class="provider-attempt-status text-caption text-secondary"><span v-if="item.error">{{ providerReasonLabel(item.error) }}</span><span>耗时：{{ item.elapsed_ms ?? '未知' }} ms</span></div>
+                <q-btn flat dense color="primary" label="定位识别动作" @click="selectAttemptAction(activeRequestId, item.attempt_id, item.provider_id)" />
+                <details class="raw-data"><summary>标准化结果 / 原始响应</summary><RecognitionJsonViewer :value="{ normalized: item.normalized_result, raw: item.raw_result, input: item.input, error: item.error }" /></details>
+              </section>
+            </div>
+            <div v-else class="list-state">没有解析器结果</div>
+          </q-tab-panel>
+          <q-tab-panel name="tmdb" class="detail-panel">
+            <div v-if="activeDetail.tmdb_results.length" class="tmdb-list">
+              <div class="text-caption text-secondary">共 {{ activeDetail.tmdb_results.length }} 条，按原始顺序展示</div>
+              <section v-for="(item, index) in activeDetail.tmdb_results" :key="index" class="tmdb-card">
+                <div class="detail-entry-heading"><span class="text-caption text-secondary">{{ index + 1 }} · {{ providerLabel(item.provider_id) }}</span><q-badge :label="tmdbStatusLabels[String(item.status || 'unknown')] || String(item.status || 'unknown')" /></div>
+                <div class="q-my-sm text-weight-medium">{{ tmdbSummary(item) }}</div>
+                <q-btn flat dense color="primary" label="定位查询动作" @click="selectTmdbAction(activeRequestId, index, String(item.provider_id || ''))" />
+                <details class="raw-data"><summary>查询条件 / TMDB 返回原文</summary><RecognitionJsonViewer :value="{ query: item.query, result: item.result, reason: item.reason }" /></details>
+              </section>
+            </div>
+            <div v-else class="list-state">没有 TMDB 查询结果</div>
+          </q-tab-panel>
+        </q-tab-panels>
+      </q-card>
+    </q-dialog>
+    <ScrollToTop v-if="$q.screen.lt.sm && !detailOpen" />
   </div>
 </template>
 
 <style scoped>
-.original-name { min-width: 220px; max-width: 360px; white-space: normal; overflow-wrap: anywhere; }
-.action-summary { min-width: 180px; max-width: 300px; white-space: normal; overflow-wrap: anywhere; }
-.action-list, .tmdb-list { display: flex; flex-direction: column; gap: 6px; }
-.provider-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px; }
-.action-button { justify-content: flex-start; width: 100%; height: auto; }
-.action-button :deep(.q-btn__content) { flex-wrap: wrap; white-space: normal; text-align: left; }
-.action-sequence { display: inline-flex; min-width: 22px; justify-content: center; margin-right: 6px; opacity: .7; }
-.provider-card, .tmdb-card { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; }
-.provider-attempt-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.provider-card summary, .tmdb-card summary { cursor: pointer; font-size: 12px; margin-top: 6px; }
-.evidence-title { overflow-wrap: anywhere; }
-mark { background: #ffe082; color: inherit; border-radius: 2px; padding: 0 2px; }
-.provider-summary { max-width: 180px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
-.provider-summary + .provider-summary { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-color); }
-.provider-summary-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.provider-error { color: var(--text-secondary); overflow-wrap: anywhere; }
-.provider-result-title { overflow-wrap: anywhere; }
-.overall-summary { max-width: 150px; white-space: normal; overflow-wrap: anywhere; }
-.overall-summary :deep(.q-badge) { display: inline-block; max-width: 100%; white-space: normal; height: auto; text-align: left; overflow-wrap: anywhere; }
-.result-summary { max-width: 240px; white-space: normal; overflow-wrap: anywhere; }
-.detail-row td { background: var(--surface-muted); }
-.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; text-align: left; }
-.wide-section { grid-column: 1 / -1; }
-.detail-title { font-weight: 600; margin-bottom: 4px; }
-.recognition-table-scroll { max-width: 100%; min-width: 0; overflow-x: auto; }
+.recognition-table-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
 .recognition-table-scroll :deep(.q-table__container) { min-width: 1180px; }
+.recognition-table-scroll :deep(.q-table) { table-layout: fixed; width: 100%; }
+.recognition-table-scroll :deep(tbody td) { padding: 14px 12px; vertical-align: top; white-space: normal; }
+.recognition-table-scroll :deep(th) { padding-inline: 12px; color: var(--text-secondary); background: var(--surface-muted); }
+.summary-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+.original-name { -webkit-line-clamp: 3; font-weight: 500; line-height: 1.6; }
+.record-source { margin-top: 5px; overflow-wrap: anywhere; }
+.record-time { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.action-count { display: flex; justify-content: space-between; gap: 8px; min-width: 0; margin-bottom: 4px; line-height: 1.6; }
+.summary-count { flex-shrink: 0; color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.summary-link { margin-top: 6px; font-size: 12px; }
+.summary-link :deep(.q-icon) { font-size: 16px; }
+.provider-summary { min-width: 0; line-height: 1.5; }
+.provider-summary + .provider-summary, .tmdb-summary + .tmdb-summary { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+.provider-summary-heading { display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 2px; }
+.provider-summary-heading > span { min-width: 0; }
+.provider-summary-heading :deep(.q-badge) { flex-shrink: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; }
+.tmdb-summary-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.status-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+.overall-reason { margin-top: 6px; color: var(--text-secondary); }
 .pagination-count { width: 100%; text-align: center; margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
-.mobile-list-loading, .mobile-list-end { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; color: var(--text-secondary); font-size: 12px; }
-@media (max-width: 700px) {
-  .detail-grid { grid-template-columns: 1fr; gap: 10px; padding: 8px; }
-  .recognition-table-scroll { overflow-x: hidden; }
-  .recognition-table-scroll :deep(.q-table__container) { min-width: 0; }
-  .recognition-table-scroll :deep(.q-table) { table-layout: fixed; width: 100%; }
-  .recognition-table-scroll :deep(thead) { display: none; }
-  .recognition-table-scroll :deep(tbody tr:not(.detail-row)) { display: block; margin: 8px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
-  .recognition-table-scroll :deep(tbody tr:not(.detail-row) td) { display: block; height: auto; width: 100% !important; max-width: none !important; min-width: 0 !important; padding: 8px 10px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
-  .recognition-table-scroll :deep(tbody tr:not(.detail-row) td::before) { position: static; content: attr(data-label); display: block; margin-bottom: 3px; background: none; color: var(--text-secondary); font-size: 11px; font-weight: 600; }
-  .original-name, .action-summary, .provider-summary, .overall-summary, .result-summary { min-width: 0; max-width: 100%; }
-  .recognition-table-scroll :deep(tbody tr.detail-row) { display: block; }
-  .detail-row :deep(td) { display: block; height: auto; width: 100%; box-sizing: border-box; padding: 8px; white-space: normal; }
-  .detail-grid > section { min-width: 0; overflow-wrap: anywhere; }
-  .detail-title { margin-top: 5px; }
+.mobile-list-loading, .mobile-list-end, .list-state { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; color: var(--text-secondary); font-size: 13px; }
+.list-state { flex-direction: column; min-height: 160px; text-align: center; }
+.mobile-record-list { display: grid; gap: 12px; padding: 12px; background: var(--page-bg); }
+.mobile-record { min-width: 0; padding: 14px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface); }
+.mobile-record-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.mobile-record-heading .status-badge { flex-shrink: 0; max-width: 45%; }
+.mobile-record-title { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; font-weight: 600; line-height: 1.6; -webkit-line-clamp: 3; cursor: pointer; }
+.mobile-providers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-subtle); font-size: 13px; }
+.mobile-providers .provider-summary + .provider-summary { margin: 0; padding: 0; border: 0; }
+.mobile-tmdb-summary { display: flex; align-items: center; gap: 8px; margin-top: 12px; min-width: 0; font-size: 12px; }
+.mobile-tmdb-summary > :first-child { flex-shrink: 0; }
+.mobile-tmdb-results { display: grid; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
+.mobile-tmdb-result { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: start; gap: 6px; font-size: 12px; }
+.mobile-record-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.mobile-record-metrics :deep(.q-btn) { min-height: 44px; min-width: 0; padding: 8px; border-radius: 8px; background: var(--surface-muted); font-size: 12px; }
+.mobile-record-metrics :deep(.q-btn__content) { flex-wrap: nowrap; }
+.mobile-record-metrics :deep(.q-icon) { font-size: 18px; }
+.mobile-record-metrics :deep(.q-icon.on-left) { margin-right: 6px; }
+.mobile-record-metrics :deep(.q-icon.on-right) { margin-left: auto; }
+.mobile-record-footer { display: flex; justify-content: space-between; gap: 8px; margin: 8px -4px -6px; }
+.mobile-record-footer :deep(.q-btn) { min-height: 40px; font-size: 12px; }
+.recognition-detail-dialog.q-card { display: flex; flex-direction: column; width: min(1120px, calc(100vw - 48px)); max-width: min(1120px, calc(100vw - 48px)) !important; height: min(780px, calc(100dvh - 48px)); max-height: calc(100dvh - 48px); overflow: hidden; background: var(--surface); color: var(--text-primary); }
+.detail-header { display: flex; align-items: flex-start; gap: 16px; flex-shrink: 0; padding: 16px 20px; }
+.detail-header-copy { flex: 1; min-width: 0; }
+.detail-filename { margin-top: 4px; }
+.detail-tabs { flex-shrink: 0; padding: 0 12px; }
+.detail-panels { flex: 1; min-height: 0; background: transparent; }
+.detail-panel { height: 100%; padding: 20px; overflow: auto; }
+.detail-state { flex: 1; }
+.detail-title { margin-bottom: 10px; font-weight: 600; }
+.overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.overview-grid > section, .action-output { min-width: 0; overflow-wrap: anywhere; }
+.wide-section { grid-column: 1 / -1; }
+.full-record-name { line-height: 1.6; }
+.actions-panel { overflow: hidden; }
+.actions-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 20px; height: 100%; min-height: 0; }
+.action-list { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; padding-right: 8px; }
+.action-button { flex-shrink: 0; justify-content: flex-start; width: 100%; height: auto; min-height: 44px; padding: 8px; border-radius: 8px; }
+.action-button.is-active { background: var(--primary-soft); color: var(--q-primary); }
+.action-button :deep(.q-btn__content) { display: flex; flex-wrap: nowrap; gap: 6px; text-align: left; }
+.action-sequence { flex-shrink: 0; min-width: 22px; color: var(--text-secondary); font-size: 12px; }
+.action-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.action-output { min-height: 0; overflow: auto; padding-right: 4px; }
+.evidence-title { padding: 12px; border-radius: 8px; background: var(--surface-muted); overflow-wrap: anywhere; }
+mark { background: #ffe082; color: #172033; border-radius: 2px; padding: 0 2px; }
+.provider-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.provider-card, .tmdb-card { min-width: 0; padding: 14px; border: 1px solid var(--border-subtle); border-radius: 8px; overflow-wrap: anywhere; }
+.provider-attempt-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.detail-entry-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.detail-entry-heading :deep(.q-badge) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.tmdb-list { display: flex; flex-direction: column; gap: 12px; }
+.raw-data { margin-top: 12px; border-top: 1px solid var(--border-subtle); padding-top: 10px; }
+.raw-data > summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); }
+.raw-data[open] > summary { margin-bottom: 10px; }
+.diagnostic-banner { background: var(--surface-muted); }
+@media (max-width: 599px) {
+  .recognition-detail-dialog.q-card { width: 100%; max-width: 100% !important; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .detail-header { padding: 12px 16px; gap: 8px; }
+  .detail-header :deep(.q-btn) { min-width: 44px; min-height: 44px; }
+  .detail-tabs { padding: 0; }
+  .detail-tabs :deep(.q-tab) { min-height: 44px; padding: 0 10px; }
+  .detail-tabs :deep(.q-tab__label) { font-size: 13px; }
+  .detail-panel { padding: 16px 16px calc(16px + var(--safe-bottom)); }
+  .actions-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 16px; }
+  .provider-list, .overview-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 359px) {
+  .mobile-record-list { padding: 8px; }
+  .mobile-record { padding: 12px; }
+  .mobile-record-metrics :deep(.q-icon.on-left) { display: none; }
 }
 </style>
