@@ -31,7 +31,28 @@ const data = computed(() => props.value as string | number | boolean | unknown[]
 }
 
 .json-viewer :deep(.vjs-tree-node) {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  line-height: 1.5;
+  max-width: 100%;
+  min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.json-viewer :deep(.vjs-indent) {
+  flex: 0 0 auto;
+}
+
+.json-viewer :deep(.vjs-key) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.json-viewer :deep(.vjs-tree-node > span:not(.vjs-key):not(.vjs-node-index):not(.vjs-tree-node-actions)) {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 </style>

@@ -587,7 +587,8 @@ onMounted(async () => {
 .action-summary { min-width: 180px; max-width: 300px; white-space: normal; overflow-wrap: anywhere; }
 .action-list, .tmdb-list { display: flex; flex-direction: column; gap: 6px; }
 .provider-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px; }
-.action-button { justify-content: flex-start; width: 100%; }
+.action-button { justify-content: flex-start; width: 100%; height: auto; }
+.action-button :deep(.q-btn__content) { flex-wrap: wrap; white-space: normal; text-align: left; }
 .action-sequence { display: inline-flex; min-width: 22px; justify-content: center; margin-right: 6px; opacity: .7; }
 .provider-card, .tmdb-card { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; }
 .provider-attempt-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -617,10 +618,12 @@ mark { background: #ffe082; color: inherit; border-radius: 2px; padding: 0 2px; 
   .recognition-table-scroll :deep(.q-table) { table-layout: fixed; width: 100%; }
   .recognition-table-scroll :deep(thead) { display: none; }
   .recognition-table-scroll :deep(tbody tr:not(.detail-row)) { display: block; margin: 8px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
-  .recognition-table-scroll :deep(tbody tr:not(.detail-row) td) { display: block; width: 100% !important; max-width: none !important; min-width: 0 !important; padding: 8px 10px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
-  .recognition-table-scroll :deep(tbody tr:not(.detail-row) td::before) { content: attr(data-label); display: block; margin-bottom: 3px; color: var(--text-secondary); font-size: 11px; font-weight: 600; }
+  .recognition-table-scroll :deep(tbody tr:not(.detail-row) td) { display: block; height: auto; width: 100% !important; max-width: none !important; min-width: 0 !important; padding: 8px 10px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+  .recognition-table-scroll :deep(tbody tr:not(.detail-row) td::before) { position: static; content: attr(data-label); display: block; margin-bottom: 3px; background: none; color: var(--text-secondary); font-size: 11px; font-weight: 600; }
   .original-name, .action-summary, .provider-summary, .overall-summary, .result-summary { min-width: 0; max-width: 100%; }
-  .detail-row :deep(td) { display: block; padding: 4px; }
+  .recognition-table-scroll :deep(tbody tr.detail-row) { display: block; }
+  .detail-row :deep(td) { display: block; height: auto; width: 100%; box-sizing: border-box; padding: 8px; white-space: normal; }
+  .detail-grid > section { min-width: 0; overflow-wrap: anywhere; }
   .detail-title { margin-top: 5px; }
 }
 </style>
