@@ -12,7 +12,6 @@ import {
   truncateRsshistory,
   nameTest,
   netTest,
-  NETTEST_TARGETS,
   type NameTestData,
   type NetTestResult
 } from '@/api/system'
@@ -24,13 +23,6 @@ interface ServiceItem {
   interval: string
   state: boolean
   editable?: 'search' | 'recognition-cleanup'
-}
-
-interface NetTestRow {
-  target: string
-  res?: boolean
-  time?: string
-  testing: boolean
 }
 
 const modal = useModalStore()
@@ -244,18 +236,29 @@ async function doNameTest() {
 
 const netTestVisible = ref(false)
 const netTestLoading = ref(false)
-const netTestResults = ref<NetTestRow[]>([])
-const netColumns: QTableColumn<NetTestRow>[] = [
+const netTestError = ref('')
+const netTestResults = ref<NetTestResult[]>([])
+const netColumns: QTableColumn<NetTestResult>[] = [
   { name: 'target', label: '测试对象', field: 'target', align: 'left' },
   { name: 'result', label: '连通性', field: 'res', align: 'left' },
   { name: 'time', label: '耗时', field: 'time', align: 'left' }
 ]
 
-function openNetTest() {
-  netTestResults.value = NETTEST_TARGETS.map((target) => ({ target, testing: true }))
-  netTestLoading.value = true
+async function openNetTest() {
   netTestVisible.value = true
-  Promise.all(netTestResults.value.map((row) => netTest(row.target).then((result: NetTestResult) => { row.res = result.res; row.time = result.time }).catch(() => { row.res = false; row.time = '失败' }).finally(() => { row.testing = false }))).finally(() => { netTestLoading.value = false })
+  if (netTestLoading.value) return
+  netTestLoading.value = true
+  netTestError.value = ''
+  netTestResults.value = []
+  try {
+    const result = await netTest()
+    if (!Array.isArray(result.results)) throw new Error('网络检测未返回有效结果')
+    netTestResults.value = result.results
+  } catch (error) {
+    netTestError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    netTestLoading.value = false
+  }
 }
 
 onMounted(() => {
@@ -336,8 +339,26 @@ onMounted(() => {
     <q-dialog v-model="netTestVisible" :maximized="$q.screen.lt.sm" :full-width="!$q.screen.lt.sm">
       <q-card class="tool-dialog network-dialog"><q-card-section class="row items-center"><div class="text-h6">网络连通性测试</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" v-close-popup /></q-card-section><q-separator />
         <q-card-section>
-          <q-table flat :rows="netTestResults" :columns="netColumns" row-key="target" :loading="netTestLoading" hide-pagination :rows-per-page-options="[0]" class="network-table"><template #body-cell-result="slotProps"><q-td :props="slotProps"><q-badge v-if="slotProps.row.testing" color="grey-6" label="测试中" /><q-badge v-else :color="slotProps.row.res ? 'positive' : 'negative'" :label="slotProps.row.res ? '可连通' : '失败'" /></q-td></template><template #body-cell-time="slotProps"><q-td :props="slotProps"><span :class="slotProps.row.res ? 'text-positive' : 'text-negative'">{{ slotProps.row.time || '—' }}</span></q-td></template></q-table>
-          <div class="network-mobile-list"><q-item v-for="row in netTestResults" :key="row.target"><q-item-section><q-item-label>{{ row.target }}</q-item-label><q-item-label caption>{{ row.time || '等待测试' }}</q-item-label></q-item-section><q-item-section side><q-spinner-dots v-if="row.testing" color="primary" /><q-badge v-else :color="row.res ? 'positive' : 'negative'" :label="row.res ? '可连通' : '失败'" /></q-item-section></q-item></div>
+          <q-banner v-if="netTestError" class="q-mb-md text-negative" rounded>{{ netTestError }}</q-banner>
+          <q-table flat :rows="netTestResults" :columns="netColumns" row-key="target" :loading="netTestLoading" hide-pagination :rows-per-page-options="[0]" :no-data-label="netTestLoading ? '正在检测…' : '暂无检测结果'" class="network-table">
+            <template #body-cell-result="slotProps">
+              <q-td :props="slotProps" style="white-space: normal; min-width: 220px">
+                <q-badge :color="slotProps.row.res ? 'positive' : 'negative'" :label="slotProps.row.res ? '可连通' : '失败'" />
+                <div v-if="slotProps.row.reason || !slotProps.row.res" :class="['text-caption q-mt-xs', slotProps.row.res ? 'text-grey-7' : 'text-negative']">{{ slotProps.row.reason || '未知错误' }}</div>
+              </q-td>
+            </template>
+            <template #body-cell-time="slotProps"><q-td :props="slotProps"><span :class="slotProps.row.res ? 'text-positive' : 'text-negative'">{{ slotProps.row.time || '—' }}</span></q-td></template>
+          </q-table>
+          <div class="network-mobile-list">
+            <div v-if="netTestLoading" class="row justify-center items-center q-pa-md q-gutter-sm"><q-spinner-dots color="primary" /><span>正在检测…</span></div>
+            <q-item v-for="row in netTestResults" :key="row.target">
+              <q-item-section><q-item-label>{{ row.target }}</q-item-label><q-item-label caption>{{ row.time }}</q-item-label></q-item-section>
+              <q-item-section side class="items-end">
+                <q-badge :color="row.res ? 'positive' : 'negative'" :label="row.res ? '可连通' : '失败'" />
+                <q-item-label v-if="row.reason || !row.res" caption :class="row.res ? 'text-grey-7 text-right' : 'text-negative text-right'" style="max-width: 60vw; white-space: normal">{{ row.reason || '未知错误' }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </div>
         </q-card-section><q-separator /><q-card-actions align="right" class="dialog-actions"><q-btn flat label="关闭" v-close-popup /></q-card-actions>
       </q-card>
     </q-dialog>

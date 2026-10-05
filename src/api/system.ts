@@ -1,5 +1,4 @@
 import { doAction } from './request'
-import instance from './request'
 
 export interface MediaCountResult {
   code: number
@@ -121,19 +120,19 @@ export function nameTest(name: string): Promise<NameTestResult> {
 }
 
 export interface NetTestResult {
+  target: string
   res: boolean
   time: string
+  reason: string
+  status_code: number | null
 }
 
-export function netTest(url: string): Promise<NetTestResult> {
-  const form = new URLSearchParams()
-  form.append('cmd', 'net_test')
-  form.append('data', JSON.stringify(url))
-  return instance
-    .post<NetTestResult>(`/do?random=${Math.random()}`, form, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    })
-    .then((r) => r.data)
+export interface NetTestBatchResult {
+  results: NetTestResult[]
+}
+
+export function netTest(): Promise<NetTestBatchResult> {
+  return doAction<NetTestBatchResult>('net_test')
 }
 
 export interface RefreshMessageResult {
@@ -160,14 +159,3 @@ export interface LoggingResult {
 export function getLogging(refreshNew: number, source: string): Promise<LoggingResult> {
   return doAction<LoggingResult>('logging', { refresh_new: refreshNew, source })
 }
-
-export const NETTEST_TARGETS: string[] = [
-  'www.themoviedb.org',
-  'api.themoviedb.org',
-  'api.tmdb.org',
-  'image.tmdb.org',
-  'webservice.fanart.tv',
-  'api.telegram.org',
-  'qyapi.weixin.qq.com',
-  'www.opensubtitles.org'
-]
