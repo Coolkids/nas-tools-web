@@ -86,7 +86,13 @@ export function truncateRsshistory(): Promise<TruncateResult> {
   return doAction<TruncateResult>('truncate_rsshistory', {})
 }
 
-export interface NameTestData {
+export interface NameTestError {
+  name: string
+  recognition_status?: string
+  recognition_reason?: string | null
+}
+
+export interface NameTestData extends NameTestError {
   type: string
   recognition_source: 'original' | 'ai' | string
   name: string
@@ -112,7 +118,8 @@ export interface NameTestData {
 
 export interface NameTestResult {
   code: number
-  data?: NameTestData | { name: string }
+  msg?: string
+  data?: NameTestData | NameTestError
 }
 
 export function nameTest(name: string): Promise<NameTestResult> {

@@ -5,6 +5,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import RecognitionJsonViewer from '@/components/RecognitionJsonViewer.vue'
 import ScrollToTop from '@/components/ScrollToTop.vue'
 import { useModalStore } from '@/stores/modal'
+import { recognitionReasonLabels } from '@/utils/recognitionReasons'
 import {
   downloadRecognitionJsonl,
   downloadRecognitionXlsx,
@@ -55,26 +56,6 @@ const actionLabels: Record<string, string> = {
   fallback: '回退识别', file_skip: '跳过文件', provided_tmdb: '指定 TMDB',
   decision: '整体决策', request_finish: '完成识别', request_recovered: '中断恢复',
   prefilter_rejected: '业务过滤拒绝', media_cache_hit: '媒体缓存命中'
-}
-
-const recognitionReasonLabels: Record<string, string> = {
-  ambiguous_tmdb: '多个 TMDB 条目的名称或别名命中标题',
-  tmdb_network_error: 'TMDB 网络请求失败',
-  tmdb_no_results: 'TMDB 查询无结果',
-  no_tmdb_match: 'TMDB 候选名称或别名未在标题中找到',
-  tmdb_unavailable: 'TMDB 未配置或不可用',
-  recognition_deadline_exceeded: '识别超时',
-  no_name_parsed: '未能解析出媒体名称',
-  insufficient_title_evidence: '标题匹配证据不足',
-  indexer_seeders_zero: '索引器过滤：做种数为零',
-  local_parse_no_name: '本地解析未得到名称',
-  indexer_type_mismatch: '索引器过滤：媒体类型不匹配',
-  indexer_filter_rejected: '索引器规则过滤拒绝',
-  indexer_imdb_match: '索引器 IMDB 条目复用',
-  indexer_media_cache_match: '索引器媒体缓存命中',
-  rss_media_cache_hit: 'RSS 媒体缓存命中',
-  rss_already_downloaded: 'RSS 过滤：已成功订阅过',
-  rss_subscription_filter_rejected: 'RSS 订阅规则不匹配'
 }
 
 const tmdbStatusLabels: Record<string, string> = {

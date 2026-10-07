@@ -13,6 +13,7 @@ import {
   nameTest,
   netTest,
   type NameTestData,
+  type NameTestError,
   type NetTestResult
 } from '@/api/system'
 
@@ -204,7 +205,7 @@ const nameTestVisible = ref(false)
 const nameTestInput = ref('')
 const nameTestSubmitted = ref('')
 const nameTestLoading = ref(false)
-const nameTestResult = ref<NameTestData | { name: string } | null>(null)
+const nameTestResult = ref<NameTestData | NameTestError | null>(null)
 let nameTestRequest = 0
 
 function openNameTest() {
@@ -225,7 +226,7 @@ async function doNameTest() {
     const response = await nameTest(name)
     if (requestId !== nameTestRequest) return
     if (response.code === 0 && response.data) nameTestResult.value = response.data
-    else nameTestResult.value = { name: '无法识别' }
+    else nameTestResult.value = { name: response.msg || '识别请求失败，服务未返回具体原因' }
   } catch (error) {
     if (requestId !== nameTestRequest) return
     nameTestResult.value = { name: error instanceof Error ? error.message : '识别失败' }

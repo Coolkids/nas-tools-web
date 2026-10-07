@@ -6,7 +6,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import NameTestResult from '@/components/NameTestResult.vue'
 import PosterPreview from '@/components/PosterPreview.vue'
 import { useModalStore } from '@/stores/modal'
-import { nameTest, refreshProcess, type NameTestData } from '@/api/system'
+import { nameTest, refreshProcess, type NameTestData, type NameTestError } from '@/api/system'
 import { getConfig } from '@/api/config'
 
 interface FileItem {
@@ -268,7 +268,7 @@ async function downloadSubtitle(f: FileItem) {
 }
 
 const nameTestLoading = ref<Record<string, boolean>>({})
-const nameTestResults = reactive<Record<string, NameTestData | { name: string }>>({})
+const nameTestResults = reactive<Record<string, NameTestData | NameTestError>>({})
 const nameTestRequests = reactive<Record<string, number>>({})
 
 async function doNameTest(f: FileItem) {
@@ -279,10 +279,10 @@ async function doNameTest(f: FileItem) {
   try {
     const res = await nameTest(f.name)
     if (requestId !== nameTestRequests[key]) return
-    nameTestResults[key] = res.code === 0 && res.data ? res.data : { name: '无法识别' }
-  } catch {
+    nameTestResults[key] = res.code === 0 && res.data ? res.data : { name: res.msg || '识别请求失败，服务未返回具体原因' }
+  } catch (error) {
     if (requestId !== nameTestRequests[key]) return
-    nameTestResults[key] = { name: '识别失败' }
+    nameTestResults[key] = { name: error instanceof Error ? error.message : '识别请求失败' }
   } finally {
     nameTestLoading.value[key] = false
   }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { NameTestData } from '@/api/system'
+import type { NameTestData, NameTestError } from '@/api/system'
 import { useModalStore } from '@/stores/modal'
+import { recognitionReasonLabels } from '@/utils/recognitionReasons'
 
 const props = withDefaults(defineProps<{
-  result: NameTestData | { name: string }
+  result: NameTestData | NameTestError
   input?: string
   source?: string
   compact?: boolean
@@ -17,8 +18,19 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ 'open-details': [] }>()
 const modal = useModalStore()
 const data = computed(() => 'title' in props.result ? props.result : null)
-const errorMessage = computed(() => 'title' in props.result ? '' : props.result.name)
-const recognized = computed(() => Boolean(data.value?.tmdbid && tmdbUrl()))
+const skipped = computed(() => props.result.recognition_status === 'skipped')
+const recognized = computed(() => Boolean(data.value?.tmdbid)
+  && (!props.result.recognition_status || props.result.recognition_status === 'success'))
+const failureReason = computed(() => {
+  if (recognized.value) return ''
+  const reason = props.result.recognition_reason
+  if (reason) return recognitionReasonLabels[reason] || reason
+  if (!data.value) return props.result.name || '服务未返回具体失败原因'
+  return skipped.value ? '当前配置跳过了媒体匹配' : '未匹配到媒体，服务未返回具体失败原因'
+})
+const errorMessage = computed(() => data.value ? '' : failureReason.value)
+const conclusionLabel = computed(() => recognized.value ? '已匹配媒体' : skipped.value ? '已跳过匹配' : '识别失败')
+const conclusionColor = computed(() => recognized.value ? 'positive' : skipped.value ? 'warning' : 'negative')
 
 const parsedFields = computed(() => {
   if (!data.value) return []
@@ -47,7 +59,6 @@ function toArray(value: unknown): string[] {
 const replacedWords = computed(() => toArray(data.value?.replaced_words))
 const ignoredWords = computed(() => toArray(data.value?.ignored_words))
 const offsetWords = computed(() => toArray(data.value?.offset_words))
-const recognitionSource = computed(() => data.value?.recognition_source === 'ai' ? 'AI推理' : '原始解析')
 const compactFields = computed(() => parsedFields.value.slice(0, 4))
 const detailsOpen = ref(false)
 watch([data, replacedWords, ignoredWords, offsetWords], ([value, replaced, ignored, offset]) => {
@@ -105,20 +116,24 @@ function searchName() {
 
 <template>
   <div class="name-test-result" :class="{ compact }">
-    <q-banner v-if="errorMessage" dense rounded class="result-error">
-      <template #avatar><q-icon name="error_outline" color="negative" /></template>
-      {{ errorMessage }}
-    </q-banner>
-
-    <template v-else-if="data">
-      <div v-if="input || source" class="result-input">
+    <div v-if="input || source" class="result-input">
         <div class="result-section-label">输入</div>
         <div class="result-input-text"><div class="result-input-value" :title="input || source">{{ input || source }}</div><div v-if="source && input" class="result-source" :title="source">路径：{{ source }}</div></div>
         <div class="result-input-actions"><q-btn v-if="input" flat dense round icon="content_copy" aria-label="复制输入" @click="copyValue(input, '输入')"><q-tooltip>复制完整输入</q-tooltip></q-btn><q-btn v-if="source" flat dense round icon="folder_copy" aria-label="复制路径" @click="copyValue(source, '路径')"><q-tooltip>复制完整路径</q-tooltip></q-btn></div>
-      </div>
+    </div>
+    <q-banner v-if="errorMessage" dense rounded class="result-error" :class="{ 'result-skipped': skipped }" role="status">
+      <template #avatar><q-icon :name="skipped ? 'info_outline' : 'error_outline'" :color="conclusionColor" /></template>
+      <div class="text-weight-medium">{{ conclusionLabel }}</div>
+      <div>{{ errorMessage }}</div>
+    </q-banner>
 
+    <template v-else-if="data">
       <section class="result-section result-conclusion">
-        <div class="result-section-heading"><span>识别结论</span><q-badge :color="recognized ? 'positive' : 'warning'" :label="recognized ? '已匹配媒体' : '仅解析文件名'" /></div>
+        <div class="result-section-heading"><span>识别结论</span><q-badge :color="conclusionColor" :label="conclusionLabel" /></div>
+        <q-banner v-if="failureReason" dense rounded class="result-error" :class="{ 'result-skipped': skipped }" role="status">
+          <template #avatar><q-icon :name="skipped ? 'info_outline' : 'error_outline'" :color="conclusionColor" /></template>
+          {{ skipped ? '跳过原因' : '失败原因' }}：{{ failureReason }}
+        </q-banner>
         <div class="result-actions">
           <q-btn v-if="data.name || input" class="result-action" flat dense no-caps color="primary" icon="search" :label="`识别名称：${data.name || input}`" :title="data.name || input" @click="searchName" />
           <span v-else class="result-static">识别名称：未返回</span>
@@ -132,7 +147,7 @@ function searchName() {
           <q-btn v-if="data.season_episode && seasonUrl()" class="result-action" flat dense no-caps color="warning" icon="open_in_new" :label="`季集：${data.season_episode}`" :title="`打开 ${seasonUrl()}`" @click="openUrl(seasonUrl())" />
           <span v-else-if="data.season_episode" class="result-static">季集：{{ data.season_episode }} · 暂无可用链接</span>
         </div>
-        <div class="conclusion-meta"><span>来源：{{ recognitionSource }}</span><span v-if="data.type">类型：{{ data.type }}</span><span v-if="data.year">年份：{{ data.year }}</span></div>
+        <div v-if="data.type || data.year" class="conclusion-meta"><span v-if="data.type">类型：{{ data.type }}</span><span v-if="data.year">年份：{{ data.year }}</span></div>
       </section>
 
       <section class="result-section parsed-section">
@@ -145,7 +160,6 @@ function searchName() {
 
       <q-expansion-item v-if="!compact" v-model="detailsOpen" dense icon="account_tree" label="识别过程" class="process-section">
         <div class="process-grid">
-          <div class="process-row"><span class="field-label">识别来源</span><span class="field-value">{{ recognitionSource }}</span></div>
           <div v-if="data.org_string" class="process-row"><span class="field-label">原始识别用名</span><span class="field-value">{{ data.org_string }}</span></div>
           <div v-if="ignoredWords.length" class="process-row"><span class="field-label">应用屏蔽词</span><span class="field-value process-values"><q-chip v-for="word in ignoredWords" :key="`ignore-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
           <div v-if="replacedWords.length" class="process-row"><span class="field-label">应用替换词</span><span class="field-value process-values"><q-chip v-for="word in replacedWords" :key="`replace-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
@@ -159,7 +173,8 @@ function searchName() {
 
 <style scoped>
 .name-test-result { display: grid; gap: 12px; margin-top: 16px; min-width: 0; color: var(--text-primary); }
-.result-error { background: var(--negative-soft, rgba(193, 66, 66, .1)); }
+.result-error { min-width: 0; overflow-wrap: anywhere; background: var(--negative-soft, rgba(193, 66, 66, .1)); }
+.result-skipped { background: var(--warning-soft, rgba(138, 87, 0, .1)); }
 .result-input { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-muted); }
 .result-input-text { min-width: 0; }
 .result-input-actions { display: flex; align-items: center; gap: 2px; }
