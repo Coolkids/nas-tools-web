@@ -2,11 +2,12 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import HelpTip from '@/components/HelpTip.vue'
+import CacheManagement from '@/components/CacheManagement.vue'
 import { useConfigForm } from '@/composables/useConfigForm'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api'
 import { getSystemConfig } from '@/api/config'
-import { clearRecognitionParseCache, getRecognitionParseCacheInfo, getRecognitionProviders } from '@/api/recognition'
+import { getRecognitionProviders } from '@/api/recognition'
 
 type Option = { value: string; label: string }
 type SettingField = {
@@ -41,7 +42,7 @@ type RecognitionProvider = {
   config_schema: Record<string, ProviderConfigField>
 }
 
-const { config, loading, load, save } = useConfigForm()
+const { config, loading, saving, load, save } = useConfigForm()
 const modal = useModalStore()
 
 const RMT_MODES: Option[] = [
@@ -56,14 +57,13 @@ const RMT_MODES: Option[] = [
 ]
 
 const activeTab = ref('system')
+const cacheManagement = ref<InstanceType<typeof CacheManagement>[]>([])
 const form = reactive<Record<string, unknown>>({})
 const recognitionProviders = ref<RecognitionProvider[]>([])
-const parseCacheInfo = ref<{ entries: number; bytes: number; generation: number; max_entries?: number; max_bytes?: number } | null>(null)
 const MIB_BYTES = 1024 * 1024
 const BYTE_CAPACITY_KEYS = new Set([
   'recognition.cache.parse.max_bytes', 'recognition.cache.parse.max_entry_bytes'
 ])
-const clearingParseCache = ref(false)
 const aiInferenceEnabled = computed(() => Boolean(form['laboratory.ai_inference']))
 const recognitionCacheEnabled = computed(() => Boolean(form['recognition.cache.enabled']))
 const aiParseCacheEnabled = computed(() => Boolean(form['recognition.cache.parse.enabled']))
@@ -239,7 +239,9 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'laboratory.tmdb_proxy', label: '使用TMDB代理服务', kind: 'toggle' }
 ]
 const LAB_FIELD_GROUPS = [
+  { tab: 'cache', title: 'TMDB 缓存', description: '控制媒体识别缓存的过期处理。', keys: ['laboratory.tmdb_cache_expire'] },
   {
+    tab: 'ai',
     title: 'AI 推理',
     description: '配置 AI 解析服务及本次识别的执行预算。',
     keys: [
@@ -248,6 +250,7 @@ const LAB_FIELD_GROUPS = [
     ]
   },
   {
+    tab: 'ai',
     title: '识别决策与权重',
     description: '控制候选匹配规则，以及不同识别方式结果的评分。',
     keys: [
@@ -264,8 +267,9 @@ const LAB_FIELD_GROUPS = [
     ]
   },
   {
+    tab: 'cache',
     title: 'AI 解析缓存',
-    description: '缓存 AI 解析结果，并合并相同的并发请求。',
+    description: '持久保存 AI 解析结果，并合并相同的并发请求。',
     keys: [
       'recognition.cache.enabled', 'recognition.cache.parse.enabled',
       'recognition.cache.parse.singleflight', 'recognition.cache.parse.ttl_seconds',
@@ -274,6 +278,7 @@ const LAB_FIELD_GROUPS = [
     ]
   },
   {
+    tab: 'ai',
     title: '识别器范围',
     description: '分别设置 parse_only 与 resolve 阶段可用的网络和识别器。',
     keys: [
@@ -282,10 +287,11 @@ const LAB_FIELD_GROUPS = [
     ]
   },
   {
+    tab: 'laboratory',
     title: '其他实验室功能',
     description: 'TMDB 搜索及名称处理相关选项。',
     keys: [
-      'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
+      'laboratory.search_tmdbweb',
       'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy'
     ]
   }
@@ -440,10 +446,10 @@ function isLaboratoryFieldVisible(key: string): boolean {
     return aiInferenceEnabled.value
   }
   if (key === 'recognition.cache.parse.enabled') {
-    return aiInferenceEnabled.value && recognitionCacheEnabled.value
+    return recognitionCacheEnabled.value
   }
   if (key.startsWith('recognition.cache.parse.')) {
-    return aiInferenceEnabled.value && recognitionCacheEnabled.value && aiParseCacheEnabled.value
+    return recognitionCacheEnabled.value && aiParseCacheEnabled.value
   }
   if (key === 'recognition.decision.title_evidence.fuzzy_min_score') {
     return Boolean(form['recognition.decision.title_evidence.allow_fuzzy_fallback'])
@@ -498,32 +504,6 @@ async function loadData() {
     recognitionProviders.value = []
   }
   syncForm()
-  await loadParseCacheInfo()
-}
-
-async function loadParseCacheInfo() {
-  try {
-    const response = await getRecognitionParseCacheInfo()
-    if (response.code === 0 && response.cache) parseCacheInfo.value = response.cache
-  } catch {
-    parseCacheInfo.value = null
-  }
-}
-
-async function clearParseCache() {
-  if (!await modal.confirm('清理后会重新请求 AI 解析；TMDB 缓存和识别记录不会受影响。', '清理 AI 解析缓存')) return
-  clearingParseCache.value = true
-  try {
-    const response = await clearRecognitionParseCache()
-    if (response.code === 0) {
-      modal.success(`已清理 ${response.cleared_entries || 0} 条 AI 解析缓存`)
-      await loadParseCacheInfo()
-    } else modal.error(response.msg || '清理 AI 解析缓存失败')
-  } catch {
-    modal.error('清理 AI 解析缓存失败')
-  } finally {
-    clearingParseCache.value = false
-  }
 }
 
 async function saveSection(keys: string[]) {
@@ -545,24 +525,29 @@ function setProviderValue(key: string, value: unknown) {
   else form[key] = value
 }
 
-async function saveLaboratory() {
-  const maxMiB = Number(form['recognition.cache.parse.max_bytes'])
-  const maxEntryMiB = Number(form['recognition.cache.parse.max_entry_bytes'])
-  if (!Number.isFinite(maxMiB) || !Number.isFinite(maxEntryMiB) || maxMiB <= 0 || maxEntryMiB <= 0) {
-    modal.error('AI解析缓存容量必须大于 0 MiB')
-    return
-  }
-  if (maxEntryMiB > maxMiB) {
-    modal.error('AI解析缓存单条上限不能大于缓存总容量')
-    return
+async function saveLaboratory(tab: string) {
+  const sectionKeys = LAB_FIELD_GROUPS.filter((section) => section.tab === tab).flatMap((section) => section.keys)
+  const providerKeys = tab === 'ai' ? extensionProviderKeys.value : []
+  if (tab === 'ai') sectionKeys.push('recognition.profiles.parse_only.providers', 'recognition.profiles.resolve.providers')
+  if (tab === 'cache') {
+    const maxMiB = Number(form['recognition.cache.parse.max_bytes'])
+    const maxEntryMiB = Number(form['recognition.cache.parse.max_entry_bytes'])
+    if (!Number.isFinite(maxMiB) || !Number.isFinite(maxEntryMiB) || maxMiB <= 0 || maxEntryMiB <= 0) {
+      modal.error('AI解析缓存容量必须大于 0 MiB')
+      return
+    }
+    if (maxEntryMiB > maxMiB) {
+      modal.error('AI解析缓存单条上限不能大于缓存总容量')
+      return
+    }
   }
   const items: Record<string, unknown> = {}
-  ;[...LAB_KEYS, ...extensionProviderKeys.value].forEach((key) => {
+  ;[...sectionKeys, ...providerKeys].forEach((key) => {
     items[key] = BYTE_CAPACITY_KEYS.has(key)
       ? Math.round(Number(form[key]) * MIB_BYTES)
       : form[key]
   })
-  for (const key of extensionProviderKeys.value) {
+  for (const key of providerKeys) {
     const schema = extensionProviderSchemas.value[key]
     const value = form[key]
     if (schema?.required && (value === undefined || value === null || value === '')) {
@@ -601,7 +586,8 @@ async function saveLaboratory() {
       }
     }
   }
-  await save(items)
+  const saved = await save(items)
+  if (saved && tab === 'cache') await Promise.all(cacheManagement.value.map((panel) => panel.refresh()))
 }
 
 function openScraper() {
@@ -663,20 +649,23 @@ onMounted(loadData)
 
 <template>
   <div class="basic-view page-shell">
-    <PageHeader title="基础设置" description="系统、媒体、服务、安全与实验室配置" />
+    <PageHeader title="基础设置" description="系统、媒体、服务、安全、AI 推理与缓存配置" />
     <q-card flat bordered class="settings-card">
       <q-tabs v-model="activeTab" active-color="primary" indicator-color="primary" align="left" narrow-indicator scrollable>
         <q-tab name="system" label="系统" />
         <q-tab name="media" label="媒体" />
         <q-tab name="service" label="服务" />
         <q-tab name="security" label="安全" />
+        <q-tab name="ai" label="AI 推理" />
+        <q-tab name="cache" label="缓存" />
         <q-tab name="laboratory" label="实验室" />
       </q-tabs>
       <q-separator />
       <q-tab-panels v-model="activeTab" animated>
-        <q-tab-panel v-for="(fields, tab) in { system: SYSTEM_FIELDS, media: MEDIA_FIELDS, service: SERVICE_FIELDS, security: SECURITY_FIELDS, laboratory: LAB_FIELDS }" :key="tab" :name="tab">
-          <template v-if="tab === 'laboratory'">
-            <section v-for="section in laboratoryFieldSections" :key="section.title" class="laboratory-settings-group">
+        <q-tab-panel v-for="(fields, tab) in { system: SYSTEM_FIELDS, media: MEDIA_FIELDS, service: SERVICE_FIELDS, security: SECURITY_FIELDS, ai: LAB_FIELDS, cache: LAB_FIELDS, laboratory: LAB_FIELDS }" :key="tab" :name="tab">
+          <template v-if="['ai', 'cache', 'laboratory'].includes(tab)">
+            <CacheManagement v-if="tab === 'cache'" ref="cacheManagement" />
+            <section v-for="section in laboratoryFieldSections.filter((section) => section.tab === tab)" :key="section.title" class="laboratory-settings-group">
               <div class="laboratory-group-heading">
                 <div class="text-subtitle1">{{ section.title }}</div>
                 <div class="text-caption text-secondary">{{ section.description }}</div>
@@ -716,7 +705,7 @@ onMounted(loadData)
               </div>
             </template>
           </div>
-          <section v-if="tab === 'laboratory'" class="extension-provider-settings">
+          <section v-if="tab === 'ai'" class="extension-provider-settings">
             <div class="text-subtitle1 q-mb-sm">识别 profile 的解析器范围</div>
             <div class="setting-grid">
               <div class="setting-field">
@@ -728,7 +717,7 @@ onMounted(loadData)
             </div>
             <div class="text-caption text-secondary">手动选择时会自动保留本地规则解析器；parse_only 始终不查询 TMDB。</div>
           </section>
-          <section v-if="tab === 'laboratory' && extensionProviders.length" class="extension-provider-settings">
+          <section v-if="tab === 'ai' && extensionProviders.length" class="extension-provider-settings">
             <div class="text-subtitle1 q-mb-sm">第三方识别方式</div>
             <div v-for="provider in extensionProviders" :key="provider.provider_id" class="extension-provider-card">
               <q-toggle :model-value="Boolean(form[`recognition.providers.${provider.provider_id}.enabled`])" color="primary" :label="`${provider.display_name} (${provider.provider_id})`" @update:model-value="setBoolean(`recognition.providers.${provider.provider_id}.enabled`, $event)" />
@@ -752,13 +741,7 @@ onMounted(loadData)
           <div class="card-footer">
             <template v-if="tab === 'system'"><q-btn outline color="primary" label="自定义 CSS/JavaScript" @click="openScript" /></template>
             <template v-if="tab === 'media'"><q-btn outline color="primary" label="刮削设置" @click="openScraper" /><q-btn outline color="primary" label="自定义制作组/字幕组" @click="openReleaseGroups" /></template>
-            <template v-if="tab === 'laboratory'">
-              <template v-if="aiInferenceEnabled && recognitionCacheEnabled">
-                <div v-if="parseCacheInfo" class="text-caption text-secondary cache-summary">解析缓存 {{ parseCacheInfo.entries }} / {{ parseCacheInfo.max_entries || '—' }} 条，{{ (parseCacheInfo.bytes / 1048576).toFixed(2) }} / {{ parseCacheInfo.max_bytes ? (parseCacheInfo.max_bytes / 1048576).toFixed(0) : '—' }} MiB</div>
-                <q-btn v-if="aiParseCacheEnabled" outline color="negative" label="清理 AI 解析缓存" :loading="clearingParseCache" @click="clearParseCache" />
-              </template>
-            </template>
-            <q-btn color="primary" unelevated label="保存" :loading="loading" @click="tab === 'laboratory' ? saveLaboratory() : saveSection(tab === 'system' ? SYSTEM_KEYS : tab === 'media' ? MEDIA_KEYS : tab === 'service' ? SERVICE_KEYS : SECURITY_KEYS)" />
+            <q-btn color="primary" unelevated label="保存" :loading="saving" @click="['ai', 'cache', 'laboratory'].includes(tab) ? saveLaboratory(tab) : saveSection(tab === 'system' ? SYSTEM_KEYS : tab === 'media' ? MEDIA_KEYS : tab === 'service' ? SERVICE_KEYS : SECURITY_KEYS)" />
           </div>
         </q-tab-panel>
       </q-tab-panels>

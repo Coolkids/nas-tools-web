@@ -146,6 +146,7 @@ export function refreshMessage(lstTime: string): Promise<RefreshMessageResult> {
 }
 
 export interface LogEntry {
+  id: number
   time: string
   level: string
   source: string
@@ -154,8 +155,11 @@ export interface LogEntry {
 
 export interface LoggingResult {
   loglist: LogEntry[]
+  last_id: number
+  stream_id: string
+  reset?: boolean
 }
 
-export function getLogging(refreshNew: number, source: string): Promise<LoggingResult> {
-  return doAction<LoggingResult>('logging', { refresh_new: refreshNew, source })
+export function getLogging(afterId: number, source: string, streamId = ''): Promise<LoggingResult> {
+  return doAction<LoggingResult>('logging', { after_id: afterId, source, stream_id: streamId })
 }

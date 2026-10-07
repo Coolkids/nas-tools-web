@@ -14,13 +14,15 @@ const paused = ref(false)
 const activeSource = ref('')
 const followTail = ref(true)
 const newLogCount = ref(0)
-const loadedCount = ref(0)
+const lastLogId = ref(0)
+const streamId = ref('')
 const loading = ref(false)
 const logBody = ref<HTMLElement | null>(null)
 const modal = useModalStore()
 let timer: ReturnType<typeof setTimeout> | null = null
-const MAX_LOGS = 5000
-const VIRTUAL_SCROLL_THRESHOLD = 2000
+let loadGeneration = 0
+const MAX_LOGS = 2000
+const VIRTUAL_SCROLL_THRESHOLD = 500
 
 const LOG_SOURCES = ['All', 'System', 'Rss', 'Rmt', 'Meta', 'Sync', 'Sites', 'Brush', 'Douban', 'Spider', 'Message', 'Indexer', 'Searcher', 'Subscribe', 'Downloader', 'TorrentRemover']
 
@@ -39,14 +41,21 @@ function stopPolling() {
 }
 
 async function loadLogs() {
-  if (loading.value) return
+  const generation = loadGeneration
   loading.value = true
   try {
-    const res = await getLogging(loadedCount.value, activeSource.value)
+    const res = await getLogging(lastLogId.value, activeSource.value, streamId.value)
+    if (generation !== loadGeneration || !props.visible) return
+    lastLogId.value = res.last_id
+    streamId.value = res.stream_id
+    if (res.reset) {
+      logs.value = []
+      newLogCount.value = 0
+    }
     if (res.loglist?.length) {
-      loadedCount.value += res.loglist.length
       logs.value = [...logs.value, ...res.loglist].slice(-MAX_LOGS)
       await nextTick()
+      if (generation !== loadGeneration || !props.visible) return
       if (followTail.value) {
         scrollToBottom()
       } else {
@@ -56,22 +65,20 @@ async function loadLogs() {
   } catch {
     // ignore
   } finally {
-    loading.value = false
+    if (generation === loadGeneration) loading.value = false
   }
 }
 
 function startPolling() {
   stopPolling()
-  loadLogs()
-  if (!paused.value) {
-    timer = setTimeout(function tick() {
-      loadLogs().finally(() => {
-        if (!paused.value) {
-          timer = setTimeout(tick, 2000)
-        }
-      })
-    }, 2000)
+  const generation = ++loadGeneration
+  async function tick() {
+    await loadLogs()
+    if (generation === loadGeneration && props.visible && !paused.value) {
+      timer = setTimeout(tick, 2000)
+    }
   }
+  void tick()
 }
 
 function togglePause() {
@@ -86,7 +93,8 @@ function togglePause() {
 function selectSource(s: string) {
   activeSource.value = s === 'All' ? '' : s
   logs.value = []
-  loadedCount.value = 0
+  lastLogId.value = 0
+  streamId.value = ''
   newLogCount.value = 0
   followTail.value = true
   startPolling()
@@ -110,7 +118,7 @@ function jumpToBottom() {
 }
 
 async function copyLogs() {
-  const text = logs.value.map((log) => `[${log.time}] [${log.source}] ${log.text}`).join('\n')
+  const text = formatLogs()
   if (!text) return modal.info('暂无可复制的日志')
   try {
     await navigator.clipboard.writeText(text)
@@ -118,6 +126,24 @@ async function copyLogs() {
   } catch {
     modal.info(`复制失败，请手动复制以下内容：\n${text.slice(0, 2000)}${text.length > 2000 ? '\n…' : ''}`)
   }
+}
+
+function formatLogs() {
+  return logs.value.map((log) => `[${log.time}] [${log.level}] [${log.source}] ${log.text}`).join('\n')
+}
+
+function downloadLogs() {
+  if (!logs.value.length) return
+  const blob = new Blob(['\uFEFF', formatLogs(), '\n'], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  link.href = url
+  link.download = `nas-tools-${activeSource.value || 'all'}-${timestamp}.log`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function levelType(level: string): 'positive' | 'warning' | 'negative' | 'info' {
@@ -128,6 +154,8 @@ function levelType(level: string): 'positive' | 'warning' | 'negative' | 'info' 
 }
 
 function onClose() {
+  loadGeneration += 1
+  loading.value = false
   stopPolling()
   paused.value = false
   emit('update:visible', false)
@@ -142,17 +170,23 @@ watch(() => props.visible, (val) => {
   if (val) {
     logs.value = []
     activeSource.value = ''
-    loadedCount.value = 0
+    lastLogId.value = 0
+    streamId.value = ''
     newLogCount.value = 0
     followTail.value = true
     paused.value = false
     startPolling()
   } else {
+    loadGeneration += 1
+    loading.value = false
     stopPolling()
   }
 })
 
-onUnmounted(stopPolling)
+onUnmounted(() => {
+  loadGeneration += 1
+  stopPolling()
+})
 </script>
 
 <template>
@@ -169,6 +203,7 @@ onUnmounted(stopPolling)
           <q-select :model-value="activeSource || 'All'" outlined dense label="来源" :options="LOG_SOURCES" class="source-select" @update:model-value="selectSource" />
           <q-btn unelevated :color="paused ? 'positive' : 'warning'" :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '开始' : '暂停'" @click="togglePause" />
           <q-btn outline icon="content_copy" label="复制" :disable="!logs.length" @click="copyLogs" />
+          <q-btn outline icon="download" label="下载日志" :disable="!logs.length" @click="downloadLogs" />
         </div>
         <div v-if="newLogCount && !followTail" class="new-log-banner">
           <q-btn flat color="primary" icon="south" :label="`有 ${newLogCount} 条新日志，回到底部`" @click="jumpToBottom" />
@@ -184,7 +219,8 @@ onUnmounted(stopPolling)
             hide-bottom
             :rows="logs"
             :columns="logColumns"
-            row-key="time"
+            row-key="id"
+            :pagination="{ rowsPerPage: 0 }"
             :rows-per-page-options="[0]"
             :virtual-scroll="useVirtualLogs"
             :virtual-scroll-target="useVirtualLogs ? '.log-table-shell' : undefined"

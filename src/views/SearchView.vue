@@ -60,7 +60,7 @@ const uniqueSites = computed(() => Array.from(new Set(taskResults.value.map((ite
 const filteredResults = computed(() => {
   let results = taskResults.value
   if (siteFilter.value.length) results = results.filter((item) => siteFilter.value.includes(item.site))
-  const query = nameFilter.value.trim().toLowerCase()
+  const query = (nameFilter.value || '').trim().toLowerCase()
   if (query) results = results.filter((item) => (item.torrent_name || '').toLowerCase().includes(query))
   return results
 })
