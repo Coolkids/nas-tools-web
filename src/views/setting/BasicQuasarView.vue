@@ -8,6 +8,7 @@ import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api'
 import { getSystemConfig } from '@/api/config'
 import { getRecognitionProviders } from '@/api/recognition'
+import { getTmdbGenres } from '@/api/system'
 
 type Option = { value: string; label: string }
 type SettingField = {
@@ -60,6 +61,10 @@ const activeTab = ref('system')
 const cacheManagement = ref<InstanceType<typeof CacheManagement>[]>([])
 const form = reactive<Record<string, unknown>>({})
 const recognitionProviders = ref<RecognitionProvider[]>([])
+const preferredGenreOptions = ref<Option[]>([
+  { value: '0', label: '不优先' },
+  { value: '16', label: '动画' }
+])
 const MIB_BYTES = 1024 * 1024
 const BYTE_CAPACITY_KEYS = new Set([
   'recognition.cache.parse.max_bytes', 'recognition.cache.parse.max_entry_bytes'
@@ -101,6 +106,7 @@ const LAB_KEYS = [
   'recognition.execution.total_timeout_seconds',
   'recognition.decision.title_evidence.min_cjk_chars_for_strong',
   'recognition.decision.title_evidence.min_latin_chars_for_strong',
+  'recognition.decision.title_evidence.preferred_genre_id',
   'recognition.decision.title_evidence.allow_fuzzy_fallback',
   'recognition.decision.title_evidence.fuzzy_min_score',
   'recognition.decision.weights.title_match', 'recognition.decision.weights.year_match',
@@ -211,6 +217,7 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'recognition.execution.total_timeout_seconds', label: '识别方式总超时(秒)', type: 'number', help: '限制 AI 与扩展解析器的执行预算；AI HTTP 请求会遵守剩余时间。' },
   { key: 'recognition.decision.title_evidence.min_cjk_chars_for_strong', label: '中文完整名称最少字数', type: 'number' },
   { key: 'recognition.decision.title_evidence.min_latin_chars_for_strong', label: '拉丁文完整名称最少字符数', type: 'number' },
+  { key: 'recognition.decision.title_evidence.preferred_genre_id', label: '多结果优先类型', kind: 'select', options: [{ value: '0', label: '不优先' }, { value: '16', label: '动画' }], help: '多个名称命中时，先优先保留此 TMDB 类型的候选，再判断季集。电影和电视剧使用同一偏好；类型选项由 TMDB 接口提供。' },
   { key: 'recognition.decision.title_evidence.allow_fuzzy_fallback', label: '启用模糊名称回退', kind: 'toggle', help: '默认关闭；开启后按下方分数阈值执行唯一候选检查。' },
   { key: 'recognition.decision.title_evidence.fuzzy_min_score', label: '模糊回退最低分数', type: 'number' },
   { key: 'recognition.decision.weights.title_match', label: '标题匹配权重', type: 'number' },
@@ -257,6 +264,7 @@ const LAB_FIELD_GROUPS = [
       'recognition.decision.strategy', 'recognition.decision.shadow.enabled',
       'recognition.decision.title_evidence.min_cjk_chars_for_strong',
       'recognition.decision.title_evidence.min_latin_chars_for_strong',
+      'recognition.decision.title_evidence.preferred_genre_id',
       'recognition.decision.title_evidence.allow_fuzzy_fallback',
       'recognition.decision.title_evidence.fuzzy_min_score',
       'recognition.decision.weights.title_match', 'recognition.decision.weights.year_match',
@@ -413,6 +421,7 @@ const profileProviderKeys = new Set([
           : [...configured])
         : 'all_enabled'
     } else if (BYTE_CAPACITY_KEYS.has(key)) form[key] = Number(getCfg(key) ?? 0) / MIB_BYTES
+    else if (key === 'recognition.decision.title_evidence.preferred_genre_id') form[key] = Number(getCfg(key) ?? 16)
     else if (key === 'laboratory.ai_inference_url' || key === 'recognition.decision.strategy') form[key] = str(key)
     else if (labToggleKeys.has(key)) form[key] = sw(key)
     else if (labNumberKeys.has(key)) form[key] = Number(getCfg(key) ?? 0)
@@ -504,6 +513,19 @@ async function loadData() {
     recognitionProviders.value = []
   }
   syncForm()
+  void getTmdbGenres().then((result) => {
+    if (result.code !== 0 || !Array.isArray(result.genres)) return
+    const genresById = new Map(result.genres
+      .filter((genre) => Number.isInteger(genre.id) && genre.id > 0 && genre.name)
+      .map((genre) => [genre.id, genre.name]))
+    if (!genresById.has(16)) genresById.set(16, '动画')
+    preferredGenreOptions.value = [
+      { value: '0', label: '不优先' },
+      ...[...genresById.entries()]
+        .sort((left, right) => left[1].localeCompare(right[1], 'zh-CN') || left[0] - right[0])
+        .map(([id, name]) => ({ value: String(id), label: id === 16 ? '动画' : name }))
+    ]
+  }).catch(() => undefined)
 }
 
 async function saveSection(keys: string[]) {
@@ -678,7 +700,7 @@ onMounted(loadData)
                     </q-toggle>
                     <q-btn v-if="field.key === 'laboratory.ai_inference'" flat dense color="primary" icon="fact_check" label="媒体识别记录" to="/recognition" />
                   </div>
-                  <q-select v-else-if="field.kind === 'select'" :model-value="String(form[field.key] ?? '')" outlined dense emit-value map-options :label="field.label" :options="field.options" @update:model-value="setValue(field.key, $event)">
+                  <q-select v-else-if="field.kind === 'select'" :model-value="String(form[field.key] ?? '')" outlined dense emit-value map-options :label="field.label" :options="field.key === 'recognition.decision.title_evidence.preferred_genre_id' ? preferredGenreOptions : field.options" @update:model-value="setValue(field.key, $event)">
                     <template #append><HelpTip v-if="fieldHelp(field)" :text="fieldHelp(field)" /></template>
                   </q-select>
                   <q-input v-else :model-value="String(form[field.key] ?? '')" outlined dense :label="field.label" :type="field.type || 'text'" :min="field.min" :step="field.step" :placeholder="field.placeholder" @update:model-value="setValue(field.key, field.type === 'number' ? Number($event) : $event)">

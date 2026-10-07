@@ -126,6 +126,13 @@ export function nameTest(name: string): Promise<NameTestResult> {
   return doAction<NameTestResult>('name_test', { name })
 }
 
+export function getTmdbGenres(): Promise<{
+  code: number
+  genres: Array<{ id: number; name: string }>
+}> {
+  return doAction('get_tmdb_genres', {})
+}
+
 export interface NetTestResult {
   target: string
   res: boolean
