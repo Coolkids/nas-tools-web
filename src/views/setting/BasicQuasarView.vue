@@ -99,7 +99,13 @@ const SECURITY_KEYS = [
   'security.telegram_webhook_allow_ip.ipv4', 'security.telegram_webhook_allow_ip.ipv6',
   'security.synology_webhook_allow_ip.ipv4', 'security.synology_webhook_allow_ip.ipv6', 'security.api_key'
 ]
+const CACHE_DEFAULTS: Record<string, unknown> = {
+  'cache.backend': 'memory_disk', 'cache.host': '127.0.0.1', 'cache.port': 6379,
+  'cache.db': 0, 'cache.auth_mode': 'none', 'cache.username': '', 'cache.password': '',
+  'cache.connect_timeout': 0.5, 'cache.retry_interval': 30
+}
 const LAB_KEYS = [
+  ...Object.keys(CACHE_DEFAULTS),
   'laboratory.ai_inference', 'laboratory.ai_inference_url', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
   'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy',
   'recognition.decision.strategy', 'recognition.decision.shadow.enabled',
@@ -210,6 +216,20 @@ const SECURITY_FIELDS: SettingField[] = [
   { key: 'security.api_key', label: 'API密钥' }
 ]
 const LAB_FIELDS: SettingField[] = [
+  { key: 'cache.backend', label: '缓存保存方式', kind: 'select', options: [
+    { value: 'memory', label: '内存' }, { value: 'memory_disk', label: '内存＋数据保存在磁盘' },
+    { value: 'redis', label: 'Redis' }, { value: 'valkey', label: 'Valkey' }
+  ], help: '保存后立即生效。远程缓存连接失败时自动降级到本机内存。' },
+  { key: 'cache.host', label: '服务器地址', placeholder: '127.0.0.1', help: 'Docker 内置 Valkey 使用 127.0.0.1，端口 6379。' },
+  { key: 'cache.port', label: '端口', type: 'number', min: 1, step: 1 },
+  { key: 'cache.db', label: '数据库编号', type: 'number', min: 0, step: 1 },
+  { key: 'cache.auth_mode', label: '认证方式', kind: 'select', options: [
+    { value: 'none', label: '无密码认证' }, { value: 'password', label: '密码认证' }
+  ] },
+  { key: 'cache.username', label: '用户名（可选）', help: '使用 ACL 用户时填写；仅使用密码时留空。' },
+  { key: 'cache.password', label: '密码', type: 'password' },
+  { key: 'cache.connect_timeout', label: '连接与请求超时（秒）', type: 'number', min: 0.1, step: 0.1 },
+  { key: 'cache.retry_interval', label: '恢复探测间隔（秒）', type: 'number', min: 1, step: 1 },
   { key: 'laboratory.ai_inference', label: '使用AI推理解析', kind: 'toggle', help: '同时运行本地规则和 AI 解析，并记录两种方式与 TMDB 的结果。' },
   { key: 'laboratory.ai_inference_url', label: 'AI推理接口地址', placeholder: 'http://127.0.0.1:8000', help: '填写 anitopy-ml 服务地址，支持直接填写 /v1/parse 地址。' },
   { key: 'recognition.decision.strategy', label: '名称识别策略', kind: 'select', options: [{ label: '兼容现有决策', value: 'legacy' }, { label: 'TMDB名称命中', value: 'title_evidence' }], help: 'TMDB 名称唯一命中时可接受；多个不同 TMDB 条目命中时识别失败。' },
@@ -246,6 +266,7 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'laboratory.tmdb_proxy', label: '使用TMDB代理服务', kind: 'toggle' }
 ]
 const LAB_FIELD_GROUPS = [
+  { tab: 'cache', title: '缓存设置', description: '选择统一缓存后端。磁盘数据保存在配置目录下的 cache 文件夹中。', keys: Object.keys(CACHE_DEFAULTS) },
   { tab: 'cache', title: 'TMDB 缓存', description: '控制媒体识别缓存的过期处理。', keys: ['laboratory.tmdb_cache_expire'] },
   {
     tab: 'ai',
@@ -277,7 +298,7 @@ const LAB_FIELD_GROUPS = [
   {
     tab: 'cache',
     title: 'AI 解析缓存',
-    description: '持久保存 AI 解析结果，并合并相同的并发请求。',
+    description: '缓存 AI 解析结果，并合并相同的并发请求。',
     keys: [
       'recognition.cache.enabled', 'recognition.cache.parse.enabled',
       'recognition.cache.parse.singleflight', 'recognition.cache.parse.ttl_seconds',
@@ -413,7 +434,9 @@ const profileProviderKeys = new Set([
 ])
 
   LAB_KEYS.forEach((key) => {
-    if (profileProviderKeys.has(key)) {
+    if (key.startsWith('cache.')) {
+      form[key] = getCfg(key) ?? CACHE_DEFAULTS[key]
+    } else if (profileProviderKeys.has(key)) {
       const configured = getCfg(key)
       form[key] = Array.isArray(configured)
         ? (configured.length === 1 && configured[0] === 'all_enabled'
@@ -451,6 +474,10 @@ const profileProviderKeys = new Set([
 }
 
 function isLaboratoryFieldVisible(key: string): boolean {
+  if (key.startsWith('cache.') && key !== 'cache.backend') {
+    if (!['redis', 'valkey'].includes(String(form['cache.backend']))) return false
+    if (key === 'cache.username' || key === 'cache.password') return form['cache.auth_mode'] === 'password'
+  }
   if (key === 'laboratory.ai_inference_url' || key === 'recognition.providers.anitopy_ml.reliability') {
     return aiInferenceEnabled.value
   }
@@ -552,6 +579,16 @@ async function saveLaboratory(tab: string) {
   const providerKeys = tab === 'ai' ? extensionProviderKeys.value : []
   if (tab === 'ai') sectionKeys.push('recognition.profiles.parse_only.providers', 'recognition.profiles.resolve.providers')
   if (tab === 'cache') {
+    if (['redis', 'valkey'].includes(String(form['cache.backend']))) {
+      if (!String(form['cache.host'] || '').trim()) {
+        modal.error('请填写缓存服务器地址')
+        return
+      }
+      if (form['cache.auth_mode'] === 'password' && !String(form['cache.password'] || '')) {
+        modal.error('密码认证模式下请填写密码')
+        return
+      }
+    }
     const maxMiB = Number(form['recognition.cache.parse.max_bytes'])
     const maxEntryMiB = Number(form['recognition.cache.parse.max_entry_bytes'])
     if (!Number.isFinite(maxMiB) || !Number.isFinite(maxEntryMiB) || maxMiB <= 0 || maxEntryMiB <= 0) {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { type QTableColumn } from 'quasar'
-import { clearSystemCache, getSystemCacheInfo, type SystemCache } from '@/api/cache'
+import { clearSystemCache, getSystemCacheInfo, type CacheBackendStatus, type SystemCache } from '@/api/cache'
 import { useModalStore } from '@/stores/modal'
 
 const modal = useModalStore()
@@ -9,6 +9,8 @@ const caches = ref<SystemCache[]>([])
 const loading = ref(false)
 const clearing = ref('')
 const error = ref('')
+const backend = ref<CacheBackendStatus | null>(null)
+const backendLabels: Record<string, string> = { memory: '内存', memory_disk: '内存＋磁盘', redis: 'Redis', valkey: 'Valkey' }
 const total = computed(() => caches.value.reduce((count, cache) => count + cache.entries, 0))
 const missingMemoryStats = computed(() => caches.value.some((cache) => !hasMemoryStats(cache)))
 const totalMemory = computed(() => missingMemoryStats.value || !caches.value.length
@@ -41,6 +43,7 @@ async function refresh() {
     const result = await getSystemCacheInfo()
     if (result.code !== 0) throw new Error(result.msg || '加载缓存信息失败')
     caches.value = result.caches
+    backend.value = result.backend || null
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '加载缓存信息失败'
   } finally {
@@ -76,10 +79,12 @@ defineExpose({ refresh })
       <q-btn flat color="primary" icon="refresh" label="刷新统计" :loading="loading" :disable="Boolean(clearing)" @click="refresh" />
       <q-btn outline color="negative" label="清理全部缓存" :loading="clearing === 'all'" :disable="loading || Boolean(clearing)" @click="clear('all', '全部缓存')" />
     </div>
-    <div class="text-caption text-secondary q-mb-md">数据缓存持久保存，重启后继续使用未过期的数据。认证令牌和配置加载缓存保存在内存中。</div>
-    <div class="text-caption text-secondary q-mb-md">内存占用按缓存键、值和容器估算；AI 数据量用于容量限制。不同缓存间共享对象可能重复计入合计。</div>
+    <div v-if="backend" class="text-caption text-secondary q-mb-sm">当前缓存后端：{{ backendLabels[backend.backend] || backend.backend }}</div>
+    <q-banner v-if="backend?.fallback" class="bg-warning text-white q-mb-md" rounded>{{ backend.reason }}。<template v-if="['redis', 'valkey'].includes(backend.configured_backend)">当前使用内存缓存，连接恢复后会自动切回。</template></q-banner>
+    <div class="text-caption text-secondary q-mb-md">磁盘模式重启后恢复未过期缓存；内存模式重启后清空。Redis / Valkey 的持久化由服务端配置决定。认证令牌和配置加载缓存始终保存在本机内存中。</div>
+    <div class="text-caption text-secondary q-mb-md">内存模式统计本机缓存，Redis / Valkey 模式统计服务端缓存占用；AI 数据量用于容量限制。</div>
     <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
-    <q-banner v-if="missingMemoryStats" class="bg-warning text-white q-mb-md" rounded>当前接口未提供完整的内存统计，请重启后端后刷新。</q-banner>
+    <q-banner v-if="missingMemoryStats" class="bg-warning text-white q-mb-md" rounded>{{ backend ? '部分缓存未提供内存统计；远程模式请检查服务端 MEMORY USAGE 权限。' : '当前接口未提供完整的内存统计，请重启后端后刷新。' }}</q-banner>
     <q-table flat bordered :rows="caches" :columns="columns" row-key="name" :loading="loading" :pagination="{ rowsPerPage: 0 }" hide-pagination no-data-label="暂无缓存信息" wrap-cells>
       <template #body-cell-entries="props">
         <q-td :props="props">{{ props.row.entries }} / {{ props.row.max_entries || '—' }}</q-td>
@@ -91,7 +96,7 @@ defineExpose({ refresh })
         </q-td>
       </template>
       <template #body-cell-persistent="props">
-        <q-td :props="props"><q-badge :color="props.row.persistent ? 'positive' : 'grey'">{{ props.row.persistent ? '持久保存' : '内存' }}</q-badge></q-td>
+        <q-td :props="props"><q-badge :color="props.row.backend && props.row.backend !== 'memory' ? 'positive' : 'grey'">{{ backendLabels[props.row.backend] || (props.row.persistent ? '持久保存' : '内存') }}</q-badge></q-td>
       </template>
       <template #body-cell-actions="props">
         <q-td :props="props"><q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing)" @click="clear(props.row.name, props.row.label)" /></q-td>
