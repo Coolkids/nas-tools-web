@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { type QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import StorageStatusCard from '@/components/StorageStatusCard.vue'
@@ -32,6 +32,7 @@ const checkId = ref('')
 const checkResult = ref<{ unchanged?: boolean; same_store?: boolean; summary?: Array<{ namespace: string; entries: number }>; excluded?: Array<{ name: string; reason: string }> } | null>(null)
 const task = ref<CacheStorageJob | null>(null)
 const pollingJobId = ref('')
+const now = ref(Date.now())
 const search = ref('')
 const cacheType = ref('all')
 const migrationForm = reactive<CacheStorageCandidate>({
@@ -43,6 +44,22 @@ const remoteBackend = computed(() => ['redis', 'valkey'].includes(migrationForm.
 const migrationCandidateDirty = computed(() => Boolean(migrationBaselineKey.value)
   && JSON.stringify(storageCandidate()) !== migrationBaselineKey.value)
 const total = computed(() => caches.value.reduce((count, cache) => count + cache.entries, 0))
+const taskProgress = computed(() => {
+  const direct = task.value?.progress
+  if (typeof direct === 'number' && Number.isFinite(direct) && direct >= 0 && direct <= 1) return direct
+  const events = task.value?.events || []
+  const latest = events[events.length - 1]
+  return typeof latest?.progress === 'number' && Number.isFinite(latest.progress)
+    && latest.progress >= 0 && latest.progress <= 1 ? latest.progress : null
+})
+const taskElapsed = computed(() => {
+  const created = Number(task.value?.created_at || task.value?.updated_at || 0)
+  return created ? Math.max(0, Math.floor(now.value / 1000 - created)) : 0
+})
+const taskMessage = computed(() => {
+  const events = task.value?.events || []
+  return events[events.length - 1]?.message || task.value?.message || ''
+})
 const missingMemoryStats = computed(() => caches.value.some((cache) => !hasMemoryStats(cache)))
 const totalMemory = computed(() => missingMemoryStats.value || !caches.value.length
   ? null
@@ -261,7 +278,7 @@ async function watchJob(jobId: string) {
   let delay = 1500
   let disconnectedAt = 0
   try {
-    while (pollingJobId.value === jobId) {
+    while (mounted && pollingJobId.value === jobId) {
       try {
         const result = await getCacheJob(jobId)
         if (result.code !== 0 || !result.job) throw new Error(result.msg || '任务暂时不可读取')
@@ -329,7 +346,17 @@ async function clear(name: string, label: string) {
   }
 }
 
-onMounted(refresh)
+let mounted = true
+let elapsedTimer = 0
+onMounted(() => {
+  void refresh()
+  elapsedTimer = window.setInterval(() => { now.value = Date.now() }, 1000)
+})
+onUnmounted(() => {
+  mounted = false
+  pollingJobId.value = ''
+  window.clearInterval(elapsedTimer)
+})
 watch(() => [route.query.tab, route.query.task], ([tab, value]) => {
   if (tab !== 'cache') return
   const id = String(value || '')
@@ -389,7 +416,9 @@ defineExpose({ refresh, confirmLeave })
       <q-card flat bordered class="cache-metric"><span>最近统计</span><strong>{{ latestStatsAt ? new Date(latestStatsAt * 1000).toLocaleTimeString() : '暂不可用' }}</strong><small>{{ latestStatsAt ? new Date(latestStatsAt * 1000).toLocaleDateString() : '统计时间未知' }}</small></q-card>
     </div>
     <q-banner v-if="task && !['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(task.status)" class="bg-info text-white q-mb-md" rounded>
-      <div class="row items-center q-gutter-sm"><span>缓存任务：{{ task.stage }} · {{ task.status }}</span><q-space /><q-btn v-if="task.status === 'RESTART_PENDING'" flat dense color="white" label="重试重启" @click="retryRestart" /><q-btn v-else-if="task.status === 'RECOVERY_REQUIRED'" flat dense color="white" label="重试恢复原缓存" @click="recoverMigration" /><q-btn v-else-if="['CHECKING', 'READY', 'QUIESCING', 'SNAPSHOTTING', 'MIGRATING', 'VALIDATING', 'VALIDATED'].includes(task.status)" flat dense color="white" label="取消任务" @click="cancelMigration" /></div>
+      <div class="row items-center q-gutter-sm"><strong>缓存任务：{{ task.stage }}</strong><span class="cache-task-elapsed">{{ Math.floor(taskElapsed / 60) ? `${Math.floor(taskElapsed / 60)} 分 ` : '' }}{{ taskElapsed % 60 }} 秒 · {{ task.status }}</span><q-space /><q-btn v-if="task.status === 'RESTART_PENDING'" flat dense color="white" label="重试重启" @click="retryRestart" /><q-btn v-else-if="task.status === 'RECOVERY_REQUIRED'" flat dense color="white" label="重试恢复原缓存" @click="recoverMigration" /><q-btn v-else-if="['CHECKING', 'READY', 'QUIESCING', 'SNAPSHOTTING', 'MIGRATING', 'VALIDATING', 'VALIDATED'].includes(task.status)" flat dense color="white" label="取消任务" @click="cancelMigration" /></div>
+      <div v-if="taskMessage" class="q-mt-sm">{{ taskMessage }}</div>
+      <q-linear-progress v-if="taskProgress !== null" :value="taskProgress" color="white" rounded class="q-mt-sm" aria-label="缓存任务进度" />
       <div v-if="task.error" class="q-mt-sm">{{ task.error }}</div>
       <div v-if="Number(task.result?.expired_during_migration) > 0" class="q-mt-sm">迁移期间到期并跳过 {{ task.result?.expired_during_migration }} 条缓存。</div>
       <div v-if="Number(task.result?.wallpaper_entries_limited) > 0" class="q-mt-sm">登录壁纸按上限保留一条，跳过 {{ task.result?.wallpaper_entries_limited }} 条旧记录。</div>

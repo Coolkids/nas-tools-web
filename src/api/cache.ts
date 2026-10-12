@@ -60,7 +60,10 @@ export interface CacheStorageJob {
   kind: string
   status: string
   stage: string
+  created_at?: number
   updated_at: number
+  progress?: number | null
+  message?: string | null
   error?: string | null
   result?: Record<string, unknown> | null
   events?: Array<{ created_at: number; stage: string; message: string; progress?: number | null }>
