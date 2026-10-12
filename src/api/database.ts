@@ -49,6 +49,10 @@ export interface DatabaseInfo {
   server_version?: string | null
   tables?: Record<string, number | null>
   logical_domains?: Record<string, Record<string, number | null>>
+  table_count_mode?: 'estimated' | 'exact'
+  table_count_reasons?: Record<string, string>
+  exact_statistics_at?: string | null
+  statistics_job?: DatabaseJob | null
   supports_space_reclaim?: boolean
   statistics_at?: string
   current_job?: DatabaseJob | null
@@ -79,6 +83,16 @@ export interface DatabaseInfo {
 
 export function getDatabaseInfo() {
   return doAction<{ code: number; msg?: string; database?: DatabaseInfo }>('get_database_info', {})
+}
+
+export function startDatabaseStatisticsRefresh() {
+  return doAction<{ code: number; msg?: string; job_id?: string; job?: DatabaseJob }>(
+    'start_database_statistics_refresh', {
+      idempotency_key: crypto.randomUUID?.() || Array.from(
+        crypto.getRandomValues(new Uint8Array(16)), (value) => value.toString(16).padStart(2, '0')
+      ).join('')
+    }
+  )
 }
 
 export function checkDatabase(candidate: DatabaseCandidate) {

@@ -7,6 +7,7 @@ import {
   cancelDatabaseJob, checkDatabase, checkDatabaseBackup, checkDatabaseBackupDownload, databaseBackupDownloadUrl,
   getDatabaseInfo, getDatabaseJob, prepareSqliteTarget, retryDatabaseRestart,
   startDatabaseBackup, startDatabaseMigration, startDatabaseRestore, startDatabaseSpaceReclaim,
+  startDatabaseStatisticsRefresh,
   uploadDatabaseBackup,
   type DatabaseCandidate, type DatabaseCheck, type DatabaseInfo, type DatabaseJob, type DatabaseType
 } from '@/api/database'
@@ -34,6 +35,7 @@ const checkedCandidateKey = ref('')
 const preparingTarget = ref(false)
 const startingMigration = ref(false)
 const reclaiming = ref(false)
+const statisticsStarting = ref(false)
 const creatingBackup = ref(false)
 const uploading = ref(false)
 const uploadProgress = ref(0)
@@ -156,7 +158,8 @@ async function refresh() {
     const result = await getDatabaseInfo()
     if (result.code !== 0 || !result.database) throw new Error(result.msg || '读取数据库状态失败')
     info.value = result.database
-    const jobs = [result.database.current_job, result.database.pending_database_job].filter(Boolean) as DatabaseJob[]
+    const jobs = [result.database.current_job, result.database.pending_database_job,
+      result.database.statistics_job].filter(Boolean) as DatabaseJob[]
     const current = jobs.find((job) => !terminalStatuses.has(job.status)) || jobs[0]
     if (current && (!task.value || task.value.job_id === current.job_id)) {
       setTask(current, route.query.tab === 'database')
@@ -167,6 +170,21 @@ async function refresh() {
   } finally {
     loading.value = false
     initialLoading.value = false
+  }
+}
+
+async function refreshExactStatistics() {
+  if (statisticsStarting.value) return
+  statisticsStarting.value = true
+  try {
+    const result = await startDatabaseStatisticsRefresh()
+    if (result.code !== 0 || !result.job) throw new Error(result.msg || '无法启动精确统计')
+    setTask(result.job)
+    if (!terminalStatuses.has(result.job.status)) void watchJob(result.job.job_id)
+  } catch (cause) {
+    $q.notify({ type: 'negative', message: humanError(cause, '无法启动精确统计') })
+  } finally {
+    statisticsStarting.value = false
   }
 }
 
@@ -533,7 +551,7 @@ defineExpose({ refresh })
     </div>
 
     <q-banner v-if="task && !terminalStatuses.has(task.status) || task?.status === 'RECOVERY_REQUIRED'" rounded class="db-task-banner q-mb-md">
-      <div class="task-heading"><q-icon name="sync" /><strong>{{ task.kind === 'database_migration' ? '数据库切换' : task.kind === 'database_restore' ? '数据库恢复' : task.kind === 'database_backup' ? '完整备份' : task.kind === 'database_space_reclaim' ? '空间回收' : task.kind === 'database_target_prepare' ? 'SQLite 空库准备' : '备份检查' }}</strong><span>{{ task.stage }} · {{ elapsedLabel(elapsed) }}</span><q-space />
+      <div class="task-heading"><q-icon name="sync" /><strong>{{ task.kind === 'database_migration' ? '数据库切换' : task.kind === 'database_restore' ? '数据库恢复' : task.kind === 'database_backup' ? '完整备份' : task.kind === 'database_space_reclaim' ? '空间回收' : task.kind === 'database_target_prepare' ? 'SQLite 空库准备' : task.kind === 'database_statistics' ? '精确统计' : '备份检查' }}</strong><span>{{ task.stage }} · {{ elapsedLabel(elapsed) }}</span><q-space />
         <q-btn v-if="task.status === 'RESTART_PENDING'" flat dense label="重试重启" @click="retryRestart" />
         <q-btn v-else-if="canCancelTask(task)" flat dense label="取消任务" @click="cancelTask" />
       </div>
@@ -547,7 +565,7 @@ defineExpose({ refresh })
 
     <div class="db-content-grid">
       <q-card flat bordered class="db-section-card overview-card">
-        <div class="section-heading"><div><div class="text-subtitle1">数据概览</div><div class="text-caption text-secondary">记录数来自当前活动连接；权限不足或统计失败显示为暂不可用。</div></div><q-btn flat dense color="primary" icon="refresh" aria-label="刷新数据库统计" :loading="loading" @click="refresh" /></div>
+        <div class="section-heading"><div><div class="text-subtitle1">数据概览</div><div class="text-caption text-secondary"><template v-if="info?.table_count_mode === 'exact'">精确记录数 · {{ formatDate(info?.exact_statistics_at) }}</template><template v-else>记录数为数据库目录估算；可在后台异步刷新精确值。</template> 权限不足或统计失败显示为暂不可用。 <span v-if="info?.table_count_reasons?._all">{{ info.table_count_reasons._all }}</span></div></div><div class="row q-gutter-xs"><q-btn flat dense color="primary" icon="refresh" aria-label="刷新数据库状态" :loading="loading" @click="refresh" /><q-btn outline dense color="primary" label="精确统计" :loading="statisticsStarting || (task?.kind === 'database_statistics' && !terminalStatuses.has(task.status))" :disable="conflictBusy || statisticsStarting" @click="refreshExactStatistics" /></div></div>
         <q-input v-model="search" dense outlined clearable label="搜索表名" class="table-search"><template #prepend><q-icon name="search" /></template></q-input>
         <q-expansion-item v-for="domain in filteredDomains" :key="domain.name" default-opened expand-separator header-class="domain-header">
           <template #header><q-item-section><q-item-label>{{ domain.label }}</q-item-label><q-item-label caption>{{ domain.rows.length }} 张表 · {{ countLabel(domainRowCount(domain.rows)) }} 条记录</q-item-label></q-item-section></template>
