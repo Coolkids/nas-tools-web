@@ -708,7 +708,7 @@ defineExpose({ refresh, confirmLeave })
 
     <q-dialog v-model="migrationOpen" :maximized="$q.screen.lt.sm" persistent>
       <q-card class="migration-dialog">
-        <q-card-section class="row items-center no-wrap"><div class="text-h6">切换数据库</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭切换数据库向导" :disable="startingMigration || preparingTarget || checking" @click="closeMigration" /></q-card-section>
+        <q-card-section class="row items-center no-wrap"><div class="text-h6">切换数据库</div><q-space /><q-btn flat round dense icon="close" :aria-label="conflictBusy ? '收起数据库切换向导' : '关闭数据库切换向导'" :disable="startingMigration || preparingTarget || checking" @click="closeMigration" /></q-card-section>
         <q-separator />
         <q-stepper v-model="migrationStep" flat color="primary" animated :vertical="$q.screen.lt.sm" class="migration-stepper">
           <q-step :name="1" title="目标连接" icon="tune" :done="migrationStep > 1">
@@ -757,7 +757,7 @@ defineExpose({ refresh, confirmLeave })
             </q-stepper-navigation>
           </q-step>
         </q-stepper>
-        <q-separator /><q-card-actions align="right"><q-btn flat label="关闭" :disable="startingMigration || preparingTarget || checking" @click="closeMigration" /></q-card-actions>
+        <q-separator /><q-card-actions align="right"><q-btn flat :label="conflictBusy ? '收起向导' : '关闭'" :disable="startingMigration || preparingTarget || checking" @click="closeMigration" /></q-card-actions>
       </q-card>
     </q-dialog>
     </template>
