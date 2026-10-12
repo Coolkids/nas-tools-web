@@ -48,7 +48,7 @@ async function shareGroup(group: RuleGroup) { const res = await doAction<{ code:
 function openImport() { importContent.value = ''; importVisible.value = true }
 async function submitImport() { if (!importContent.value) return modal.warning('请粘贴规则内容'); importSaving.value = true; try { const res = await doAction<{ code: number; msg?: string }>('import_filtergroup', { content: importContent.value }); if (res.code === 0) { importVisible.value = false; modal.success('导入成功'); load() } else modal.error(res.msg || '规则导入失败') } finally { importSaving.value = false } }
 function openRestore() { restoreSelected.value = []; restoreVisible.value = true }
-async function submitRestore() { if (!restoreSelected.value.length) return modal.warning('请选择要恢复的规则组'); restoreSaving.value = true; try { const res = await doAction<{ code: number; msg?: string }>('restore_filtergroup', { groupids: restoreSelected.value, init_rulegroups: initGroups.value }); if (res.code === 0) { restoreVisible.value = false; modal.success('恢复成功'); load() } else modal.error('恢复失败') } finally { restoreSaving.value = false } }
+async function submitRestore() { if (!restoreSelected.value.length) return modal.warning('请选择要恢复的规则组'); restoreSaving.value = true; try { const res = await doAction<{ code: number; msg?: string }>('restore_filtergroup', { groupids: restoreSelected.value }); if (res.code === 0) { restoreVisible.value = false; modal.success('恢复成功'); load() } else modal.error(res.msg || '恢复失败') } finally { restoreSaving.value = false } }
 onMounted(load)
 </script>
 
