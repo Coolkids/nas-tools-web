@@ -73,7 +73,7 @@ export function getRecognitionRecordDetail(requestId: string): Promise<Recogniti
 
 export function getRecognitionParseCacheInfo(): Promise<{
   code: number
-  cache?: { entries: number; bytes: number; generation: number; max_entries: number; max_bytes: number }
+  cache?: { entries: number; bytes: number; generation: number; max_entries: number | null; max_bytes: number | null }
   msg?: string
 }> {
   return doAction('get_recognition_parse_cache_info', {})
