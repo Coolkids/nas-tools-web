@@ -20,6 +20,7 @@ export interface DatabaseJob {
   stage: string
   message?: string
   error?: string | null
+  error_code?: string | null
   created_at?: number
   updated_at?: number
   result?: Record<string, unknown> | null
@@ -105,7 +106,10 @@ export function prepareSqliteTarget(candidate: DatabaseCandidate & { check_id: s
   )
 }
 
-export function startDatabaseMigration(candidate: DatabaseCandidate & { check_id: string }) {
+export function startDatabaseMigration(candidate: DatabaseCandidate & {
+  check_id: string
+  confirm_target_exclusive?: boolean
+}) {
   return doAction<{ code: number; msg?: string; job_id?: string; job?: DatabaseJob }>(
     'start_database_migration', candidate
   )

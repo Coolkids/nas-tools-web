@@ -32,6 +32,7 @@ const migrationStep = ref(1)
 const checking = ref(false)
 const checkReport = ref<DatabaseCheck | null>(null)
 const checkId = ref('')
+const targetExclusiveConfirmed = ref(false)
 const checkedCandidateKey = ref('')
 const candidateBaselineKey = ref('')
 const candidateErrors = reactive<Record<string, string>>({})
@@ -323,6 +324,7 @@ async function confirmLeave() {
 }
 
 watch(() => [candidate.type, candidate.host, candidate.port, candidate.name, candidate.username, candidate.password, candidate.connect_timeout, JSON.stringify(candidate.ssl)], () => {
+  targetExclusiveConfirmed.value = false
   if (checkId.value && candidateKey() !== checkedCandidateKey.value) {
     checkId.value = ''
     checkReport.value = null
@@ -383,6 +385,7 @@ async function runCheck() {
   checking.value = true
   checkId.value = ''
   checkReport.value = null
+  targetExclusiveConfirmed.value = false
   const submittedKey = candidateKey()
   try {
     const result = await checkDatabase({ ...candidate })
@@ -419,10 +422,12 @@ async function prepareTarget() {
 
 async function migrate() {
   if (!checkStillValid.value || checkReport.value?.ok !== true) return
+  if (candidateRemote.value && !targetExclusiveConfirmed.value) return
   if (!await modal.confirm('迁移期间数据库写入会暂停。数据校验通过后将保存新配置并自动重启服务；重启确认前页面仍显示原数据库为当前库。', '迁移并重启')) return
   startingMigration.value = true
   try {
-    const result = await startDatabaseMigration({ ...candidate, check_id: checkId.value })
+    const result = await startDatabaseMigration({ ...candidate, check_id: checkId.value,
+      confirm_target_exclusive: candidateRemote.value ? targetExclusiveConfirmed.value : undefined })
     if (result.code !== 0 || !result.job_id || !result.job) throw new Error(result.msg || '无法启动数据库迁移')
     setTask(result.job)
     migrationOpen.value = false
@@ -748,12 +753,16 @@ defineExpose({ refresh, confirmLeave })
               <div v-if="checkReport.target_preparation_required" class="preparation-list q-mt-md"><div class="text-subtitle2">准备操作</div><div class="text-caption text-secondary">旧 SQLite 文件将先制作快照备份，随后从固定位置删除；迁入内容仅来自当前活动数据库。</div><q-chip v-for="file in checkReport.target_files || []" :key="file" icon="description" :label="file.split(/[\\/]/).pop()" /></div>
               <div v-if="checkReport.conflicts?.length" class="text-negative q-mt-md">目标库存在 {{ checkReport.conflict_count || checkReport.conflicts.length }} 个对象：{{ checkReport.conflicts.slice(0, 12).join('、') }}</div>
               <div v-if="checkReport.capabilities" class="text-caption text-secondary q-mt-md">连接探测、事务回滚、锁能力及产品版本检查均由后端完成；数据迁移仍会再次验证目标身份。</div>
+              <q-banner v-if="checkReport.ok && candidateRemote" dense rounded class="bg-warning text-dark q-mt-md">
+                远程目标必须是专用空数据库，并确保迁移期间其他客户端无法写入。应用锁不能限制不协作的外部客户端；检测到目标被修改时会中止迁移且不会清理外部数据。
+                <q-checkbox v-model="targetExclusiveConfirmed" class="q-mt-xs" label="我已确认目标专用，且迁移期间没有其他写入方" />
+              </q-banner>
             </template>
             <q-banner v-else rounded class="bg-grey-2 text-secondary">请先检查候选数据库。</q-banner>
             <q-stepper-navigation class="migration-actions">
               <q-btn flat label="返回修改" :disable="conflictBusy" @click="migrationStep = 1; checkId = ''; checkReport = null" />
               <q-btn v-if="checkReport?.target_preparation_required && candidate.type === 'sqlite'" color="primary" unelevated icon="cleaning_services" label="准备 SQLite 空库" :loading="preparingTarget" :disable="!checkStillValid || conflictBusy" @click="prepareTarget" />
-              <q-btn v-else color="primary" unelevated icon="swap_horiz" label="迁移并重启" :loading="startingMigration" :disable="checkReport?.ok !== true || !checkStillValid || conflictBusy" @click="migrate" />
+              <q-btn v-else color="primary" unelevated icon="swap_horiz" label="迁移并重启" :loading="startingMigration" :disable="checkReport?.ok !== true || !checkStillValid || (candidateRemote && !targetExclusiveConfirmed) || conflictBusy" @click="migrate" />
             </q-stepper-navigation>
           </q-step>
         </q-stepper>
