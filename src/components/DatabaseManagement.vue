@@ -597,6 +597,7 @@ defineExpose({ refresh })
             <template v-if="restoreCheck.status === 'READY'">
               <div class="row items-center q-gutter-sm"><q-icon color="positive" name="verified" /><strong>备份检查通过</strong><q-space /><q-btn color="negative" outline label="确认恢复并重启" :disable="conflictBusy" @click="restore" /></div>
               <div class="text-caption text-secondary q-mt-sm">{{ databaseTypeLabel[String(restoreCheck.result?.source_database_type)] || restoreCheck.result?.source_database_type }} · {{ countLabel(Number(restoreCheck.result?.total_rows)) }} 条记录 · 结构版本 {{ restoreCheck.result?.schema_revision || '未知' }} · {{ bytes(Number(restoreCheck.result?.size_bytes)) }}</div>
+              <div v-if="restoreCheck.result?.legacy_converted" class="text-caption text-secondary q-mt-xs">此为旧版完整 SQLite 双库备份，已在隔离区升级、合并并转换；备份内设置不会覆盖当前配置。</div>
             </template>
             <div v-else-if="restoreCheck.status === 'FAILED'" class="text-negative">备份检查失败：{{ restoreCheck.error || '文件无效' }}</div>
             <div v-else class="text-secondary">备份检查中：{{ restoreCheck.stage }}</div>
