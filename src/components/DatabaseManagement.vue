@@ -138,7 +138,7 @@ function canCancelTask(job: DatabaseJob) {
     database_space_reclaim: ['QUEUED', 'QUIESCING'],
     database_backup: ['SNAPSHOTTING', 'EXPORTING'],
     database_backup_check: ['CHECKING_BACKUP', 'READY'],
-    database_restore: ['BACKING_UP_CURRENT', 'BUILDING_STAGE', 'PUBLISHING_RESTORE']
+    database_restore: ['BACKING_UP_CURRENT', 'BUILDING_STAGE']
   }
   return cancellable[job.kind]?.includes(job.status) || false
 }
