@@ -76,6 +76,7 @@ export interface DatabaseInfo {
     freelist_count?: number | null
     integrity?: string
     estimated_reclaimable_bytes?: number | null
+    connections_to_drain?: number
     reclaim_supported?: boolean
     reclaim_allowed?: boolean
     error?: string

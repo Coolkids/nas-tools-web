@@ -199,7 +199,7 @@ function validateMigrationCandidate() {
   Object.keys(migrationErrors).forEach((field) => delete migrationErrors[field])
   if (!remoteBackend.value) return true
 
-  if (!migrationForm.host.trim()) migrationErrors.host = '请输入 Redis/Valkey 主机地址。'
+  if (!migrationForm.host?.trim()) migrationErrors.host = '请输入 Redis/Valkey 主机地址。'
   if (!Number.isInteger(Number(migrationForm.port)) || Number(migrationForm.port) < 1 || Number(migrationForm.port) > 65535) {
     migrationErrors.port = '端口必须是 1～65535 之间的整数。'
   }
