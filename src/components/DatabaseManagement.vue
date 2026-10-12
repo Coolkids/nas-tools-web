@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { type QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
+import StorageStatusCard from '@/components/StorageStatusCard.vue'
 import {
   cancelDatabaseJob, checkDatabase, checkDatabaseBackup, checkDatabaseBackupDownload, databaseBackupDownloadUrl,
   getDatabaseInfo, getDatabaseJob, prepareSqliteTarget, retryDatabaseRestart,
@@ -32,6 +33,12 @@ const checking = ref(false)
 const checkReport = ref<DatabaseCheck | null>(null)
 const checkId = ref('')
 const checkedCandidateKey = ref('')
+const candidateBaselineKey = ref('')
+const candidateErrors = reactive<Record<string, string>>({})
+const candidateHostField = ref<{ focus: () => void } | null>(null)
+const candidatePortField = ref<{ focus: () => void } | null>(null)
+const candidateNameField = ref<{ focus: () => void } | null>(null)
+const candidateUsernameField = ref<{ focus: () => void } | null>(null)
 const preparingTarget = ref(false)
 const startingMigration = ref(false)
 const reclaiming = ref(false)
@@ -56,8 +63,10 @@ const terminalStatuses = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPT
 const databaseTypeLabel: Record<string, string> = { sqlite: 'SQLite', postgresql: 'PostgreSQL', mysql: 'MySQL', mariadb: 'MariaDB' }
 const active = computed(() => info.value?.active || {})
 const configured = computed(() => info.value?.configured || {})
-const activeType = computed(() => String(active.value.type || 'sqlite'))
+const activeType = computed(() => String(active.value.type || (info.value ? 'sqlite' : '')))
 const candidateRemote = computed(() => candidate.type !== 'sqlite')
+const candidateDirty = computed(() => Boolean(candidateBaselineKey.value)
+  && candidateKey() !== candidateBaselineKey.value)
 const checkStillValid = computed(() => Boolean(checkId.value && checkReport.value
   && candidateKey() === checkedCandidateKey.value))
 const domains = computed(() => Object.entries(info.value?.logical_domains || {}).map(([name, tables]) => ({
@@ -248,6 +257,58 @@ function candidateKey() {
   return JSON.stringify({ ...candidate, password: candidate.password || '' })
 }
 
+async function closeMigration() {
+  if (candidateDirty.value && !await modal.confirm(
+    '候选数据库参数尚未提交，关闭后会丢弃这些修改。', '放弃候选参数')) return
+  migrationOpen.value = false
+}
+
+function clearCandidateError(field: string) {
+  delete candidateErrors[field]
+}
+
+async function focusCandidateField(field: string) {
+  await nextTick()
+  const fields: Record<string, { focus: () => void } | null> = {
+    host: candidateHostField.value,
+    port: candidatePortField.value,
+    name: candidateNameField.value,
+    username: candidateUsernameField.value
+  }
+  fields[field]?.focus()
+}
+
+function validateCandidate() {
+  Object.keys(candidateErrors).forEach((field) => delete candidateErrors[field])
+  if (!candidateRemote.value) return true
+
+  if (!candidate.host.trim()) candidateErrors.host = '请输入数据库主机。'
+  if (!Number.isInteger(Number(candidate.port)) || Number(candidate.port) < 1 || Number(candidate.port) > 65535) {
+    candidateErrors.port = '端口必须是 1～65535 之间的整数。'
+  }
+  if (!candidate.name.trim()) candidateErrors.name = '请输入数据库名。'
+  if (!candidate.username.trim()) candidateErrors.username = '请输入数据库用户名。'
+  if (!Number.isFinite(Number(candidate.connect_timeout)) || Number(candidate.connect_timeout) <= 0 || Number(candidate.connect_timeout) > 120) {
+    candidateErrors.connect_timeout = '连接超时必须大于 0 且不超过 120 秒。'
+  }
+
+  const firstInvalid = ['host', 'port', 'name', 'username', 'connect_timeout'].find((field) => candidateErrors[field])
+  if (firstInvalid) {
+    void focusCandidateField(firstInvalid)
+    return false
+  }
+  return true
+}
+
+async function confirmLeave() {
+  if (!migrationOpen.value) return true
+  if (conflictBusy.value) {
+    migrationOpen.value = false
+    return true
+  }
+  return closeMigration()
+}
+
 watch(() => [candidate.type, candidate.host, candidate.port, candidate.name, candidate.username, candidate.password, candidate.connect_timeout, JSON.stringify(candidate.ssl)], () => {
   if (checkId.value && candidateKey() !== checkedCandidateKey.value) {
     checkId.value = ''
@@ -296,6 +357,7 @@ async function openMigration() {
     connect_timeout: Number(configured.value.connect_timeout || 5),
     ssl: configured.value.ssl && typeof configured.value.ssl === 'object' ? configured.value.ssl : {}
   })
+  candidateBaselineKey.value = candidateKey()
   checkReport.value = null
   checkId.value = ''
   checkedCandidateKey.value = ''
@@ -304,6 +366,7 @@ async function openMigration() {
 }
 
 async function runCheck() {
+  if (!validateCandidate()) return
   checking.value = true
   checkId.value = ''
   checkReport.value = null
@@ -317,6 +380,7 @@ async function runCheck() {
     migrationStep.value = 2
   } catch (cause) {
     modal.error(humanError(cause, '数据库目标检查失败'))
+    if (candidateRemote.value) void focusCandidateField('host')
   } finally {
     checking.value = false
   }
@@ -514,34 +578,47 @@ onMounted(() => {
 })
 
 onUnmounted(() => { mounted.value = false; pollingJobId.value = ''; window.clearInterval(elapsedTimer) })
-defineExpose({ refresh })
+defineExpose({ refresh, confirmLeave })
 </script>
 
 <template>
   <section class="database-management">
     <PageHeader title="数据库管理" description="查看活动数据库、完整备份、恢复与 SQLite 空间维护">
       <template #actions>
+        <span v-if="loading && !initialLoading" class="refresh-status" role="status" aria-live="polite">更新中，保留上次统计</span>
         <q-btn flat color="primary" icon="refresh" label="刷新统计" :loading="loading" @click="refresh" />
         <q-btn color="primary" unelevated icon="swap_horiz" label="切换数据库" :disable="conflictBusy" @click="openMigration" />
       </template>
     </PageHeader>
 
-    <q-inner-loading :showing="initialLoading"><q-spinner-dots color="primary" size="40px" /></q-inner-loading>
+    <div v-if="initialLoading" class="db-loading-skeleton" role="status" aria-live="polite" aria-label="正在加载数据库状态" aria-busy="true">
+      <div class="db-metrics">
+        <q-skeleton v-for="index in 4" :key="index" type="rect" height="104px" class="metric-card" />
+      </div>
+      <div class="db-content-grid">
+        <q-skeleton type="rect" height="360px" class="db-section-card" />
+        <q-skeleton type="rect" height="360px" class="db-section-card" />
+      </div>
+    </div>
+    <template v-else>
     <q-banner v-if="error" rounded class="db-error q-mb-md"><template #avatar><q-icon name="error_outline" /></template>{{ error }}<template #action><q-btn flat label="重试" @click="refresh" /></template></q-banner>
 
-    <q-card flat bordered class="db-status-card q-mb-md">
-      <div class="status-main">
-        <div class="status-icon" :class="info?.connected ? 'is-ok' : 'is-error'"><q-icon :name="info?.connected ? 'database' : 'database_off'" size="26px" /></div>
-        <div class="status-copy">
-          <div class="row items-center q-gutter-sm"><div class="text-h6">{{ databaseTypeLabel[activeType] || activeType }}</div><q-badge :color="info?.connected ? 'positive' : 'negative'" :label="info?.connected ? '连接正常' : '未连接'" /></div>
-          <div class="status-detail">当前使用 · 结构版本 {{ info?.schema_revision || '暂不可用' }}<span v-if="info?.server_version"> · 服务端 {{ info.server_version }}</span></div>
-          <div v-if="info?.error" class="text-negative text-caption q-mt-xs">{{ info.error }}</div>
-        </div>
-      </div>
-      <div v-if="String(configured.type || 'sqlite') !== activeType" class="pending-target"><q-icon name="schedule" /> 已保存，等待重启：{{ databaseTypeLabel[String(configured.type)] || configured.type }}</div>
-      <div v-else-if="info?.pending_database_job && !['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(info.pending_database_job.status)" class="pending-target"><q-icon name="sync" /> 数据库切换任务：{{ info.pending_database_job.stage }}</div>
-      <div class="status-footer"><template v-if="activeType === 'sqlite'">固定文件：&lt;配置文件目录&gt;/db/{{ sqlite?.database_file || 'nastools.db' }}</template><template v-else>{{ active.host || '主机未知' }}:{{ active.port || '默认端口' }} / {{ active.name || '数据库未知' }}</template><span> · 最近统计 {{ formatDate(info?.statistics_at) }}</span></div>
-    </q-card>
+    <StorageStatusCard class="db-status-card q-mb-md"
+      :title="databaseTypeLabel[activeType] || activeType || '暂不可用'"
+      :subtitle="info?.connected ? '当前数据库连接正常' : info ? '当前数据库未连接' : '当前数据库状态暂不可用'"
+      :status="info?.connected ? 'ok' : info ? 'error' : 'unknown'"
+      :status-label="info?.connected ? '连接正常' : info ? '未连接' : '暂不可用'"
+      :icon="info?.connected ? 'database' : 'database_off'">
+      <template #details>
+        <div class="status-detail">当前使用 · 结构版本 {{ info?.schema_revision || '暂不可用' }}<span v-if="info?.server_version"> · 服务端 {{ info.server_version }}</span></div>
+        <div v-if="info?.error" class="text-negative text-caption q-mt-xs">{{ info.error }}</div>
+        <div class="status-footer"><template v-if="activeType === 'sqlite'">固定文件：&lt;配置文件目录&gt;/db/{{ sqlite?.database_file || 'nastools.db' }}</template><template v-else-if="activeType">{{ active.host || '主机未知' }}:{{ active.port || '默认端口' }} / {{ active.name || '数据库未知' }}</template><span> · 最近统计 {{ formatDate(info?.statistics_at) }}</span></div>
+      </template>
+      <template #notice>
+        <div v-if="String(configured.type || 'sqlite') !== activeType" class="pending-target"><q-icon name="schedule" /> 已保存，等待重启：{{ databaseTypeLabel[String(configured.type)] || configured.type }}</div>
+        <div v-else-if="info?.pending_database_job && !['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(info.pending_database_job.status)" class="pending-target"><q-icon name="sync" /> 数据库切换任务：{{ info.pending_database_job.stage }}</div>
+      </template>
+    </StorageStatusCard>
 
     <div class="db-metrics q-mb-md">
       <q-card flat bordered class="metric-card"><div class="metric-label">应用记录数</div><div class="metric-value">{{ countLabel(totalRows) }}</div><div class="metric-foot">main 与 media 逻辑域</div></q-card>
@@ -618,7 +695,7 @@ defineExpose({ refresh })
 
     <q-dialog v-model="migrationOpen" :maximized="$q.screen.lt.sm" persistent>
       <q-card class="migration-dialog">
-        <q-card-section class="row items-center no-wrap"><div class="text-h6">切换数据库</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭切换数据库向导" :disable="startingMigration || preparingTarget" @click="migrationOpen = false" /></q-card-section>
+        <q-card-section class="row items-center no-wrap"><div class="text-h6">切换数据库</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭切换数据库向导" :disable="startingMigration || preparingTarget || checking" @click="closeMigration" /></q-card-section>
         <q-separator />
         <q-stepper v-model="migrationStep" flat color="primary" animated :vertical="$q.screen.lt.sm" class="migration-stepper">
           <q-step :name="1" title="目标连接" icon="tune" :done="migrationStep > 1">
@@ -626,12 +703,12 @@ defineExpose({ refresh })
               <q-select v-model="candidate.type" outlined emit-value map-options label="数据库类型" :options="typeOptions" :disable="conflictBusy" />
               <div v-if="!candidateRemote" class="readonly-path"><q-icon name="lock" /><span><strong>固定 SQLite 文件</strong><small>由后端保存至配置目录的 db/nastools.db；此路径不可修改。</small></span></div>
               <template v-else>
-                <q-input v-model.trim="candidate.host" outlined label="主机" autocomplete="off" />
-                <q-input v-model.number="candidate.port" outlined type="number" label="端口" />
-                <q-input v-model.trim="candidate.name" outlined label="数据库名" autocomplete="off" />
-                <q-input v-model.trim="candidate.username" outlined label="用户名" autocomplete="username" />
+                <q-input ref="candidateHostField" v-model.trim="candidate.host" outlined label="主机" autocomplete="off" :error="Boolean(candidateErrors.host)" :error-message="candidateErrors.host" @update:model-value="clearCandidateError('host')" />
+                <q-input ref="candidatePortField" v-model.number="candidate.port" outlined type="number" label="端口" :error="Boolean(candidateErrors.port)" :error-message="candidateErrors.port" @update:model-value="clearCandidateError('port')" />
+                <q-input ref="candidateNameField" v-model.trim="candidate.name" outlined label="数据库名" autocomplete="off" :error="Boolean(candidateErrors.name)" :error-message="candidateErrors.name" @update:model-value="clearCandidateError('name')" />
+                <q-input ref="candidateUsernameField" v-model.trim="candidate.username" outlined label="用户名" autocomplete="username" :error="Boolean(candidateErrors.username)" :error-message="candidateErrors.username" @update:model-value="clearCandidateError('username')" />
                 <q-input v-model="candidate.password" outlined type="password" label="密码（留空保持已保存密码）" autocomplete="new-password" />
-                <q-input v-model.number="candidate.connect_timeout" outlined type="number" label="连接超时（秒）" />
+                <q-input v-model.number="candidate.connect_timeout" outlined type="number" label="连接超时（秒）" :error="Boolean(candidateErrors.connect_timeout)" :error-message="candidateErrors.connect_timeout" @update:model-value="clearCandidateError('connect_timeout')" />
                 <q-select v-if="candidate.type === 'postgresql'" v-model="candidate.ssl!.mode" outlined emit-value map-options label="TLS 模式" :options="[
                   { value: '', label: '驱动默认' }, { value: 'disable', label: '禁用' }, { value: 'prefer', label: '优先使用' },
                   { value: 'require', label: '必须加密' }, { value: 'verify-ca', label: '验证 CA' }, { value: 'verify-full', label: '验证 CA 与主机名' }
@@ -645,7 +722,7 @@ defineExpose({ refresh })
                 </template>
               </template>
             </div>
-            <q-stepper-navigation><q-btn color="primary" unelevated label="检查连接与空库" icon="search_check" :loading="checking" :disable="conflictBusy || (candidateRemote && (!candidate.host || !candidate.name || !candidate.username))" @click="runCheck" /></q-stepper-navigation>
+            <q-stepper-navigation><q-btn color="primary" unelevated label="检查连接与空库" icon="search_check" :loading="checking" :disable="conflictBusy" @click="runCheck" /></q-stepper-navigation>
           </q-step>
           <q-step :name="2" title="检查结果" icon="fact_check" :done="false">
             <template v-if="checkReport">
@@ -667,21 +744,21 @@ defineExpose({ refresh })
             </q-stepper-navigation>
           </q-step>
         </q-stepper>
-        <q-separator /><q-card-actions align="right"><q-btn flat label="关闭" :disable="startingMigration || preparingTarget" @click="migrationOpen = false" /></q-card-actions>
+        <q-separator /><q-card-actions align="right"><q-btn flat label="关闭" :disable="startingMigration || preparingTarget || checking" @click="closeMigration" /></q-card-actions>
       </q-card>
     </q-dialog>
+    </template>
   </section>
 </template>
 
 <style scoped>
 .database-management { color: var(--text-primary); }
 .database-management :deep(.q-btn) { min-height: 44px; }
-.db-status-card, .db-section-card, .metric-card { border-color: var(--border-subtle); border-radius: 16px; background: var(--surface); box-shadow: 0 3px 14px rgb(15 23 42 / 4%); }
+.refresh-status { color: var(--text-secondary); font-size: 12px; }
+.db-loading-skeleton { display: grid; gap: 16px; }
+.db-loading-skeleton .q-skeleton { background: var(--surface); }
 .db-status-card { padding: 20px 22px 14px; }
-.status-main { display: flex; align-items: center; gap: 14px; }
-.status-icon { width: 48px; height: 48px; flex: 0 0 48px; display: grid; place-items: center; border-radius: 14px; background: color-mix(in srgb, var(--q-positive) 12%, var(--surface)); color: var(--q-positive); }
-.status-icon.is-error { color: var(--q-negative); background: color-mix(in srgb, var(--q-negative) 12%, var(--surface)); }
-.status-copy { min-width: 0; }
+.db-section-card, .metric-card { border-color: var(--border-subtle); border-radius: 16px; background: var(--surface); box-shadow: 0 3px 14px rgb(15 23 42 / 4%); }
 .status-detail, .status-footer, .metric-foot { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
 .status-footer { border-top: 1px solid var(--border-subtle); margin-top: 14px; padding-top: 11px; }
 .pending-target { margin: 14px 0 0 62px; color: var(--q-warning); font-size: 13px; display: flex; gap: 7px; align-items: center; }

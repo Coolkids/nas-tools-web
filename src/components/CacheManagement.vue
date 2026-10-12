@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { type QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
+import StorageStatusCard from '@/components/StorageStatusCard.vue'
 import {
   cancelCacheJob, checkCacheStorage, clearSystemCache, getCacheJob, getSystemCacheInfo, recoverCacheMigration,
   retryCacheRestart, startCacheMigration,
@@ -15,10 +16,16 @@ const route = useRoute()
 const router = useRouter()
 const caches = ref<SystemCache[]>([])
 const loading = ref(false)
+const initialLoading = ref(true)
 const clearing = ref('')
 const error = ref('')
 const backend = ref<CacheBackendStatus | null>(null)
 const migrationOpen = ref(false)
+const migrationBaselineKey = ref('')
+const migrationErrors = reactive<Record<string, string>>({})
+const migrationHostField = ref<{ focus: () => void } | null>(null)
+const migrationPortField = ref<{ focus: () => void } | null>(null)
+const migrationDbField = ref<{ focus: () => void } | null>(null)
 const checkingStorage = ref(false)
 const startingMigration = ref(false)
 const checkId = ref('')
@@ -33,6 +40,8 @@ const migrationForm = reactive<CacheStorageCandidate>({
 })
 const backendLabels: Record<string, string> = { memory: '内存', memory_disk: '内存 + 本地持久化', redis: 'Redis', valkey: 'Valkey' }
 const remoteBackend = computed(() => ['redis', 'valkey'].includes(migrationForm.backend))
+const migrationCandidateDirty = computed(() => Boolean(migrationBaselineKey.value)
+  && JSON.stringify(storageCandidate()) !== migrationBaselineKey.value)
 const total = computed(() => caches.value.reduce((count, cache) => count + cache.entries, 0))
 const missingMemoryStats = computed(() => caches.value.some((cache) => !hasMemoryStats(cache)))
 const totalMemory = computed(() => missingMemoryStats.value || !caches.value.length
@@ -117,6 +126,7 @@ async function refresh() {
         username: '',
         password: ''
       })
+      migrationBaselineKey.value = JSON.stringify(storageCandidate())
     }
     if (result.backend?.current_task) {
       setTask(result.backend.current_task, route.query.tab === 'cache')
@@ -130,6 +140,7 @@ async function refresh() {
     error.value = cause instanceof Error ? cause.message : '加载缓存信息失败'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 
@@ -147,7 +158,63 @@ function storageCandidate(): CacheStorageCandidate {
   }
 }
 
+async function closeMigration() {
+  if (migrationCandidateDirty.value && !await modal.confirm(
+    '候选缓存参数尚未提交，关闭后会丢弃这些修改。', '放弃候选参数')) return
+  migrationOpen.value = false
+}
+
+function clearMigrationError(field: string) {
+  delete migrationErrors[field]
+}
+
+async function focusMigrationField(field: string) {
+  await nextTick()
+  const fields: Record<string, { focus: () => void } | null> = {
+    host: migrationHostField.value,
+    port: migrationPortField.value,
+    db: migrationDbField.value
+  }
+  fields[field]?.focus()
+}
+
+function validateMigrationCandidate() {
+  Object.keys(migrationErrors).forEach((field) => delete migrationErrors[field])
+  if (!remoteBackend.value) return true
+
+  if (!migrationForm.host.trim()) migrationErrors.host = '请输入 Redis/Valkey 主机地址。'
+  if (!Number.isInteger(Number(migrationForm.port)) || Number(migrationForm.port) < 1 || Number(migrationForm.port) > 65535) {
+    migrationErrors.port = '端口必须是 1～65535 之间的整数。'
+  }
+  if (!Number.isInteger(Number(migrationForm.db)) || Number(migrationForm.db) < 0) {
+    migrationErrors.db = '数据库编号必须是非负整数。'
+  }
+  if (!Number.isFinite(Number(migrationForm.connect_timeout)) || Number(migrationForm.connect_timeout) <= 0 || Number(migrationForm.connect_timeout) > 120) {
+    migrationErrors.connect_timeout = '连接超时必须大于 0 且不超过 120 秒。'
+  }
+  if (!Number.isFinite(Number(migrationForm.retry_interval)) || Number(migrationForm.retry_interval) < 1 || Number(migrationForm.retry_interval) > 3600) {
+    migrationErrors.retry_interval = '故障恢复探测间隔必须是 1～3600 秒。'
+  }
+
+  const firstInvalid = ['host', 'port', 'db', 'connect_timeout', 'retry_interval'].find((field) => migrationErrors[field])
+  if (firstInvalid) {
+    void focusMigrationField(firstInvalid)
+    return false
+  }
+  return true
+}
+
+async function confirmLeave() {
+  if (!migrationOpen.value) return true
+  if (task.value && !['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'RECOVERY_REQUIRED'].includes(task.value.status)) {
+    migrationOpen.value = false
+    return true
+  }
+  return closeMigration()
+}
+
 async function checkStorage() {
+  if (!validateMigrationCandidate()) return
   checkingStorage.value = true
   checkId.value = ''
   checkResult.value = null
@@ -158,6 +225,7 @@ async function checkStorage() {
     checkResult.value = result
   } catch (cause) {
     modal.error(cause instanceof Error ? cause.message : '缓存目标检查失败')
+    if (remoteBackend.value) void focusMigrationField('host')
   } finally {
     checkingStorage.value = false
   }
@@ -275,28 +343,45 @@ watch(() => [route.query.tab, route.query.task], ([tab, value]) => {
     }
   }).catch(() => undefined)
 }, { immediate: true })
-defineExpose({ refresh })
+defineExpose({ refresh, confirmLeave })
 </script>
 
 <template>
   <section class="q-mb-lg">
     <div class="row items-center q-gutter-sm q-mb-md">
-      <div class="text-subtitle1">系统缓存 · {{ total }} 条</div>
+      <div class="text-subtitle1">系统缓存 · {{ backend ? total : '暂不可用' }} 条</div>
       <div class="text-caption text-secondary">{{ totalMemory === null ? '合计内存暂不可用' : `合计内存约 ${formatBytes(totalMemory)}` }}</div>
+      <div v-if="loading && !initialLoading" class="text-caption text-secondary" role="status" aria-live="polite">更新中，保留上次统计</div>
       <q-space />
       <q-btn outline color="primary" icon="swap_horiz" label="迁移保存方式" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="migrationOpen = true" />
       <q-btn flat color="primary" icon="refresh" label="刷新统计" :loading="loading" :disable="Boolean(clearing)" @click="refresh" />
     </div>
-    <q-card v-if="backend" flat bordered class="cache-status-card q-mb-md">
-      <div class="cache-status-heading"><div class="cache-status-icon" :class="backend.fallback ? 'is-warning' : 'is-ok'"><q-icon :name="backend.fallback ? 'sync_problem' : 'storage'" size="22px" /></div><div class="cache-status-copy"><strong>当前使用：{{ backendLabels[backend.active_backend || backend.backend] || backend.backend }}</strong><span>{{ backend.fallback ? '远程目标不可用，当前使用内存缓存' : '缓存后端连接正常' }}</span></div><q-badge :color="backend.fallback ? 'warning' : 'positive'" :label="backend.fallback ? '已降级' : '运行正常'" /></div>
+    <div v-if="initialLoading" class="cache-loading-skeleton" role="status" aria-live="polite" aria-label="正在加载缓存状态" aria-busy="true">
+      <div class="cache-metrics">
+        <q-skeleton v-for="index in 4" :key="index" type="rect" height="92px" class="cache-metric" />
+      </div>
+      <q-skeleton type="rect" height="280px" class="cache-loading-table" />
+    </div>
+    <template v-else>
+    <StorageStatusCard v-if="backend" class="cache-status-card q-mb-md"
+      :title="`当前使用：${backendLabels[backend.active_backend || backend.backend] || backend.backend}`"
+      :subtitle="backend.fallback ? '远程目标不可用，当前使用内存缓存' : '缓存后端连接正常'"
+      :status="backend.fallback ? 'warning' : 'ok'"
+      :status-label="backend.fallback ? '已降级' : '运行正常'"
+      :icon="backend.fallback ? 'sync_problem' : 'storage'">
+      <template #details>
       <div class="cache-status-details">
         <span v-if="backend.configured_backend !== (backend.active_backend || backend.backend)">配置目标：{{ backendLabels[backend.configured_backend] || backend.configured_backend }} · 等待重启</span>
         <span v-else>配置目标与活动保存方式一致</span>
         <span v-if="backend.store_path">固定本地路径：{{ backend.store_path }}</span>
+        <span v-if="backend.connection && ['redis', 'valkey'].includes(backend.configured_backend)">远程目标：{{ backend.connection.host }}:{{ backend.connection.port }} / {{ backend.connection.db }}</span>
         <span>内存统计口径：{{ backend.memory_scope === 'remote' ? '远程缓存服务' : '本机' }}</span>
       </div>
+      </template>
+      <template #notice>
       <q-banner v-if="backend.fallback" dense rounded class="bg-warning text-dark q-mt-sm">{{ backend.reason }}。<template v-if="['redis', 'valkey'].includes(backend.configured_backend)">当前使用内存缓存，连接恢复后会自动切回。</template></q-banner>
-    </q-card>
+      </template>
+    </StorageStatusCard>
     <div v-if="backend" class="cache-metrics q-mb-md">
       <q-card flat bordered class="cache-metric"><span>有效条数</span><strong>{{ total.toLocaleString() }}</strong><small>当前活动命名空间</small></q-card>
       <q-card flat bordered class="cache-metric"><span>{{ backend.memory_scope === 'remote' ? '远程内存估算' : '本机内存估算' }}</span><strong>{{ totalMemory === null ? '暂不可用' : formatBytes(totalMemory) }}</strong><small>估算值，不与持久化占用相加</small></q-card>
@@ -378,42 +463,45 @@ defineExpose({ refresh })
             { value: 'redis', label: 'Redis' }, { value: 'valkey', label: 'Valkey' }
           ]" @update:model-value="checkId = ''; checkResult = null" />
           <template v-if="remoteBackend">
-            <q-input v-model="migrationForm.host" outlined dense label="服务器地址" @update:model-value="checkId = ''; checkResult = null" />
-            <q-input v-model.number="migrationForm.port" outlined dense type="number" label="端口" @update:model-value="checkId = ''; checkResult = null" />
-            <q-input v-model.number="migrationForm.db" outlined dense type="number" label="数据库编号" @update:model-value="checkId = ''; checkResult = null" />
+            <q-input ref="migrationHostField" v-model.trim="migrationForm.host" outlined dense label="服务器地址" :error="Boolean(migrationErrors.host)" :error-message="migrationErrors.host" @update:model-value="clearMigrationError('host'); checkId = ''; checkResult = null" />
+            <q-input ref="migrationPortField" v-model.number="migrationForm.port" outlined dense type="number" label="端口" :error="Boolean(migrationErrors.port)" :error-message="migrationErrors.port" @update:model-value="clearMigrationError('port'); checkId = ''; checkResult = null" />
+            <q-input ref="migrationDbField" v-model.number="migrationForm.db" outlined dense type="number" label="数据库编号" :error="Boolean(migrationErrors.db)" :error-message="migrationErrors.db" @update:model-value="clearMigrationError('db'); checkId = ''; checkResult = null" />
             <q-select v-model="migrationForm.auth_mode" outlined dense label="认证方式" emit-value map-options :options="[
               { value: 'none', label: '无密码认证' }, { value: 'password', label: '密码认证' }
             ]" @update:model-value="checkId = ''; checkResult = null" />
             <q-input v-if="migrationForm.auth_mode === 'password'" v-model="migrationForm.username" outlined dense label="用户名（可选）" placeholder="同一目标留空表示保持" autocomplete="off" @update:model-value="checkId = ''; checkResult = null" />
             <q-input v-if="migrationForm.auth_mode === 'password'" v-model="migrationForm.password" outlined dense type="password" label="密码" placeholder="同一目标留空表示保持；新目标需填写" autocomplete="new-password" @update:model-value="checkId = ''; checkResult = null" />
-            <q-input v-model.number="migrationForm.connect_timeout" outlined dense type="number" label="连接超时（秒）" @update:model-value="checkId = ''; checkResult = null" />
-            <q-input v-model.number="migrationForm.retry_interval" outlined dense type="number" label="故障恢复探测间隔（秒）" @update:model-value="checkId = ''; checkResult = null" />
+            <q-input v-model.number="migrationForm.connect_timeout" outlined dense type="number" label="连接超时（秒）" :error="Boolean(migrationErrors.connect_timeout)" :error-message="migrationErrors.connect_timeout" @update:model-value="clearMigrationError('connect_timeout'); checkId = ''; checkResult = null" />
+            <q-input v-model.number="migrationForm.retry_interval" outlined dense type="number" label="故障恢复探测间隔（秒）" :error="Boolean(migrationErrors.retry_interval)" :error-message="migrationErrors.retry_interval" @update:model-value="clearMigrationError('retry_interval'); checkId = ''; checkResult = null" />
           </template>
         </q-card-section>
         <q-banner v-if="checkResult" class="q-mx-md q-mb-md" :class="checkResult.unchanged ? 'bg-blue-1' : 'bg-green-1'" rounded>
           {{ checkResult.unchanged ? '存储配置没有变化，无需迁移。' : checkResult.same_store ? '存储空间相同，将验证缓存并保存连接参数。' : `目标检查通过，将迁移 ${checkResult.summary?.reduce((sum, item) => sum + item.entries, 0) || 0} 条有效缓存。` }}
           <div v-if="checkResult.excluded?.length" class="q-mt-sm">不迁移的本机临时缓存：{{ checkResult.excluded.map((item) => `${item.name}（${item.reason}）`).join('；') }}。</div>
         </q-banner>
+        <q-banner v-if="migrationForm.backend === 'memory' && !checkResult?.unchanged" dense rounded class="q-mx-md q-mb-md bg-grey-2 text-secondary">
+          本次切换会通过受限临时快照在新进程恢复未过期缓存；之后普通重启仍会清空内存缓存。
+        </q-banner>
         <q-card-actions align="right">
-          <q-btn flat label="关闭" :disable="checkingStorage || startingMigration" @click="migrationOpen = false" />
+          <q-btn flat label="关闭" :disable="checkingStorage || startingMigration" @click="closeMigration" />
           <q-btn outline color="primary" label="检查目标" :loading="checkingStorage" :disable="startingMigration" @click="checkStorage" />
           <q-btn color="primary" unelevated label="迁移并重启" :loading="startingMigration" :disable="!checkId || checkingStorage" @click="beginMigration" />
         </q-card-actions>
       </q-card>
     </q-dialog>
+    </template>
   </section>
 </template>
 
 <style scoped>
 .cache-card { width: 100%; }
+.cache-loading-skeleton { display: grid; gap: 14px; }
+.cache-loading-skeleton .q-skeleton { background: var(--surface); }
+.cache-loading-table { border: 1px solid var(--border-subtle); border-radius: 12px; }
 .cache-card-stats { display: grid; gap: 4px; overflow-wrap: anywhere; }
-.cache-status-card, .cache-metric, .cache-maintenance-card { border-color: var(--border-subtle); border-radius: 16px; background: var(--surface); }
 .cache-status-card { padding: 16px 18px; }
-.cache-status-heading { display: flex; align-items: center; gap: 12px; }
-.cache-status-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: var(--q-positive); background: color-mix(in srgb, var(--q-positive) 12%, var(--surface)); }
-.cache-status-icon.is-warning { color: var(--q-warning); background: color-mix(in srgb, var(--q-warning) 14%, var(--surface)); }
-.cache-status-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }.cache-status-copy span, .cache-status-details { color: var(--text-secondary); font-size: 12px; }
-.cache-status-details { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 0 54px; overflow-wrap: anywhere; }
+.cache-metric, .cache-maintenance-card { border-color: var(--border-subtle); border-radius: 16px; background: var(--surface); }
+.cache-status-details { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 0 60px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
 .cache-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .cache-metric { padding: 14px 16px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }.cache-metric span, .cache-metric small { color: var(--text-secondary); font-size: 12px; }.cache-metric strong { font-size: 22px; overflow-wrap: anywhere; }
 .cache-maintenance-card { padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
