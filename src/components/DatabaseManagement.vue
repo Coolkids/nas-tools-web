@@ -607,6 +607,7 @@ defineExpose({ refresh })
           <div class="section-heading"><div><div class="text-subtitle1">SQLite 空间回收</div><div class="text-caption text-secondary">作用于固定位置的整库 nastools.db。</div></div><q-icon name="cleaning_services" color="primary" size="22px" /></div>
           <div class="space-stats"><div><span>数据库文件</span><strong>{{ bytes(sqlite?.database_size_bytes) }}</strong></div><div><span>WAL 文件</span><strong>{{ bytes(sqlite?.wal_size_bytes) }}</strong></div><div><span>空闲页估算</span><strong>{{ bytes(sqlite?.estimated_reclaimable_bytes) }}</strong></div></div>
           <div v-if="sqlite?.error || sqlite?.reclaim_allowed === false" class="text-caption text-warning q-mt-sm">{{ sqlite.error || '当前暂不可执行空间回收' }}</div>
+          <div v-else-if="sqlite?.connections_to_drain" class="text-caption text-secondary q-mt-sm">当前有 {{ sqlite.connections_to_drain }} 个活动连接；任务会先等待请求和事务排空。</div>
           <q-btn class="full-width q-mt-md" outline color="primary" icon="compress" label="回收整库空间" :loading="reclaiming" :disable="conflictBusy || sqlite?.reclaim_allowed === false" @click="startReclaim" />
           <div class="text-caption text-secondary q-mt-sm">开始前会检查数据库完整性、空间余量和活动连接；完成后展示实际释放量。</div>
         </q-card>
