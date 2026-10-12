@@ -374,7 +374,7 @@ defineExpose({ refresh, confirmLeave })
 </script>
 
 <template>
-  <section class="q-mb-lg">
+  <section class="cache-management q-mb-lg">
     <div class="row items-center q-gutter-sm q-mb-md">
       <div class="text-subtitle1">系统缓存 · {{ backend ? total : '暂不可用' }} 条</div>
       <div class="text-caption text-secondary">{{ totalMemory === null ? '合计内存暂不可用' : `合计内存约 ${formatBytes(totalMemory)}` }}</div>
@@ -524,6 +524,7 @@ defineExpose({ refresh, confirmLeave })
 
 <style scoped>
 .cache-card { width: 100%; }
+.cache-management :deep(.q-btn) { min-height: 44px; }
 .cache-loading-skeleton { display: grid; gap: 14px; }
 .cache-loading-skeleton .q-skeleton { background: var(--surface); }
 .cache-loading-table { border: 1px solid var(--border-subtle); border-radius: 12px; }
@@ -539,7 +540,6 @@ defineExpose({ refresh, confirmLeave })
 .cache-filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 260px); gap: 10px; }
 .cache-search, .cache-type-filter { min-width: 0; }
 @media (max-width: 599px) {
-  section :deep(.q-btn) { min-height: 44px; }
   .migration-dialog { min-height: 100dvh; max-height: 100dvh; }.migration-dialog :deep(.q-card__actions) { padding-bottom: calc(12px + var(--safe-bottom)); }
   .migration-fields { grid-template-columns: minmax(0, 1fr); }
   .cache-filters { grid-template-columns: minmax(0, 1fr); }
