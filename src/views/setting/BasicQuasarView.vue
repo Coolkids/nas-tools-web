@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import CacheManagement from '@/components/CacheManagement.vue'
+import DatabaseManagement from '@/components/DatabaseManagement.vue'
 import { useConfigForm } from '@/composables/useConfigForm'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api'
@@ -45,6 +47,8 @@ type RecognitionProvider = {
 
 const { config, loading, saving, load, save } = useConfigForm()
 const modal = useModalStore()
+const route = useRoute()
+const router = useRouter()
 
 const RMT_MODES: Option[] = [
   { value: 'copy', label: '复制' },
@@ -57,8 +61,10 @@ const RMT_MODES: Option[] = [
   { value: 'rustfs', label: 'rustfs移动' }
 ]
 
-const activeTab = ref('system')
+const settingTabs = ['system', 'media', 'service', 'security', 'ai', 'cache', 'database', 'laboratory']
+const activeTab = ref(settingTabs.includes(String(route.query.tab)) ? String(route.query.tab) : 'system')
 const cacheManagement = ref<InstanceType<typeof CacheManagement>[]>([])
+const databaseManagement = ref<InstanceType<typeof DatabaseManagement>[]>([])
 const form = reactive<Record<string, unknown>>({})
 const recognitionProviders = ref<RecognitionProvider[]>([])
 const preferredGenreOptions = ref<Option[]>([
@@ -73,6 +79,20 @@ const extensionProviders = computed(() => recognitionProviders.value.filter(
 ))
 const extensionProviderKeys = ref<string[]>([])
 const extensionProviderSchemas = ref<Record<string, ProviderConfigField>>({})
+
+watch(() => route.query.tab, (tab) => {
+  const next = tab && settingTabs.includes(String(tab)) ? String(tab) : 'system'
+  if (activeTab.value !== next) activeTab.value = next
+})
+watch(activeTab, (tab) => {
+  if (route.query.tab !== tab) {
+    const query: LocationQuery = { ...route.query, tab }
+    delete query.task
+    void router.replace({ query })
+  }
+  if (tab === 'cache') void Promise.all(cacheManagement.value.map((panel) => panel.refresh()))
+  if (tab === 'database') void Promise.all(databaseManagement.value.map((panel) => panel.refresh()))
+})
 
 const SYSTEM_KEYS = [
   'app.logtype', 'app.logpath', 'app.logserver', 'app.loglevel', 'app.wallpaper',
@@ -645,7 +665,7 @@ onMounted(loadData)
 
 <template>
   <div class="basic-view page-shell">
-    <PageHeader title="基础设置" description="系统、媒体、服务、安全、AI 推理与缓存配置" />
+    <PageHeader title="基础设置" description="系统、媒体、服务、安全、AI 推理、缓存与数据库配置" />
     <q-card flat bordered class="settings-card">
       <q-tabs v-model="activeTab" active-color="primary" indicator-color="primary" align="left" narrow-indicator scrollable>
         <q-tab name="system" label="系统" />
@@ -654,12 +674,14 @@ onMounted(loadData)
         <q-tab name="security" label="安全" />
         <q-tab name="ai" label="AI 推理" />
         <q-tab name="cache" label="缓存" />
+        <q-tab name="database" label="数据库" />
         <q-tab name="laboratory" label="实验室" />
       </q-tabs>
       <q-separator />
       <q-tab-panels v-model="activeTab" animated>
-        <q-tab-panel v-for="(fields, tab) in { system: SYSTEM_FIELDS, media: MEDIA_FIELDS, service: SERVICE_FIELDS, security: SECURITY_FIELDS, ai: LAB_FIELDS, cache: LAB_FIELDS, laboratory: LAB_FIELDS }" :key="tab" :name="tab">
-          <template v-if="['ai', 'cache', 'laboratory'].includes(tab)">
+        <q-tab-panel v-for="(fields, tab) in { system: SYSTEM_FIELDS, media: MEDIA_FIELDS, service: SERVICE_FIELDS, security: SECURITY_FIELDS, ai: LAB_FIELDS, cache: LAB_FIELDS, database: [], laboratory: LAB_FIELDS }" :key="tab" :name="tab">
+          <DatabaseManagement v-if="tab === 'database'" ref="databaseManagement" :task-id="route.query.tab === 'database' && typeof route.query.task === 'string' ? route.query.task : undefined" />
+          <template v-else-if="['ai', 'cache', 'laboratory'].includes(tab)">
             <CacheManagement v-if="tab === 'cache'" ref="cacheManagement" />
             <section v-for="section in laboratoryFieldSections.filter((section) => section.tab === tab)" :key="section.title" class="laboratory-settings-group">
               <div class="laboratory-group-heading">
@@ -734,10 +756,10 @@ onMounted(loadData)
               </div>
             </div>
           </section>
-          <div class="card-footer">
+          <div v-if="tab !== 'database'" class="card-footer">
             <template v-if="tab === 'system'"><q-btn outline color="primary" label="自定义 CSS/JavaScript" @click="openScript" /></template>
             <template v-if="tab === 'media'"><q-btn outline color="primary" label="刮削设置" @click="openScraper" /><q-btn outline color="primary" label="自定义制作组/字幕组" @click="openReleaseGroups" /></template>
-            <q-btn color="primary" unelevated label="保存" :loading="saving" @click="['ai', 'cache', 'laboratory'].includes(tab) ? saveLaboratory(tab) : saveSection(tab === 'system' ? SYSTEM_KEYS : tab === 'media' ? MEDIA_KEYS : tab === 'service' ? SERVICE_KEYS : SECURITY_KEYS)" />
+            <q-btn color="primary" unelevated :label="tab === 'cache' ? '保存缓存策略' : '保存'" :loading="saving" @click="['ai', 'cache', 'laboratory'].includes(tab) ? saveLaboratory(tab) : saveSection(tab === 'system' ? SYSTEM_KEYS : tab === 'media' ? MEDIA_KEYS : tab === 'service' ? SERVICE_KEYS : SECURITY_KEYS)" />
           </div>
         </q-tab-panel>
       </q-tab-panels>

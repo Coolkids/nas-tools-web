@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { type QTableColumn, useQuasar } from 'quasar'
+import { useRoute, useRouter } from 'vue-router'
 import {
   cancelCacheJob, checkCacheStorage, clearSystemCache, getCacheJob, getSystemCacheInfo, recoverCacheMigration,
   retryCacheRestart, startCacheMigration,
@@ -10,6 +11,8 @@ import { useModalStore } from '@/stores/modal'
 
 const modal = useModalStore()
 const $q = useQuasar()
+const route = useRoute()
+const router = useRouter()
 const caches = ref<SystemCache[]>([])
 const loading = ref(false)
 const clearing = ref('')
@@ -22,6 +25,8 @@ const checkId = ref('')
 const checkResult = ref<{ unchanged?: boolean; same_store?: boolean; summary?: Array<{ namespace: string; entries: number }>; excluded?: Array<{ name: string; reason: string }> } | null>(null)
 const task = ref<CacheStorageJob | null>(null)
 const pollingJobId = ref('')
+const search = ref('')
+const cacheType = ref('all')
 const migrationForm = reactive<CacheStorageCandidate>({
   backend: 'memory_disk', host: '127.0.0.1', port: 6379, db: 0,
   auth_mode: 'none', username: '', password: '', connect_timeout: 0.5, retry_interval: 30
@@ -33,10 +38,34 @@ const missingMemoryStats = computed(() => caches.value.some((cache) => !hasMemor
 const totalMemory = computed(() => missingMemoryStats.value || !caches.value.length
   ? null
   : caches.value.reduce((bytes, cache) => bytes + cache.memory_bytes!, 0))
+const persistentBytes = computed(() => {
+  if ((backend.value?.active_backend || backend.value?.backend) === 'memory') return 0
+  if (backend.value?.memory_scope === 'remote') {
+    const values = caches.value.filter((cache) => cache.backend === 'redis' || cache.backend === 'valkey').map((cache) => cache.bytes)
+    if (!values.length || values.some((value) => typeof value !== 'number' || !Number.isFinite(value))) return null
+    return values.reduce<number>((sum, value) => sum + Number(value), 0)
+  }
+  const values = caches.value.filter((cache) => cache.persistent).map((cache) => cache.store_bytes)
+  if (!values.length || values.some((value) => typeof value !== 'number' || !Number.isFinite(value))) return null
+  // SQLite 文件总大小会在每个命名空间行重复返回，取一次即可。
+  return Math.max(...values.map(Number))
+})
+const latestStatsAt = computed(() => Math.max(0, ...caches.value.map((cache) => Number(cache.stats_at || 0))))
+const filteredCaches = computed(() => caches.value.filter((cache) => {
+  const query = search.value.trim().toLocaleLowerCase()
+  const matchesSearch = !query || `${cache.label} ${cache.name}`.toLocaleLowerCase().includes(query)
+  const matchesType = cacheType.value === 'all'
+    || (cacheType.value === 'persistent' && cache.persistent)
+    || (cacheType.value === 'memory' && !cache.persistent)
+    || (cacheType.value === 'recognition' && /recognition|parse|ai/i.test(`${cache.name} ${cache.label}`))
+    || (cacheType.value === 'wallpaper' && /wallpaper/i.test(`${cache.name} ${cache.label}`))
+  return matchesSearch && matchesType
+}))
 const columns: QTableColumn<SystemCache>[] = [
   { name: 'label', label: '缓存类型', field: 'label', align: 'left' },
-  { name: 'entries', label: '有效条数', field: 'entries', align: 'right' },
+  { name: 'entries', label: '有效条数', field: 'entries', align: 'right', sortable: true },
   { name: 'memory_bytes', label: '内存占用（估算）', field: 'memory_bytes', align: 'right', sortable: true },
+  { name: 'ttl_seconds', label: '有效期', field: 'ttl_seconds', align: 'right', sortable: true },
   { name: 'persistent', label: '保存方式', field: 'persistent', align: 'left' },
   { name: 'actions', label: '操作', field: 'name', align: 'right' }
 ]
@@ -58,6 +87,22 @@ function formatTime(value?: number | null) {
   return `统计于 ${new Date(value * 1000).toLocaleString()}`
 }
 
+function formatTtl(value?: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
+  if (value <= 0) return '不自动过期'
+  if (value >= 86400) return `${Math.floor(value / 86400)} 天`
+  if (value >= 3600) return `${Math.floor(value / 3600)} 小时`
+  if (value >= 60) return `${Math.floor(value / 60)} 分钟`
+  return `${value} 秒`
+}
+
+function setTask(value: CacheStorageJob, syncQuery = true) {
+  task.value = value
+  if (syncQuery && route.query.task !== value.job_id) {
+    void router.replace({ query: { ...route.query, tab: 'cache', task: value.job_id } })
+  }
+}
+
 async function refresh() {
   loading.value = true
   error.value = ''
@@ -74,8 +119,12 @@ async function refresh() {
       })
     }
     if (result.backend?.current_task) {
-      task.value = result.backend.current_task
-      void watchJob(result.backend.current_task.job_id)
+      setTask(result.backend.current_task, route.query.tab === 'cache')
+      if (!['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'RECOVERY_REQUIRED'].includes(result.backend.current_task.status)) {
+        void watchJob(result.backend.current_task.job_id)
+      }
+    } else if (result.backend?.recent_task && !task.value) {
+      setTask(result.backend.recent_task, route.query.tab === 'cache')
     }
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '加载缓存信息失败'
@@ -127,7 +176,7 @@ async function beginMigration() {
   try {
     const result = await startCacheMigration({ ...storageCandidate(), check_id: checkId.value })
     if (result.code !== 0 || !result.job_id) throw new Error(result.msg || '无法启动缓存迁移')
-    task.value = result.job || null
+    if (result.job) setTask(result.job)
     migrationOpen.value = false
     void watchJob(result.job_id)
   } catch (cause) {
@@ -141,17 +190,28 @@ async function watchJob(jobId: string) {
   if (pollingJobId.value === jobId) return
   pollingJobId.value = jobId
   const terminal = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'RECOVERY_REQUIRED'])
+  let delay = 1500
+  let disconnectedAt = 0
   try {
     while (pollingJobId.value === jobId) {
-      const result = await getCacheJob(jobId)
-      if (result.code !== 0 || !result.job) break
-      task.value = result.job
-      if (terminal.has(result.job.status) || result.job.status === 'RESTART_PENDING') break
-      await new Promise((resolve) => window.setTimeout(resolve, 1500))
+      try {
+        const result = await getCacheJob(jobId)
+        if (result.code !== 0 || !result.job) throw new Error(result.msg || '任务暂时不可读取')
+        disconnectedAt = 0
+        setTask(result.job, false)
+        if (terminal.has(result.job.status)) {
+          await refresh()
+          break
+        }
+        delay = result.job.status === 'RESTART_PENDING' || result.job.status === 'VERIFYING_STARTUP'
+          ? Math.min(15000, Math.round(delay * 1.35)) : 1500
+      } catch {
+        if (!disconnectedAt) disconnectedAt = Date.now()
+        delay = Math.min(15000, Math.round(delay * 1.5))
+        if (Date.now() - disconnectedAt > 5 * 60 * 1000) break
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, delay))
     }
-    await refresh()
-  } catch {
-    // 页面刷新后会从后端恢复任务状态。
   } finally {
     if (pollingJobId.value === jobId) pollingJobId.value = ''
   }
@@ -202,6 +262,19 @@ async function clear(name: string, label: string) {
 }
 
 onMounted(refresh)
+watch(() => [route.query.tab, route.query.task], ([tab, value]) => {
+  if (tab !== 'cache') return
+  const id = String(value || '')
+  if (!id || id === task.value?.job_id) return
+  void getCacheJob(id).then((result) => {
+    if (result.code === 0 && result.job) {
+      setTask(result.job, false)
+      if (!['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'RECOVERY_REQUIRED'].includes(result.job.status)) {
+        void watchJob(id)
+      }
+    }
+  }).catch(() => undefined)
+}, { immediate: true })
 defineExpose({ refresh })
 </script>
 
@@ -213,14 +286,23 @@ defineExpose({ refresh })
       <q-space />
       <q-btn outline color="primary" icon="swap_horiz" label="迁移保存方式" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="migrationOpen = true" />
       <q-btn flat color="primary" icon="refresh" label="刷新统计" :loading="loading" :disable="Boolean(clearing)" @click="refresh" />
-      <q-btn outline color="negative" label="清理全部缓存" :loading="clearing === 'all'" :disable="loading || Boolean(clearing)" @click="clear('all', '全部缓存')" />
     </div>
-    <div v-if="backend" class="text-caption text-secondary q-mb-sm">
-      活动保存方式：{{ backendLabels[backend.active_backend || backend.backend] || backend.backend }}
-      <template v-if="backend.configured_backend !== (backend.active_backend || backend.backend)"> · 配置目标：{{ backendLabels[backend.configured_backend] || backend.configured_backend }}</template>
-      <template v-if="backend.restart_required"> · 等待重启</template>
+    <q-card v-if="backend" flat bordered class="cache-status-card q-mb-md">
+      <div class="cache-status-heading"><div class="cache-status-icon" :class="backend.fallback ? 'is-warning' : 'is-ok'"><q-icon :name="backend.fallback ? 'sync_problem' : 'storage'" size="22px" /></div><div class="cache-status-copy"><strong>当前使用：{{ backendLabels[backend.active_backend || backend.backend] || backend.backend }}</strong><span>{{ backend.fallback ? '远程目标不可用，当前使用内存缓存' : '缓存后端连接正常' }}</span></div><q-badge :color="backend.fallback ? 'warning' : 'positive'" :label="backend.fallback ? '已降级' : '运行正常'" /></div>
+      <div class="cache-status-details">
+        <span v-if="backend.configured_backend !== (backend.active_backend || backend.backend)">配置目标：{{ backendLabels[backend.configured_backend] || backend.configured_backend }} · 等待重启</span>
+        <span v-else>配置目标与活动保存方式一致</span>
+        <span v-if="backend.store_path">固定本地路径：{{ backend.store_path }}</span>
+        <span>内存统计口径：{{ backend.memory_scope === 'remote' ? '远程缓存服务' : '本机' }}</span>
+      </div>
+      <q-banner v-if="backend.fallback" dense rounded class="bg-warning text-dark q-mt-sm">{{ backend.reason }}。<template v-if="['redis', 'valkey'].includes(backend.configured_backend)">当前使用内存缓存，连接恢复后会自动切回。</template></q-banner>
+    </q-card>
+    <div v-if="backend" class="cache-metrics q-mb-md">
+      <q-card flat bordered class="cache-metric"><span>有效条数</span><strong>{{ total.toLocaleString() }}</strong><small>当前活动命名空间</small></q-card>
+      <q-card flat bordered class="cache-metric"><span>{{ backend.memory_scope === 'remote' ? '远程内存估算' : '本机内存估算' }}</span><strong>{{ totalMemory === null ? '暂不可用' : formatBytes(totalMemory) }}</strong><small>估算值，不与持久化占用相加</small></q-card>
+      <q-card flat bordered class="cache-metric"><span>{{ backend.memory_scope === 'remote' ? '远程缓存占用' : '本地持久化占用' }}</span><strong>{{ persistentBytes === null ? '暂不可用' : formatBytes(persistentBytes) }}</strong><small>{{ backend.memory_scope === 'remote' ? '按远程命名空间统计' : 'SQLite 文件大小仅计算一次' }}</small></q-card>
+      <q-card flat bordered class="cache-metric"><span>最近统计</span><strong>{{ latestStatsAt ? new Date(latestStatsAt * 1000).toLocaleTimeString() : '暂不可用' }}</strong><small>{{ latestStatsAt ? new Date(latestStatsAt * 1000).toLocaleDateString() : '统计时间未知' }}</small></q-card>
     </div>
-    <q-banner v-if="backend?.fallback" class="bg-warning text-white q-mb-md" rounded>{{ backend.reason }}。<template v-if="['redis', 'valkey'].includes(backend.configured_backend)">当前使用内存缓存，连接恢复后会自动切回。</template></q-banner>
     <q-banner v-if="task && !['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(task.status)" class="bg-info text-white q-mb-md" rounded>
       <div class="row items-center q-gutter-sm"><span>缓存任务：{{ task.stage }} · {{ task.status }}</span><q-space /><q-btn v-if="task.status === 'RESTART_PENDING'" flat dense color="white" label="重试重启" @click="retryRestart" /><q-btn v-else-if="task.status === 'RECOVERY_REQUIRED'" flat dense color="white" label="重试恢复原缓存" @click="recoverMigration" /><q-btn v-else-if="['CHECKING', 'READY', 'QUIESCING', 'SNAPSHOTTING', 'MIGRATING', 'VALIDATING', 'VALIDATED'].includes(task.status)" flat dense color="white" label="取消任务" @click="cancelMigration" /></div>
       <div v-if="task.error" class="q-mt-sm">{{ task.error }}</div>
@@ -238,18 +320,26 @@ defineExpose({ refresh })
     <div class="text-caption text-secondary q-mb-md">内存统计按{{ backend?.memory_scope === 'remote' ? '远程服务' : '本机' }}口径展示；数据量为估算统计，不影响缓存写入。</div>
     <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
     <q-banner v-if="missingMemoryStats" class="bg-warning text-white q-mb-md" rounded>{{ backend ? '部分缓存未提供内存统计；远程模式请检查服务端 MEMORY USAGE 权限。' : '当前接口未提供完整的内存统计，请重启后端后刷新。' }}</q-banner>
-    <q-table flat bordered :rows="caches" :columns="columns" row-key="name" :loading="loading" :grid="$q.screen.lt.sm" :pagination="{ rowsPerPage: 0 }" hide-pagination no-data-label="暂无缓存信息" wrap-cells>
+    <div class="cache-filters q-mb-sm">
+      <q-input v-model="search" outlined dense clearable label="搜索缓存名称" class="cache-search"><template #prepend><q-icon name="search" /></template></q-input>
+      <q-select v-model="cacheType" outlined dense emit-value map-options label="类型筛选" class="cache-type-filter" :options="[
+        { value: 'all', label: '全部缓存' }, { value: 'persistent', label: '持久化' },
+        { value: 'memory', label: '仅内存' }, { value: 'recognition', label: '识别 / AI' }, { value: 'wallpaper', label: '登录壁纸' }
+      ]" />
+    </div>
+    <q-table flat bordered :rows="filteredCaches" :columns="columns" row-key="name" :loading="loading" :grid="$q.screen.lt.sm" :pagination="{ rowsPerPage: 0, sortBy: 'entries', descending: true }" hide-pagination no-data-label="暂无符合条件的缓存" wrap-cells>
       <template #item="props">
         <q-card flat bordered class="cache-card q-ma-xs">
           <q-card-section class="row items-start no-wrap q-pb-sm">
             <div class="col"><div class="text-subtitle2">{{ props.row.label }}</div><div class="text-caption text-secondary">{{ props.row.entries }} 条有效缓存<span v-if="props.row.max_entries === 1"> · 上限 1 条</span></div></div>
-            <q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing)" @click="clear(props.row.name, props.row.label)" />
+            <q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="clear(props.row.name, props.row.label)" />
           </q-card-section>
           <q-separator />
           <q-card-section class="text-caption cache-card-stats">
             <div>内存占用{{ props.row.stats_estimated ? '（估算）' : '' }}：{{ formatBytes(props.row.memory_bytes) }}</div>
             <div v-if="props.row.bytes !== undefined">缓存数据量：{{ formatBytes(props.row.bytes) }}</div>
             <div v-if="props.row.store_bytes !== undefined">本地文件占用：{{ formatBytes(props.row.store_bytes) }}</div>
+            <div>有效期：{{ formatTtl(props.row.ttl_seconds) }}</div>
             <div>{{ backendLabels[props.row.backend] || (props.row.persistent ? '持久保存' : '内存') }} · {{ formatTime(props.row.stats_at) }}</div>
           </q-card-section>
         </q-card>
@@ -264,13 +354,19 @@ defineExpose({ refresh })
           <div v-if="props.row.store_bytes !== undefined" class="text-caption text-secondary">本地文件 {{ formatBytes(props.row.store_bytes) }}</div>
         </q-td>
       </template>
+      <template #body-cell-ttl_seconds="props"><q-td :props="props">{{ formatTtl(props.row.ttl_seconds) }}</q-td></template>
       <template #body-cell-persistent="props">
         <q-td :props="props"><q-badge :color="props.row.backend && props.row.backend !== 'memory' ? 'positive' : 'grey'">{{ backendLabels[props.row.backend] || (props.row.persistent ? '持久保存' : '内存') }}</q-badge></q-td>
       </template>
       <template #body-cell-actions="props">
-        <q-td :props="props"><q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing)" @click="clear(props.row.name, props.row.label)" /></q-td>
+        <q-td :props="props"><q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="clear(props.row.name, props.row.label)" /></q-td>
       </template>
     </q-table>
+
+    <q-card flat bordered class="cache-maintenance-card q-mt-md">
+      <div><div class="text-subtitle1">维护操作</div><div class="text-caption text-secondary">清理缓存后，后续请求会在需要时重新获取数据；迁移记录不受影响。</div></div>
+      <q-btn outline color="negative" label="清理全部缓存" :loading="clearing === 'all'" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="clear('all', '全部缓存')" />
+    </q-card>
 
     <q-dialog v-model="migrationOpen" persistent :maximized="$q.screen.lt.sm">
       <q-card class="migration-dialog">
@@ -311,9 +407,27 @@ defineExpose({ refresh })
 <style scoped>
 .cache-card { width: 100%; }
 .cache-card-stats { display: grid; gap: 4px; overflow-wrap: anywhere; }
-.migration-dialog { width: min(640px, 100vw); max-width: 100vw; }
-.migration-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cache-status-card, .cache-metric, .cache-maintenance-card { border-color: var(--border-subtle); border-radius: 16px; background: var(--surface); }
+.cache-status-card { padding: 16px 18px; }
+.cache-status-heading { display: flex; align-items: center; gap: 12px; }
+.cache-status-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: var(--q-positive); background: color-mix(in srgb, var(--q-positive) 12%, var(--surface)); }
+.cache-status-icon.is-warning { color: var(--q-warning); background: color-mix(in srgb, var(--q-warning) 14%, var(--surface)); }
+.cache-status-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }.cache-status-copy span, .cache-status-details { color: var(--text-secondary); font-size: 12px; }
+.cache-status-details { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 0 54px; overflow-wrap: anywhere; }
+.cache-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.cache-metric { padding: 14px 16px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }.cache-metric span, .cache-metric small { color: var(--text-secondary); font-size: 12px; }.cache-metric strong { font-size: 22px; overflow-wrap: anywhere; }
+.cache-maintenance-card { padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.migration-dialog { width: min(640px, 100vw); max-width: 100vw; max-height: min(90vh, 900px); display: flex; flex-direction: column; }
+.migration-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; overflow-y: auto; flex: 1; }
+.cache-filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 260px); gap: 10px; }
+.cache-search, .cache-type-filter { min-width: 0; }
 @media (max-width: 599px) {
+  section :deep(.q-btn) { min-height: 44px; }
+  .migration-dialog { min-height: 100dvh; max-height: 100dvh; }.migration-dialog :deep(.q-card__actions) { padding-bottom: calc(12px + var(--safe-bottom)); }
   .migration-fields { grid-template-columns: minmax(0, 1fr); }
+  .cache-filters { grid-template-columns: minmax(0, 1fr); }
+  .cache-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }.cache-metric { padding: 12px; }.cache-metric strong { font-size: 18px; }
+  .cache-status-card { padding: 14px; }.cache-status-details { margin-left: 0; flex-direction: column; gap: 6px; }
+  .cache-maintenance-card { align-items: stretch; flex-direction: column; }.cache-maintenance-card :deep(.q-btn) { min-height: 44px; }
 }
 </style>
