@@ -257,6 +257,17 @@ function candidateKey() {
   return JSON.stringify({ ...candidate, password: candidate.password || '' })
 }
 
+function hasSavedUsernameForCandidate() {
+  const currentType = String(configured.value.type || activeType.value)
+  const currentPort = Number(configured.value.port || (currentType === 'postgresql' ? 5432 : 3306))
+  return Boolean(configured.value.username_set)
+    && candidate.type === currentType
+    && String(candidate.host || '').trim().replace(/\.$/, '').toLocaleLowerCase()
+      === String(configured.value.host || '').trim().replace(/\.$/, '').toLocaleLowerCase()
+    && Number(candidate.port) === currentPort
+    && String(candidate.name || '') === String(configured.value.name || '')
+}
+
 async function closeMigration() {
   if (candidateDirty.value && !await modal.confirm(
     '候选数据库参数尚未提交，关闭后会丢弃这些修改。', '放弃候选参数')) return
@@ -282,12 +293,14 @@ function validateCandidate() {
   Object.keys(candidateErrors).forEach((field) => delete candidateErrors[field])
   if (!candidateRemote.value) return true
 
-  if (!candidate.host.trim()) candidateErrors.host = '请输入数据库主机。'
+  if (!String(candidate.host || '').trim()) candidateErrors.host = '请输入数据库主机。'
   if (!Number.isInteger(Number(candidate.port)) || Number(candidate.port) < 1 || Number(candidate.port) > 65535) {
     candidateErrors.port = '端口必须是 1～65535 之间的整数。'
   }
-  if (!candidate.name.trim()) candidateErrors.name = '请输入数据库名。'
-  if (!candidate.username.trim()) candidateErrors.username = '请输入数据库用户名。'
+  if (!String(candidate.name || '').trim()) candidateErrors.name = '请输入数据库名。'
+  if (!String(candidate.username || '').trim() && !hasSavedUsernameForCandidate()) {
+    candidateErrors.username = '请输入数据库用户名；仅同一已保存目标可以留空保持。'
+  }
   if (!Number.isFinite(Number(candidate.connect_timeout)) || Number(candidate.connect_timeout) <= 0 || Number(candidate.connect_timeout) > 120) {
     candidateErrors.connect_timeout = '连接超时必须大于 0 且不超过 120 秒。'
   }
@@ -706,8 +719,8 @@ defineExpose({ refresh, confirmLeave })
                 <q-input ref="candidateHostField" v-model.trim="candidate.host" outlined label="主机" autocomplete="off" :error="Boolean(candidateErrors.host)" :error-message="candidateErrors.host" @update:model-value="clearCandidateError('host')" />
                 <q-input ref="candidatePortField" v-model.number="candidate.port" outlined type="number" label="端口" :error="Boolean(candidateErrors.port)" :error-message="candidateErrors.port" @update:model-value="clearCandidateError('port')" />
                 <q-input ref="candidateNameField" v-model.trim="candidate.name" outlined label="数据库名" autocomplete="off" :error="Boolean(candidateErrors.name)" :error-message="candidateErrors.name" @update:model-value="clearCandidateError('name')" />
-                <q-input ref="candidateUsernameField" v-model.trim="candidate.username" outlined label="用户名" autocomplete="username" :error="Boolean(candidateErrors.username)" :error-message="candidateErrors.username" @update:model-value="clearCandidateError('username')" />
-                <q-input v-model="candidate.password" outlined type="password" label="密码（留空保持已保存密码）" autocomplete="new-password" />
+                <q-input ref="candidateUsernameField" v-model.trim="candidate.username" outlined label="用户名" :placeholder="hasSavedUsernameForCandidate() ? '留空保持已保存用户名' : '请输入目标数据库用户名'" autocomplete="username" :error="Boolean(candidateErrors.username)" :error-message="candidateErrors.username" @update:model-value="clearCandidateError('username')" />
+                <q-input v-model="candidate.password" outlined type="password" :label="hasSavedUsernameForCandidate() && configured.password_set ? '密码（留空保持已保存密码）' : '密码'" :placeholder="hasSavedUsernameForCandidate() && configured.password_set ? '留空保持当前目标密码' : '请输入目标数据库密码'" autocomplete="new-password" />
                 <q-input v-model.number="candidate.connect_timeout" outlined type="number" label="连接超时（秒）" :error="Boolean(candidateErrors.connect_timeout)" :error-message="candidateErrors.connect_timeout" @update:model-value="clearCandidateError('connect_timeout')" />
                 <q-select v-if="candidate.type === 'postgresql'" v-model="candidate.ssl!.mode" outlined emit-value map-options label="TLS 模式" :options="[
                   { value: '', label: '驱动默认' }, { value: 'disable', label: '禁用' }, { value: 'prefer', label: '优先使用' },
