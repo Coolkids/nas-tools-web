@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "quasar dev",
     "build": "vue-tsc --noEmit && quasar build",
-    "preview": "quasar serve dist --history",
+    "preview": "vite preview --outDir dist",
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
