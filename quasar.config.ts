@@ -3,6 +3,24 @@ import { defineConfig } from '#q-app'
 // 开发时后端 Flask 地址（run.py 默认 3000 端口）
 const FLASK_TARGET = process.env.FLASK_TARGET || 'http://localhost:3000'
 
+function rewriteSameHostDevProxyOrigin(proxy: any) {
+  const targetOrigin = new URL(FLASK_TARGET)
+  proxy.on('proxyReq', (proxyRequest: any, request: any) => {
+    const source = request.headers.origin
+    if (!source) return
+    try {
+      // The browser talks to Quasar's port while Flask receives the proxied
+      // request on its own port. Preserve the same-host boundary check used
+      // by storage mutations without trusting a different source hostname.
+      if (new URL(source).hostname === targetOrigin.hostname) {
+        proxyRequest.setHeader('Origin', targetOrigin.origin)
+      }
+    } catch {
+      // Leave malformed or opaque Origin headers unchanged for Flask to reject.
+    }
+  })
+}
+
 export default defineConfig(() => ({
   css: [
     '../styles/index.scss',
@@ -36,15 +54,28 @@ export default defineConfig(() => ({
       '/do': {
         target: FLASK_TARGET,
         changeOrigin: true,
+        configure: rewriteSameHostDevProxyOrigin,
         bypass: (req) => req.url?.split('?')[0] !== '/do' ? req.url : undefined
       },
       '/login_json': { target: FLASK_TARGET, changeOrigin: true },
       '/logout_json': { target: FLASK_TARGET, changeOrigin: true },
       '/dirlist': { target: FLASK_TARGET, changeOrigin: true },
-      '/api/v1': { target: FLASK_TARGET, changeOrigin: true },
+      '/api/v1': {
+        target: FLASK_TARGET,
+        changeOrigin: true,
+        configure: rewriteSameHostDevProxyOrigin
+      },
       '/img': { target: FLASK_TARGET, changeOrigin: true },
-      '/backup': { target: FLASK_TARGET, changeOrigin: true },
-      '/upload': { target: FLASK_TARGET, changeOrigin: true },
+      '/backup': {
+        target: FLASK_TARGET,
+        changeOrigin: true,
+        configure: rewriteSameHostDevProxyOrigin
+      },
+      '/upload': {
+        target: FLASK_TARGET,
+        changeOrigin: true,
+        configure: rewriteSameHostDevProxyOrigin
+      },
       '/rss_import_upload': { target: FLASK_TARGET, changeOrigin: true },
       '/rss_import_template': { target: FLASK_TARGET, changeOrigin: true },
       '/rss_import_errors': { target: FLASK_TARGET, changeOrigin: true },
