@@ -54,6 +54,15 @@ export function getLibraryPlayhistory(): Promise<PlayHistoryResult> {
   return doAction<PlayHistoryResult>('get_library_playhistory', {})
 }
 
+export interface MediaSyncStartResult {
+  code: number
+  msg?: string
+}
+
+export function startMediaSync(): Promise<MediaSyncStartResult> {
+  return doAction<MediaSyncStartResult>('start_mediasync', {})
+}
+
 export interface RefreshProcessResult {
   code: number
   value: number

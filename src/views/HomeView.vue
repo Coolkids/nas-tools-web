@@ -8,6 +8,7 @@ import {
   getLibrarySpacesize,
   getTransferStatistics,
   getLibraryPlayhistory,
+  startMediaSync,
   type MediaCountResult,
   type LibrarySpaceResult,
   type TransferStatisticsResult,
@@ -19,6 +20,7 @@ const $q = useQuasar()
 const loading = ref(false)
 const loadInFlight = ref(false)
 const loadError = ref('')
+const mediaSyncStarting = ref(false)
 
 const mediaCount = ref<MediaCountResult>({ code: -1 })
 const space = ref<LibrarySpaceResult>({ code: -1 })
@@ -177,6 +179,20 @@ async function load(options: { notify?: boolean } = {}) {
   }
 }
 
+async function syncMediaLibrary() {
+  if (mediaSyncStarting.value) return
+  mediaSyncStarting.value = true
+  try {
+    const result = await startMediaSync()
+    if (result.code === 0) modal.success('已提交媒体库同步请求')
+    else modal.error(result.msg || '媒体库同步请求失败')
+  } catch (error) {
+    modal.error(error instanceof Error ? error.message : '媒体库同步请求失败')
+  } finally {
+    mediaSyncStarting.value = false
+  }
+}
+
 onMounted(() => { void load() })
 </script>
 
@@ -184,7 +200,7 @@ onMounted(() => { void load() })
   <div class="home-page">
     <PageHeader title="概览" description="媒体库、存储空间与近期活动">
       <template #actions>
-        <q-btn outline icon="refresh" label="刷新" :loading="loading" @click="load({ notify: true })" />
+        <q-btn outline icon="sync" label="同步媒体库" :loading="mediaSyncStarting" :disable="mediaSyncStarting" @click="syncMediaLibrary" />
       </template>
     </PageHeader>
 
