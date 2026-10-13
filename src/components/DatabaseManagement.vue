@@ -626,7 +626,7 @@ defineExpose({ refresh, confirmLeave })
       :subtitle="info?.connected ? '当前数据库连接正常' : info ? '当前数据库未连接' : '当前数据库状态暂不可用'"
       :status="info?.connected ? 'ok' : info ? 'error' : 'unknown'"
       :status-label="info?.connected ? '连接正常' : info ? '未连接' : '暂不可用'"
-      :icon="info?.connected ? 'database' : 'database_off'">
+      icon="storage">
       <template #details>
         <div class="status-detail">当前使用 · 结构版本 {{ info?.schema_revision || '暂不可用' }}<span v-if="info?.server_version"> · 服务端 {{ info.server_version }}</span></div>
         <div v-if="info?.error" class="text-negative text-caption q-mt-xs">{{ info.error }}</div>
@@ -740,7 +740,7 @@ defineExpose({ refresh, confirmLeave })
                 </template>
               </template>
             </div>
-            <q-stepper-navigation><q-btn color="primary" unelevated label="检查连接与空库" icon="search_check" :loading="checking" :disable="conflictBusy" @click="runCheck" /></q-stepper-navigation>
+            <q-stepper-navigation><q-btn color="primary" unelevated label="检查连接与空库" icon="fact_check" :loading="checking" :disable="conflictBusy" @click="runCheck" /></q-stepper-navigation>
           </q-step>
           <q-step :name="2" title="检查结果" icon="fact_check" :done="false">
             <template v-if="checkReport">
