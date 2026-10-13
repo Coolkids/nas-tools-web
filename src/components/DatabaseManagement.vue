@@ -169,7 +169,8 @@ async function refresh() {
     if (result.code !== 0 || !result.database) throw new Error(result.msg || '读取数据库状态失败')
     info.value = result.database
     const jobs = [result.database.current_job, result.database.pending_database_job,
-      result.database.statistics_job].filter(Boolean) as DatabaseJob[]
+      result.database.statistics_job].filter((job): job is DatabaseJob => job != null
+        && !(job.kind === 'database_migration' && job.status === 'SUCCEEDED'))
     const current = jobs.find((job) => !terminalStatuses.has(job.status)) || jobs[0]
     if (current && (!task.value || task.value.job_id === current.job_id)) {
       setTask(current, route.query.tab === 'database')
@@ -205,6 +206,16 @@ function setTask(next: DatabaseJob, updateQuery = true) {
   }
 }
 
+function clearCompletedMigration(jobId: string) {
+  if (task.value && task.value.job_id !== jobId) return
+  task.value = null
+  if (route.query.task === jobId) {
+    const query = { ...route.query }
+    delete query.task
+    void router.replace({ query })
+  }
+}
+
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
@@ -221,6 +232,11 @@ async function watchJob(jobId: string) {
         if (result.code !== 0 || !result.job) throw new Error(result.msg || '任务暂时不可读取')
         disconnectedAt = 0
         const current = result.job
+        if (current.kind === 'database_migration' && current.status === 'SUCCEEDED') {
+          clearCompletedMigration(jobId)
+          await refresh()
+          break
+        }
         setTask(current, false)
         if (current.kind === 'database_backup_check') restoreCheck.value = current
         if (current.kind === 'database_target_prepare' && current.status === 'SUCCEEDED') {
@@ -633,7 +649,8 @@ defineExpose({ refresh, confirmLeave })
         <div class="status-footer"><template v-if="activeType === 'sqlite'">固定文件：&lt;配置文件目录&gt;/db/{{ sqlite?.database_file || 'nastools.db' }}</template><template v-else-if="activeType">{{ active.host || '主机未知' }}:{{ active.port || '默认端口' }} / {{ active.name || '数据库未知' }}</template><span> · 最近统计 {{ formatDate(info?.statistics_at) }}</span></div>
       </template>
       <template #notice>
-        <div v-if="String(configured.type || 'sqlite') !== activeType" class="pending-target"><q-icon name="schedule" /> 已保存，等待重启：{{ databaseTypeLabel[String(configured.type)] || configured.type }}</div>
+        <div v-if="String(configured.type || 'sqlite') !== activeType" class="pending-target"><q-icon name="schedule" /> 已保存，<template v-if="info?.pending_database_job?.status === 'RESTART_PENDING'">现在可以安全重启程序：</template><template v-else>等待重启：</template>{{ databaseTypeLabel[String(configured.type)] || configured.type }}</div>
+        <div v-else-if="info?.pending_database_job?.status === 'RESTART_PENDING'" class="pending-target"><q-icon name="sync" /> 数据迁移与校验已完成，现在可以安全重启程序</div>
         <div v-else-if="info?.pending_database_job && !['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(info.pending_database_job.status)" class="pending-target"><q-icon name="sync" /> 数据库切换任务：{{ info.pending_database_job.stage }}</div>
       </template>
     </StorageStatusCard>
@@ -653,10 +670,11 @@ defineExpose({ refresh, confirmLeave })
       <div class="task-message">{{ taskMessage || '正在处理' }}</div>
       <q-linear-progress v-if="taskProgress !== null" :value="taskProgress" color="primary" rounded class="q-mt-sm" />
       <div v-if="task.error" class="text-negative q-mt-sm">{{ task.error }}</div>
-      <div v-if="task.status === 'RESTART_PENDING'" class="text-caption q-mt-sm">配置已保存，正在等待服务重启并验证活动数据库；请勿重复提交切换。</div>
+      <div v-if="task.status === 'RESTART_PENDING' && task.kind === 'database_migration'" class="text-caption q-mt-sm">数据库迁移与校验已完成，新配置已保存。现在可以安全地重启程序；重启后系统会验证新数据库。</div>
+      <div v-else-if="task.status === 'RESTART_PENDING'" class="text-caption q-mt-sm">配置已保存，正在等待服务重启并验证活动数据库；请勿重复提交切换。</div>
     </q-banner>
     <q-banner v-else-if="task?.status === 'FAILED'" rounded class="db-error q-mb-md"><strong>任务失败：</strong>{{ task.error || taskMessage }}<div v-if="reclaimSummary?.vacuum_completed" class="q-mt-xs">VACUUM 已执行，但后续校验或重连失败；请刷新确认当前数据库状态，再决定是否重试。</div></q-banner>
-    <q-banner v-else-if="task?.status === 'SUCCEEDED'" rounded class="db-success q-mb-md"><strong>任务已完成。</strong> {{ taskMessage }}<div v-if="reclaimSummary?.after" class="q-mt-xs">实际释放 {{ bytes(reclaimSummary.after.freed_bytes) }}；整库占用 {{ bytes(reclaimSummary.before?.database_size_bytes) }} → {{ bytes(reclaimSummary.after.database_size_bytes) }}，WAL {{ bytes(reclaimSummary.before?.wal_size_bytes) }} → {{ bytes(reclaimSummary.after.wal_size_bytes) }}。</div><div v-if="task.kind === 'database_restore'" class="row q-gutter-sm q-mt-xs"><q-btn flat dense label="下载恢复报告" @click="downloadRestoreReport" /><q-btn v-if="task.result?.pre_restore_sha256" flat dense label="下载恢复前备份" @click="downloadBackup(task.job_id)" /></div></q-banner>
+    <q-banner v-else-if="task?.status === 'SUCCEEDED' && task.kind !== 'database_migration'" rounded class="db-success q-mb-md"><strong>任务已完成。</strong> {{ taskMessage }}<div v-if="reclaimSummary?.after" class="q-mt-xs">实际释放 {{ bytes(reclaimSummary.after.freed_bytes) }}；整库占用 {{ bytes(reclaimSummary.before?.database_size_bytes) }} → {{ bytes(reclaimSummary.after.database_size_bytes) }}，WAL {{ bytes(reclaimSummary.before?.wal_size_bytes) }} → {{ bytes(reclaimSummary.after.wal_size_bytes) }}。</div><div v-if="task.kind === 'database_restore'" class="row q-gutter-sm q-mt-xs"><q-btn flat dense label="下载恢复报告" @click="downloadRestoreReport" /><q-btn v-if="task.result?.pre_restore_sha256" flat dense label="下载恢复前备份" @click="downloadBackup(task.job_id)" /></div></q-banner>
 
     <div class="db-content-grid">
       <q-card flat bordered class="db-section-card overview-card">
