@@ -136,6 +136,7 @@ const SECURITY_KEYS = [
 ]
 const LAB_KEYS = [
   'laboratory.ai_inference', 'laboratory.ai_inference_url', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
+  'recognition.records.mode',
   'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy',
   'recognition.decision.strategy', 'recognition.decision.shadow.enabled',
   'recognition.execution.total_timeout_seconds',
@@ -243,8 +244,9 @@ const SECURITY_FIELDS: SettingField[] = [
   { key: 'security.api_key', label: 'API密钥' }
 ]
 const LAB_FIELDS: SettingField[] = [
-  { key: 'laboratory.ai_inference', label: '使用AI推理解析', kind: 'toggle', help: '同时运行本地规则和 AI 解析，并记录两种方式与 TMDB 的结果。' },
+  { key: 'laboratory.ai_inference', label: '使用AI推理解析', kind: 'toggle', help: '同时运行本地规则和 AI 解析；媒体识别记录范围由下方设置控制。' },
   { key: 'laboratory.ai_inference_url', label: 'AI推理接口地址', placeholder: 'http://127.0.0.1:8000', help: '填写 anitopy-ml 服务地址，支持直接填写 /v1/parse 地址。' },
+  { key: 'recognition.records.mode', label: '媒体识别记录类型', kind: 'select', options: [{ value: 'all', label: '全部' }, { value: 'failed', label: '只记录失败' }, { value: 'none', label: '不记录' }], help: '控制媒体识别记录的保存范围；只记录失败为默认值。' },
   { key: 'recognition.decision.strategy', label: '名称识别策略', kind: 'select', options: [{ label: '兼容现有决策', value: 'legacy' }, { label: 'TMDB名称命中', value: 'title_evidence' }], help: 'TMDB 名称唯一命中时可接受；多个不同 TMDB 条目命中时识别失败。' },
   { key: 'recognition.decision.shadow.enabled', label: '记录影子决策结果', kind: 'toggle', help: '同时记录名称证据策略的模拟结果，不改变当前选择结果。' },
   { key: 'recognition.execution.total_timeout_seconds', label: '识别方式总超时(秒)', type: 'number', help: '限制 AI 与扩展解析器的执行预算；AI HTTP 请求会遵守剩余时间。' },
@@ -280,9 +282,9 @@ const LAB_FIELD_GROUPS = [
   {
     tab: 'ai',
     title: 'AI 推理',
-    description: '配置 AI 解析服务及本次识别的执行预算。',
+    description: '配置 AI 解析服务、媒体识别记录及本次识别的执行预算。',
     keys: [
-      'laboratory.ai_inference', 'laboratory.ai_inference_url',
+      'laboratory.ai_inference', 'laboratory.ai_inference_url', 'recognition.records.mode',
       'recognition.execution.total_timeout_seconds'
     ]
   },
@@ -450,6 +452,7 @@ const profileProviderKeys = new Set([
         : 'all_enabled'
     } else if (key === 'recognition.decision.title_evidence.preferred_genre_id') form[key] = Number(getCfg(key) ?? 16)
     else if (key === 'laboratory.ai_inference_url' || key === 'recognition.decision.strategy') form[key] = str(key)
+    else if (key === 'recognition.records.mode') form[key] = str(key, 'failed')
     else if (labToggleKeys.has(key)) form[key] = sw(key)
     else if (labNumberKeys.has(key)) form[key] = Number(getCfg(key) ?? 0)
     else form[key] = sw(key)
@@ -478,7 +481,8 @@ const profileProviderKeys = new Set([
 }
 
 function isLaboratoryFieldVisible(key: string): boolean {
-  if (key === 'laboratory.ai_inference_url' || key === 'recognition.providers.anitopy_ml.reliability') {
+  if (key === 'laboratory.ai_inference_url' || key === 'recognition.records.mode'
+    || key === 'recognition.providers.anitopy_ml.reliability') {
     return aiInferenceEnabled.value
   }
   if (key === 'recognition.cache.parse.enabled') {
