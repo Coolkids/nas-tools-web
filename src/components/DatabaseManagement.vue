@@ -62,6 +62,12 @@ const typeOptions = [
 ]
 const terminalStatuses = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'READY'])
 const databaseTypeLabel: Record<string, string> = { sqlite: 'SQLite', postgresql: 'PostgreSQL', mysql: 'MySQL', mariadb: 'MariaDB' }
+const databaseTypeLogo: Record<string, string> = {
+  sqlite: '/static/img/database/sqlite.svg',
+  postgresql: '/static/img/database/postgresql.svg',
+  mysql: '/static/img/database/mysql.svg',
+  mariadb: '/static/img/database/mariadb.svg'
+}
 const active = computed(() => info.value?.active || {})
 const configured = computed(() => info.value?.configured || {})
 const activeType = computed(() => String(active.value.type || (info.value ? 'sqlite' : '')))
@@ -134,6 +140,12 @@ function formatDate(value?: unknown) {
   if (value === undefined || value === null || value === '') return '暂无'
   const timestamp = typeof value === 'number' ? value * 1000 : typeof value === 'string' ? Date.parse(value) : Number.NaN
   return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : String(value)
+}
+
+function formatServerVersion(value?: string | null) {
+  if (!value) return ''
+  const tuple = value.match(/^\(\s*(\d+(?:\s*,\s*\d+)*)\s*\)$/)
+  return tuple ? `(${tuple[1].split(',').map((part) => part.trim()).join('.')})` : value
 }
 
 function elapsedLabel(seconds: number) {
@@ -663,9 +675,10 @@ defineExpose({ refresh, confirmLeave })
       :subtitle="info?.connected ? '当前数据库连接正常' : info ? '当前数据库未连接' : '当前数据库状态暂不可用'"
       :status="info?.connected ? 'ok' : info ? 'error' : 'unknown'"
       :status-label="info?.connected ? '连接正常' : info ? '未连接' : '暂不可用'"
+      :logo="databaseTypeLogo[activeType]"
       icon="storage">
       <template #details>
-        <div class="status-detail">当前使用 · 结构版本 {{ info?.schema_revision || '暂不可用' }}<span v-if="info?.server_version"> · 服务端 {{ info.server_version }}</span></div>
+        <div class="status-detail">当前使用 · 结构版本 {{ info?.schema_revision || '暂不可用' }}<span v-if="info?.server_version"> · 服务端 {{ formatServerVersion(info.server_version) }}</span></div>
         <div v-if="info?.error" class="text-negative text-caption q-mt-xs">{{ info.error }}</div>
         <div class="status-footer"><template v-if="activeType === 'sqlite'">固定文件：&lt;配置文件目录&gt;/db/{{ sqlite?.database_file || 'nastools.db' }}</template><template v-else-if="activeType">{{ active.host || '主机未知' }}:{{ active.port || '默认端口' }} / {{ active.name || '数据库未知' }}</template><span> · 最近统计 {{ formatDate(info?.statistics_at) }}</span></div>
       </template>

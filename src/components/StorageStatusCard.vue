@@ -7,6 +7,7 @@ const props = withDefaults(defineProps<{
   status: 'ok' | 'warning' | 'error' | 'unknown'
   statusLabel: string
   icon?: string
+  logo?: string
 }>(), { icon: 'storage' })
 
 const badgeColor = computed(() => ({
@@ -17,8 +18,9 @@ const badgeColor = computed(() => ({
 <template>
   <q-card flat bordered class="storage-status-card">
     <div class="storage-status-main">
-      <div class="storage-status-icon" :class="`is-${status}`">
-        <q-icon :name="icon" size="24px" />
+      <div class="storage-status-icon" :class="[`is-${status}`, { 'has-logo': Boolean(logo) }]">
+        <img v-if="logo" class="storage-status-logo" :src="logo" :alt="`${title} logo`" />
+        <q-icon v-else :name="icon" size="24px" />
       </div>
       <div class="storage-status-copy">
         <strong>{{ title }}</strong>
@@ -38,6 +40,8 @@ const badgeColor = computed(() => ({
 .storage-status-icon.is-warning { color: var(--q-warning); background: color-mix(in srgb, var(--q-warning) 14%, var(--surface)); }
 .storage-status-icon.is-error { color: var(--q-negative); background: color-mix(in srgb, var(--q-negative) 12%, var(--surface)); }
 .storage-status-icon.is-unknown { color: var(--text-secondary); background: color-mix(in srgb, var(--text-secondary) 10%, var(--surface)); }
+.storage-status-icon.has-logo { background: #fff; }
+.storage-status-logo { display: block; width: 30px; height: 30px; object-fit: contain; }
 .storage-status-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
 .storage-status-copy span { color: var(--text-secondary); font-size: 12px; }
 </style>
