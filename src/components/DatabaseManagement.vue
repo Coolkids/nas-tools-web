@@ -170,17 +170,26 @@ async function refresh() {
     info.value = result.database
     const jobs = [result.database.current_job, result.database.pending_database_job,
       result.database.statistics_job].filter((job): job is DatabaseJob => job != null
-        && !(job.kind === 'database_migration' && job.status === 'SUCCEEDED'))
+        && job.status !== 'SUCCEEDED')
     const current = jobs.find((job) => !terminalStatuses.has(job.status)) || jobs[0]
     if (current && (!task.value || task.value.job_id === current.job_id)) {
       setTask(current, route.query.tab === 'database')
       if (!terminalStatuses.has(current.status)) void watchJob(current.job_id)
     }
+    if (task.value?.status === 'SUCCEEDED') clearTaskQuery(task.value.job_id)
   } catch (cause) {
     error.value = humanError(cause, '读取数据库状态失败')
   } finally {
     loading.value = false
     initialLoading.value = false
+  }
+}
+
+async function refreshAndClearCompleted() {
+  await refresh()
+  if (task.value?.status === 'SUCCEEDED') {
+    clearTaskQuery(task.value.job_id)
+    task.value = null
   }
 }
 
@@ -206,14 +215,17 @@ function setTask(next: DatabaseJob, updateQuery = true) {
   }
 }
 
+function clearTaskQuery(jobId: string) {
+  if (route.query.task !== jobId) return
+  const query = { ...route.query }
+  delete query.task
+  void router.replace({ query })
+}
+
 function clearCompletedMigration(jobId: string) {
   if (task.value && task.value.job_id !== jobId) return
   task.value = null
-  if (route.query.task === jobId) {
-    const query = { ...route.query }
-    delete query.task
-    void router.replace({ query })
-  }
+  clearTaskQuery(jobId)
 }
 
 function wait(ms: number) {
@@ -252,6 +264,7 @@ async function watchJob(jobId: string) {
           }
         }
         if (terminalStatuses.has(current.status) || current.status === 'READY' || current.status === 'RECOVERY_REQUIRED') {
+          if (current.status === 'SUCCEEDED') clearTaskQuery(jobId)
           await refresh()
           break
         }
@@ -358,6 +371,10 @@ watch(() => [route.query.tab, route.query.task], ([tab, value]) => {
   if (id && id !== task.value?.job_id && id !== props.taskId) {
     void getDatabaseJob(id).then((result) => {
       if (result.code === 0 && result.job) {
+        if (result.job.status === 'SUCCEEDED') {
+          clearTaskQuery(id)
+          return
+        }
         setTask(result.job, false)
         if (!terminalStatuses.has(result.job.status) && result.job.status !== 'RECOVERY_REQUIRED') void watchJob(id)
       }
@@ -369,6 +386,10 @@ watch(() => props.taskId, (id) => {
   if (id && id !== task.value?.job_id) {
     void getDatabaseJob(id).then((result) => {
       if (result.code === 0 && result.job) {
+        if (result.job.status === 'SUCCEEDED') {
+          clearTaskQuery(id)
+          return
+        }
         setTask(result.job, false)
         if (!terminalStatuses.has(result.job.status) && result.job.status !== 'RECOVERY_REQUIRED') void watchJob(id)
       }
@@ -678,7 +699,7 @@ defineExpose({ refresh, confirmLeave })
 
     <div class="db-content-grid">
       <q-card flat bordered class="db-section-card overview-card">
-        <div class="section-heading"><div><div class="text-subtitle1">数据概览</div><div class="text-caption text-secondary"><template v-if="info?.table_count_mode === 'exact'">精确记录数 · {{ formatDate(info?.exact_statistics_at) }}</template><template v-else>记录数为数据库目录估算；可在后台异步刷新精确值。</template> 权限不足或统计失败显示为暂不可用。 <span v-if="info?.table_count_reasons?._all">{{ info.table_count_reasons._all }}</span></div></div><div class="row q-gutter-xs"><q-btn flat dense color="primary" icon="refresh" aria-label="刷新数据库状态" :loading="loading" @click="refresh" /><q-btn outline dense color="primary" label="精确统计" :loading="statisticsStarting || (task?.kind === 'database_statistics' && !terminalStatuses.has(task.status))" :disable="conflictBusy || statisticsStarting" @click="refreshExactStatistics" /></div></div>
+        <div class="section-heading"><div><div class="text-subtitle1">数据概览</div><div class="text-caption text-secondary"><template v-if="info?.table_count_mode === 'exact'">精确记录数 · {{ formatDate(info?.exact_statistics_at) }}</template><template v-else>记录数为数据库目录估算；可在后台异步刷新精确值。</template> 权限不足或统计失败显示为暂不可用。 <span v-if="info?.table_count_reasons?._all">{{ info.table_count_reasons._all }}</span></div></div><div class="row q-gutter-xs"><q-btn flat dense color="primary" icon="refresh" aria-label="刷新数据库状态" :loading="loading" @click="refreshAndClearCompleted" /><q-btn outline dense color="primary" label="精确统计" :loading="statisticsStarting || (task?.kind === 'database_statistics' && !terminalStatuses.has(task.status))" :disable="conflictBusy || statisticsStarting" @click="refreshExactStatistics" /></div></div>
         <q-input v-model="search" dense outlined clearable label="搜索表名" class="table-search"><template #prepend><q-icon name="search" /></template></q-input>
         <q-expansion-item v-for="domain in filteredDomains" :key="domain.name" default-opened expand-separator header-class="domain-header">
           <template #header><q-item-section><q-item-label>{{ domain.label }}</q-item-label><q-item-label caption>{{ domain.rows.length }} 张表 · {{ countLabel(domainRowCount(domain.rows)) }} 条记录</q-item-label></q-item-section></template>
