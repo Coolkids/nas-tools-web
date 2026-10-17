@@ -135,7 +135,7 @@ const SECURITY_KEYS = [
   'security.synology_webhook_allow_ip.ipv4', 'security.synology_webhook_allow_ip.ipv6', 'security.api_key'
 ]
 const LAB_KEYS = [
-  'laboratory.ai_inference', 'laboratory.ai_inference_url', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
+  'laboratory.ai_inference', 'laboratory.ai_inference_url', 'laboratory.search_tmdbweb',
   'recognition.records.mode',
   'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy',
   'recognition.decision.strategy', 'recognition.decision.shadow.enabled',
@@ -152,7 +152,7 @@ const LAB_KEYS = [
   'recognition.providers.local_rules.reliability',
   'recognition.providers.anitopy_ml.reliability',
   'recognition.cache.enabled', 'recognition.cache.parse.enabled',
-  'recognition.cache.parse.singleflight', 'recognition.cache.parse.ttl_seconds',
+  'recognition.cache.parse.singleflight',
   'recognition.profiles.parse_only.network_allowed',
   'recognition.profiles.resolve.network_allowed', 'recognition.profiles.resolve.tmdb_allowed',
   'recognition.profiles.parse_only.providers', 'recognition.profiles.resolve.providers'
@@ -267,18 +267,15 @@ const LAB_FIELDS: SettingField[] = [
   { key: 'recognition.cache.enabled', label: '启用识别缓存', kind: 'toggle', help: '关闭后不读取或写入解析缓存。' },
   { key: 'recognition.cache.parse.enabled', label: '启用 AI 解析缓存', kind: 'toggle' },
   { key: 'recognition.cache.parse.singleflight', label: '合并相同在途请求', kind: 'toggle', help: '并发解析相同标题时共用一次 AI 请求。' },
-  { key: 'recognition.cache.parse.ttl_seconds', label: 'AI解析缓存有效期(秒)', type: 'number' },
   { key: 'recognition.profiles.parse_only.network_allowed', label: 'parse_only 允许联网解析', kind: 'toggle', help: '关闭后跳过需要网络的解析器；parse_only 始终不查询 TMDB。' },
   { key: 'recognition.profiles.resolve.network_allowed', label: 'resolve 允许联网解析', kind: 'toggle' },
   { key: 'recognition.profiles.resolve.tmdb_allowed', label: 'resolve 允许查询 TMDB', kind: 'toggle' },
   { key: 'laboratory.search_tmdbweb', label: '增强识别', kind: 'toggle' },
-  { key: 'laboratory.tmdb_cache_expire', label: 'TMDB缓存过期策略', kind: 'toggle' },
   { key: 'laboratory.use_douban_titles', label: '使用豆瓣名称联想', kind: 'toggle' },
   { key: 'laboratory.search_en_title', label: '搜索优先使用英文名', kind: 'toggle' },
   { key: 'laboratory.tmdb_proxy', label: '使用TMDB代理服务', kind: 'toggle' }
 ]
 const LAB_FIELD_GROUPS = [
-  { tab: 'cache', title: 'TMDB 缓存', description: '控制媒体识别缓存的过期处理。', keys: ['laboratory.tmdb_cache_expire'] },
   {
     tab: 'ai',
     title: 'AI 推理',
@@ -309,10 +306,10 @@ const LAB_FIELD_GROUPS = [
   {
     tab: 'cache',
     title: 'AI 解析缓存',
-    description: '缓存 AI 解析结果，并合并相同的并发请求。',
+    description: '控制识别缓存开关和并发请求合并；有效期在上方系统缓存列表中设置。',
     keys: [
       'recognition.cache.enabled', 'recognition.cache.parse.enabled',
-      'recognition.cache.parse.singleflight', 'recognition.cache.parse.ttl_seconds'
+      'recognition.cache.parse.singleflight'
     ]
   },
   {
@@ -369,7 +366,6 @@ const SETTING_DESCRIPTIONS: Record<string, string> = {
   'laboratory.ai_inference': '同时运行本地规则和 AI 解析，并记录每种方式的原始输出、TMDB 结果和整体决策。',
   'laboratory.ai_inference_url': 'anitopy-ml 接口服务地址，例如 http://127.0.0.1:8000。',
   'laboratory.search_tmdbweb': '在 API 匹配失败时，尝试通过 TMDB 网页结果增强识别。',
-  'laboratory.tmdb_cache_expire': '启用 TMDB 缓存过期处理，避免长期使用过期结果。',
   'laboratory.use_douban_titles': '使用豆瓣标题作为额外名称，提高中文名称匹配率。',
   'laboratory.search_en_title': '搜索时优先尝试英文标题，适合英文资源名较多的场景。',
   'laboratory.tmdb_proxy': '通过配置的代理访问 TMDB，适用于直连不稳定的网络。'
@@ -430,7 +426,7 @@ function syncForm() {
   SECURITY_KEYS.forEach((key) => { form[key] = str(key) })
   form['pt.download_order'] = str('pt.download_order', '')
   const labToggleKeys = new Set([
-    'laboratory.ai_inference', 'laboratory.search_tmdbweb', 'laboratory.tmdb_cache_expire',
+    'laboratory.ai_inference', 'laboratory.search_tmdbweb',
     'laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy',
     'recognition.decision.shadow.enabled', 'recognition.decision.title_evidence.allow_fuzzy_fallback',
     'recognition.cache.enabled', 'recognition.cache.parse.enabled',

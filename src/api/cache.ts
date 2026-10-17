@@ -3,6 +3,8 @@ import { doAction } from '@/api/request'
 export interface SystemCache {
   name: string
   label: string
+  description?: string
+  members?: string[]
   entries: number
   memory_bytes?: number | null
   persistent: boolean
@@ -88,6 +90,12 @@ export function getSystemCacheInfo() {
 
 export function clearSystemCache(name: string) {
   return doAction<{ code: number; msg?: string; cleared_entries: number }>('clear_system_cache', { name })
+}
+
+export type CacheTtlUnit = 'minute' | 'hour' | 'day' | 'forever'
+
+export function updateSystemCacheTtl(name: string, value: number | null, unit: CacheTtlUnit) {
+  return doAction<{ code: number; msg?: string; ttl_seconds?: number }>('update_system_cache_ttl', { name, value, unit })
 }
 
 export function checkCacheStorage(candidate: CacheStorageCandidate) {

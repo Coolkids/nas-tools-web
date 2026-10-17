@@ -5,8 +5,8 @@ import { useRoute, useRouter } from 'vue-router'
 import StorageStatusCard from '@/components/StorageStatusCard.vue'
 import {
   cancelCacheJob, checkCacheStorage, clearSystemCache, getCacheJob, getSystemCacheInfo, recoverCacheMigration,
-  retryCacheRestart, startCacheMigration,
-  type CacheBackendStatus, type CacheStorageCandidate, type CacheStorageJob, type SystemCache
+  retryCacheRestart, startCacheMigration, updateSystemCacheTtl,
+  type CacheBackendStatus, type CacheStorageCandidate, type CacheStorageJob, type CacheTtlUnit, type SystemCache
 } from '@/api/cache'
 import { useModalStore } from '@/stores/modal'
 
@@ -18,6 +18,16 @@ const caches = ref<SystemCache[]>([])
 const loading = ref(false)
 const initialLoading = ref(true)
 const clearing = ref('')
+const ttlDialog = ref(false)
+const ttlTarget = ref<SystemCache | null>(null)
+const ttlValue = ref<number | null>(1)
+const ttlUnit = ref<CacheTtlUnit>('hour')
+const ttlSaving = ref(false)
+const ttlError = ref('')
+const ttlUnits = [
+  { label: '分钟', value: 'minute' }, { label: '小时', value: 'hour' },
+  { label: '天', value: 'day' }, { label: '永久', value: 'forever' }
+]
 const error = ref('')
 const backend = ref<CacheBackendStatus | null>(null)
 const migrationOpen = ref(false)
@@ -64,6 +74,7 @@ const missingMemoryStats = computed(() => caches.value.some((cache) => !hasMemor
 const totalMemory = computed(() => missingMemoryStats.value || !caches.value.length
   ? null
   : caches.value.reduce((bytes, cache) => bytes + cache.memory_bytes!, 0))
+const hasLocalFiles = computed(() => caches.value.some(hasLocalFileData))
 const persistentBytes = computed(() => {
   if ((backend.value?.active_backend || backend.value?.backend) === 'memory') return 0
   if (backend.value?.memory_scope === 'remote') {
@@ -79,7 +90,7 @@ const persistentBytes = computed(() => {
 const latestStatsAt = computed(() => Math.max(0, ...caches.value.map((cache) => Number(cache.stats_at || 0))))
 const filteredCaches = computed(() => caches.value.filter((cache) => {
   const query = search.value.trim().toLocaleLowerCase()
-  const matchesSearch = !query || `${cache.label} ${cache.name}`.toLocaleLowerCase().includes(query)
+  const matchesSearch = !query || `${cache.label} ${cache.name} ${cache.description || ''}`.toLocaleLowerCase().includes(query)
   const matchesType = cacheType.value === 'all'
     || (cacheType.value === 'persistent' && cache.persistent)
     || (cacheType.value === 'memory' && !cache.persistent)
@@ -100,6 +111,14 @@ function hasMemoryStats(cache: SystemCache) {
   return typeof cache.memory_bytes === 'number' && Number.isFinite(cache.memory_bytes) && cache.memory_bytes >= 0
 }
 
+function hasByteValue(value?: number | null): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+function hasLocalFileData(cache: SystemCache) {
+  return hasByteValue(cache.store_bytes) && cache.store_bytes > 0
+}
+
 function formatBytes(bytes?: number | null) {
   if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return '—'
   if (bytes === 0) return '0 B'
@@ -115,11 +134,46 @@ function formatTime(value?: number | null) {
 
 function formatTtl(value?: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
-  if (value <= 0) return '不自动过期'
-  if (value >= 86400) return `${Math.floor(value / 86400)} 天`
-  if (value >= 3600) return `${Math.floor(value / 3600)} 小时`
-  if (value >= 60) return `${Math.floor(value / 60)} 分钟`
+  if (value <= 0) return '永久'
+  if (value % 86400 === 0) return `${value / 86400} 天`
+  if (value % 3600 === 0) return `${value / 3600} 小时`
+  if (value % 60 === 0) return `${value / 60} 分钟`
+  if (value >= 60) return `${Number((value / 60).toFixed(2))} 分钟`
   return `${value} 秒`
+}
+
+function openTtlEditor(cache: SystemCache) {
+  ttlTarget.value = cache
+  ttlError.value = ''
+  const seconds = cache.ttl_seconds ?? 0
+  ttlUnit.value = seconds <= 0 ? 'forever' : seconds % 86400 === 0 ? 'day'
+    : seconds % 3600 === 0 ? 'hour' : 'minute'
+  const factor = ttlUnit.value === 'day' ? 86400 : ttlUnit.value === 'hour' ? 3600 : 60
+  ttlValue.value = seconds > 0 ? Number((seconds / factor).toFixed(6)) : 1
+  ttlDialog.value = true
+}
+
+async function saveTtl() {
+  if (!ttlTarget.value || ttlSaving.value) return
+  ttlError.value = ''
+  const factor = ttlUnit.value === 'day' ? 86400 : ttlUnit.value === 'hour' ? 3600 : 60
+  const seconds = Number(ttlValue.value) * factor
+  if (ttlUnit.value !== 'forever' && (!Number.isFinite(seconds) || seconds < 1 || seconds > 36500 * 86400)) {
+    ttlError.value = '请输入大于 0 且不超过 36500 天的有效期'
+    return
+  }
+  ttlSaving.value = true
+  try {
+    const result = await updateSystemCacheTtl(ttlTarget.value.name, ttlValue.value, ttlUnit.value)
+    if (result.code !== 0) throw new Error(result.msg || '保存缓存有效期失败')
+    modal.success(`${ttlTarget.value.label}有效期已保存`)
+    ttlDialog.value = false
+    await refresh()
+  } catch (cause) {
+    ttlError.value = cause instanceof Error ? cause.message : '保存缓存有效期失败'
+  } finally {
+    ttlSaving.value = false
+  }
 }
 
 function setTask(value: CacheStorageJob, syncQuery = true) {
@@ -412,7 +466,7 @@ defineExpose({ refresh, confirmLeave })
     <div v-if="backend" class="cache-metrics q-mb-md">
       <q-card flat bordered class="cache-metric"><span>有效条数</span><strong>{{ total.toLocaleString() }}</strong><small>当前活动命名空间</small></q-card>
       <q-card flat bordered class="cache-metric"><span>{{ backend.memory_scope === 'remote' ? '远程内存估算' : '本机内存估算' }}</span><strong>{{ totalMemory === null ? '暂不可用' : formatBytes(totalMemory) }}</strong><small>估算值，不与持久化占用相加</small></q-card>
-      <q-card flat bordered class="cache-metric"><span>{{ backend.memory_scope === 'remote' ? '远程缓存占用' : '本地持久化占用' }}</span><strong>{{ persistentBytes === null ? '暂不可用' : formatBytes(persistentBytes) }}</strong><small>{{ backend.memory_scope === 'remote' ? '按远程命名空间统计' : 'SQLite 文件大小仅计算一次' }}</small></q-card>
+      <q-card v-if="backend.memory_scope === 'remote' || hasLocalFiles" flat bordered class="cache-metric"><span>{{ backend.memory_scope === 'remote' ? '远程缓存占用' : '本地持久化占用' }}</span><strong>{{ persistentBytes === null ? '暂不可用' : formatBytes(persistentBytes) }}</strong><small>{{ backend.memory_scope === 'remote' ? '按远程命名空间统计' : 'SQLite 文件大小仅计算一次' }}</small></q-card>
       <q-card flat bordered class="cache-metric"><span>最近统计</span><strong>{{ latestStatsAt ? new Date(latestStatsAt * 1000).toLocaleTimeString() : '暂不可用' }}</strong><small>{{ latestStatsAt ? new Date(latestStatsAt * 1000).toLocaleDateString() : '统计时间未知' }}</small></q-card>
     </div>
     <q-banner v-if="task && !['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(task.status)" class="bg-info text-white q-mb-md" rounded>
@@ -432,6 +486,7 @@ defineExpose({ refresh, confirmLeave })
     <div class="text-caption text-secondary q-mb-md">磁盘模式重启后恢复未过期缓存；内存模式重启后清空。Redis / Valkey 的持久化由服务端配置决定。认证令牌和配置加载缓存始终保存在本机内存中。</div>
     <div v-if="backend?.store_path" class="text-caption text-secondary q-mb-md">本地缓存文件：{{ backend.store_path }}</div>
     <div class="text-caption text-secondary q-mb-md">内存统计按{{ backend?.memory_scope === 'remote' ? '远程服务' : '本机' }}口径展示；数据量为估算统计，不影响缓存写入。</div>
+    <div class="text-caption text-secondary q-mb-md">每类缓存可单独设置有效期，支持分钟、小时、天或永久。TMDB 榜单统一管理热门、最新、即将上映和趋势缓存。</div>
     <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
     <q-banner v-if="missingMemoryStats" class="bg-warning text-white q-mb-md" rounded>{{ backend ? '部分缓存未提供内存统计；远程模式请检查服务端 MEMORY USAGE 权限。' : '当前接口未提供完整的内存统计，请重启后端后刷新。' }}</q-banner>
     <div class="cache-filters q-mb-sm">
@@ -445,18 +500,22 @@ defineExpose({ refresh, confirmLeave })
       <template #item="props">
         <q-card flat bordered class="cache-card q-ma-xs">
           <q-card-section class="row items-start no-wrap q-pb-sm">
-            <div class="col"><div class="text-subtitle2">{{ props.row.label }}</div><div class="text-caption text-secondary">{{ props.row.entries }} 条有效缓存<span v-if="props.row.max_entries === 1"> · 上限 1 条</span></div></div>
+            <div class="col"><div class="text-subtitle2">{{ props.row.label }}</div><div v-if="props.row.description" class="text-caption text-secondary">{{ props.row.description }}</div><div class="text-caption text-secondary">{{ props.row.entries }} 条有效缓存<span v-if="props.row.max_entries === 1"> · 上限 1 条</span></div></div>
             <q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="clear(props.row.name, props.row.label)" />
           </q-card-section>
           <q-separator />
           <q-card-section class="text-caption cache-card-stats">
             <div>内存占用{{ props.row.stats_estimated ? '（估算）' : '' }}：{{ formatBytes(props.row.memory_bytes) }}</div>
-            <div v-if="props.row.bytes !== undefined">缓存数据量：{{ formatBytes(props.row.bytes) }}</div>
-            <div v-if="props.row.store_bytes !== undefined">本地文件占用：{{ formatBytes(props.row.store_bytes) }}</div>
+            <div v-if="hasByteValue(props.row.bytes)">缓存数据量：{{ formatBytes(props.row.bytes) }}</div>
+            <div v-if="hasLocalFileData(props.row)">本地文件占用：{{ formatBytes(props.row.store_bytes) }}</div>
             <div>有效期：{{ formatTtl(props.row.ttl_seconds) }}</div>
             <div>{{ backendLabels[props.row.backend] || (props.row.persistent ? '持久保存' : '内存') }} · {{ formatTime(props.row.stats_at) }}</div>
           </q-card-section>
+          <q-card-actions align="right"><q-btn flat color="primary" icon="schedule" label="有效期设置" :disable="loading || Boolean(clearing) || ttlSaving || Boolean(backend?.maintenance)" @click="openTtlEditor(props.row)" /></q-card-actions>
         </q-card>
+      </template>
+      <template #body-cell-label="props">
+        <q-td :props="props"><div>{{ props.row.label }}</div><div v-if="props.row.description" class="text-caption text-secondary">{{ props.row.description }}</div></q-td>
       </template>
       <template #body-cell-entries="props">
         <q-td :props="props">{{ props.row.entries }}<q-badge v-if="props.row.max_entries === 1" class="q-ml-sm" color="grey">上限 1 条</q-badge></q-td>
@@ -464,8 +523,8 @@ defineExpose({ refresh, confirmLeave })
       <template #body-cell-memory_bytes="props">
         <q-td :props="props">
           <div>{{ props.row.stats_estimated ? '约 ' : '' }}{{ formatBytes(props.row.memory_bytes) }}</div>
-          <div v-if="props.row.bytes !== undefined" class="text-caption text-secondary">数据量 {{ formatBytes(props.row.bytes) }}</div>
-          <div v-if="props.row.store_bytes !== undefined" class="text-caption text-secondary">本地文件 {{ formatBytes(props.row.store_bytes) }}</div>
+          <div v-if="hasByteValue(props.row.bytes)" class="text-caption text-secondary">数据量 {{ formatBytes(props.row.bytes) }}</div>
+          <div v-if="hasLocalFileData(props.row)" class="text-caption text-secondary">本地文件 {{ formatBytes(props.row.store_bytes) }}</div>
         </q-td>
       </template>
       <template #body-cell-ttl_seconds="props"><q-td :props="props">{{ formatTtl(props.row.ttl_seconds) }}</q-td></template>
@@ -473,7 +532,7 @@ defineExpose({ refresh, confirmLeave })
         <q-td :props="props"><q-badge :color="props.row.backend && props.row.backend !== 'memory' ? 'positive' : 'grey'">{{ backendLabels[props.row.backend] || (props.row.persistent ? '持久保存' : '内存') }}</q-badge></q-td>
       </template>
       <template #body-cell-actions="props">
-        <q-td :props="props"><q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="clear(props.row.name, props.row.label)" /></q-td>
+        <q-td :props="props" class="cache-row-actions"><q-btn flat dense color="primary" icon="schedule" label="有效期设置" :disable="loading || Boolean(clearing) || ttlSaving || Boolean(backend?.maintenance)" @click="openTtlEditor(props.row)" /><q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing) || ttlSaving || Boolean(backend?.maintenance)" @click="clear(props.row.name, props.row.label)" /></q-td>
       </template>
     </q-table>
 
@@ -481,6 +540,27 @@ defineExpose({ refresh, confirmLeave })
       <div><div class="text-subtitle1">维护操作</div><div class="text-caption text-secondary">清理缓存后，后续请求会在需要时重新获取数据；迁移记录不受影响。</div></div>
       <q-btn outline color="negative" label="清理全部缓存" :loading="clearing === 'all'" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="clear('all', '全部缓存')" />
     </q-card>
+
+    <q-dialog v-model="ttlDialog" persistent :maximized="$q.screen.lt.sm">
+      <q-card class="cache-ttl-dialog">
+        <q-card-section class="row items-center no-wrap">
+          <div><div class="text-h6">{{ ttlTarget?.label }}有效期设置</div><div v-if="ttlTarget?.description" class="text-caption text-secondary">{{ ttlTarget.description }}</div></div>
+          <q-space /><q-btn flat round dense icon="close" aria-label="关闭" :disable="ttlSaving" @click="ttlDialog = false" />
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="cache-ttl-fields">
+          <div class="text-body2 text-secondary">当前有效期：{{ formatTtl(ttlTarget?.ttl_seconds) }}。新有效期用于后续写入，已有缓存保留原到期时间。</div>
+          <div class="cache-ttl-inputs" :class="{ 'is-permanent': ttlUnit === 'forever' }">
+            <q-input v-if="ttlUnit !== 'forever'" v-model.number="ttlValue" outlined type="number" step="any" label="有效时长" :disable="ttlSaving" @update:model-value="ttlError = ''" />
+            <q-select v-model="ttlUnit" outlined label="有效期单位" emit-value map-options :options="ttlUnits" :disable="ttlSaving" @update:model-value="ttlError = ''" />
+          </div>
+          <div v-if="ttlUnit === 'forever'" class="text-caption text-secondary">缓存不自动到期，可随时在本页面手动清理；内存缓存仍会在服务重启后清空。</div>
+          <div v-if="ttlError" class="text-negative" role="alert">{{ ttlError }}</div>
+        </q-card-section>
+        <q-separator />
+        <q-card-actions align="right"><q-btn flat label="取消" :disable="ttlSaving" @click="ttlDialog = false" /><q-btn color="primary" unelevated label="保存" :loading="ttlSaving" @click="saveTtl" /></q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <q-dialog v-model="migrationOpen" persistent :maximized="$q.screen.lt.sm">
       <q-card class="migration-dialog">
@@ -532,14 +612,21 @@ defineExpose({ refresh, confirmLeave })
 .cache-status-card { padding: 16px 18px; }
 .cache-metric, .cache-maintenance-card { border-color: var(--border-subtle); border-radius: 16px; background: var(--surface); }
 .cache-status-details { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 0 60px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
-.cache-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.cache-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
 .cache-metric { padding: 14px 16px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }.cache-metric span, .cache-metric small { color: var(--text-secondary); font-size: 12px; }.cache-metric strong { font-size: 22px; overflow-wrap: anywhere; }
 .cache-maintenance-card { padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
 .migration-dialog { width: min(640px, 100vw); max-width: 100vw; max-height: min(90vh, 900px); display: flex; flex-direction: column; }
 .migration-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; overflow-y: auto; flex: 1; }
 .cache-filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 260px); gap: 10px; }
 .cache-search, .cache-type-filter { min-width: 0; }
+.cache-row-actions { white-space: nowrap; }
+.cache-ttl-dialog { width: 560px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; }
+.cache-ttl-fields { display: grid; gap: 20px; }
+.cache-ttl-inputs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.cache-ttl-inputs.is-permanent { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 599px) {
+  .cache-ttl-dialog { width: 100%; max-width: 100vw; min-height: 100dvh; }.cache-ttl-fields { flex: 1; align-content: start; }.cache-ttl-dialog :deep(.q-card__actions) { padding-bottom: calc(12px + var(--safe-bottom)); }
+  .cache-ttl-inputs { grid-template-columns: minmax(0, 1fr); }
   .migration-dialog { min-height: 100dvh; max-height: 100dvh; }.migration-dialog :deep(.q-card__actions) { padding-bottom: calc(12px + var(--safe-bottom)); }
   .migration-fields { grid-template-columns: minmax(0, 1fr); }
   .cache-filters { grid-template-columns: minmax(0, 1fr); }
