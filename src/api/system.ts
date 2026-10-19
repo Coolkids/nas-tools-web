@@ -82,6 +82,16 @@ export function runScheduler(item: string): Promise<SchResult> {
   return doAction<SchResult>('sch', { item })
 }
 
+export interface SchedulerJob {
+  namespace: 'main' | 'rss' | 'torrent_remover' | 'speed_limiter'
+  id: string
+  next_run_time: string | null
+}
+
+export function getSchedulerJobs(): Promise<{ code: number; msg?: string; jobs: SchedulerJob[]; timezone?: string | null }> {
+  return doAction('get_scheduler_jobs', {})
+}
+
 export interface TruncateResult {
   code: number
   msg?: string

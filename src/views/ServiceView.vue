@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
@@ -8,13 +8,15 @@ import { useModalStore } from '@/stores/modal'
 import { getConfig, updateConfig, type AppConfig } from '@/api/config'
 import {
   runScheduler,
+  getSchedulerJobs,
   truncateBlacklist,
   truncateRsshistory,
   nameTest,
   netTest,
   type NameTestData,
   type NameTestError,
-  type NetTestResult
+  type NetTestResult,
+  type SchedulerJob
 } from '@/api/system'
 
 type CleanupEditorId = 'recognition-cleanup' | 'transfer-history-cleanup' | 'subscription-history-cleanup' | 'download-history-cleanup'
@@ -33,7 +35,18 @@ const modal = useModalStore()
 const route = useRoute()
 const loading = ref(false)
 const loadError = ref('')
-const services = ref<ServiceItem[]>([])
+const configuredServices = ref<ServiceItem[]>([])
+const schedulerJobs = ref<SchedulerJob[]>([])
+const schedulerTimezone = ref('')
+const scheduleError = ref('')
+const schedulesLoading = ref(false)
+const services = computed(() => configuredServices.value.map(service => {
+  if (service.id !== 'autoremovetorrents') return service
+  const jobs = schedulerJobs.value.filter(job => job.namespace === 'torrent_remover')
+  return jobs.length ? { ...service, state: jobs.some(job => job.next_run_time !== null),
+    interval: `${jobs.length} 个删种任务` } : service
+}))
+let scheduleRefreshTimer: ReturnType<typeof setInterval> | undefined
 const actionBusy = ref('')
 const configSnapshot = ref<AppConfig>({})
 const scheduleDialog = ref(false)
@@ -57,7 +70,9 @@ const columns: QTableColumn<ServiceItem>[] = [
   { name: 'name', label: '名称', field: 'name', align: 'left', sortable: true },
   { name: 'type', label: '类型', field: 'type', align: 'left' },
   { name: 'state', label: '状态', field: 'state', align: 'left' },
-  { name: 'interval', label: '执行策略', field: 'interval', align: 'left' },
+  { name: 'interval', label: '执行策略', field: 'interval', align: 'left',
+    style: 'white-space: normal; min-width: 180px; max-width: 280px' },
+  { name: 'nextRun', label: '下一次执行时间', field: nextExecutionLabel, align: 'left' },
   { name: 'actions', label: '操作', field: 'id', align: 'right' }
 ]
 
@@ -65,6 +80,50 @@ function asDigit(value: unknown): number | null {
   const stringValue = String(value ?? '').trim()
   if (!/^\d+$/.test(stringValue)) return null
   return Number(stringValue)
+}
+
+function nextExecutionLabel(service: ServiceItem): string {
+  if (service.type === 'manual') return '手动执行'
+  if (service.id === 'sync') return '实时监控'
+  if (scheduleError.value) return '读取失败'
+  if (schedulesLoading.value && !schedulerJobs.value.length) return '读取中…'
+  const jobs = schedulerJobs.value.filter(job => service.id === 'autoremovetorrents'
+    ? job.namespace === 'torrent_remover'
+    : job.namespace === 'main' && job.id === service.id)
+  if (!jobs.length) return service.state ? '未调度' : '未启用'
+  const times = jobs.flatMap(job => job.next_run_time === null ? [] : [Date.parse(job.next_run_time)])
+  if (!times.length) return '已暂停'
+  const next = new Date(Math.min(...times))
+  if (!Number.isFinite(next.getTime())) return '暂不可用'
+  const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }
+  if (schedulerTimezone.value) options.timeZone = schedulerTimezone.value
+  try {
+    return next.toLocaleString('zh-CN', options)
+  } catch {
+    return next.toLocaleString('zh-CN')
+  }
+}
+
+async function loadSchedules() {
+  if (schedulesLoading.value) return
+  schedulesLoading.value = true
+  try {
+    const response = await getSchedulerJobs()
+    if (response.code !== 0 || !Array.isArray(response.jobs)) throw new Error(response.msg || '读取下一次执行时间失败')
+    schedulerJobs.value = response.jobs
+    schedulerTimezone.value = response.timezone || ''
+    scheduleError.value = ''
+  } catch (error) {
+    schedulerJobs.value = []
+    scheduleError.value = error instanceof Error ? error.message : '读取下一次执行时间失败'
+  } finally {
+    schedulesLoading.value = false
+  }
+}
+
+function refreshVisibleSchedules() {
+  if (!document.hidden) void loadSchedules()
 }
 
 const cleanupDefaultLimits: Record<CleanupEditorId, number> = {
@@ -182,12 +241,11 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const response = await getConfig()
-    if (response.code === 0) {
-      configSnapshot.value = response.config || {}
-      services.value = buildServices(configSnapshot.value)
-    }
-    else loadError.value = '加载服务配置失败'
+    const [configResult] = await Promise.allSettled([getConfig(), loadSchedules()])
+    if (configResult.status === 'rejected') throw configResult.reason
+    if (configResult.value.code !== 0) throw new Error('加载服务配置失败')
+    configSnapshot.value = configResult.value.config || {}
+    configuredServices.value = buildServices(configSnapshot.value)
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '加载服务配置失败'
   } finally {
@@ -392,10 +450,17 @@ async function openNetTest() {
 }
 
 onMounted(async () => {
+  scheduleRefreshTimer = setInterval(refreshVisibleSchedules, 30_000)
+  document.addEventListener('visibilitychange', refreshVisibleSchedules)
   await load()
   const requestedService = services.value.find(service => service.id === route.query.task)
   if (requestedService) openScheduleEditor(requestedService)
   if (route.query.tool === 'name-test') openNameTest()
+})
+
+onUnmounted(() => {
+  clearInterval(scheduleRefreshTimer)
+  document.removeEventListener('visibilitychange', refreshVisibleSchedules)
 })
 </script>
 
@@ -410,6 +475,10 @@ onMounted(async () => {
       {{ loadError }}
       <template #action><q-btn flat color="primary" label="重试" @click="load" /></template>
     </q-banner>
+    <q-banner v-if="scheduleError" class="q-mb-md" rounded inline-actions dense>
+      {{ scheduleError }}
+      <template #action><q-btn flat color="primary" label="重试执行时间" :loading="schedulesLoading" @click="loadSchedules" /></template>
+    </q-banner>
 
     <div class="stat-grid">
       <q-card flat bordered class="stat-card"><q-icon name="construction" color="primary" size="32px" /><div><div class="stat-label">服务总数</div><div class="stat-value">{{ services.length }}</div></div></q-card>
@@ -419,7 +488,7 @@ onMounted(async () => {
     </div>
 
     <q-card flat bordered class="content-card">
-      <q-card-section class="row items-center q-py-sm"><div class="text-subtitle1 text-weight-medium">服务列表</div><q-space /><q-spinner-dots v-if="loading" color="primary" size="20px" /></q-card-section>
+      <q-card-section class="row items-center q-py-sm"><div><div class="text-subtitle1 text-weight-medium">服务列表</div><div class="text-caption text-secondary">执行时间时区：{{ schedulerTimezone || '浏览器本地' }} · 每 30 秒更新</div></div><q-space /><q-spinner-dots v-if="loading" color="primary" size="20px" /></q-card-section>
       <q-separator />
       <q-table v-if="!$q.screen.lt.sm" flat :rows="services" :columns="columns" row-key="id" :loading="loading" hide-pagination :rows-per-page-options="[0]" no-data-label="没有开启任何后台服务">
         <template #body-cell-type="slotProps"><q-td :props="slotProps"><q-badge outline :color="slotProps.row.type === 'scheduler' ? 'primary' : 'grey-7'" :label="slotProps.row.type === 'scheduler' ? '定时任务' : '手动操作'" /></q-td></template>
@@ -429,6 +498,7 @@ onMounted(async () => {
       <div v-else class="mobile-service-list">
         <q-card v-for="service in services" :key="service.id" flat bordered class="service-item">
           <q-card-section class="row items-center q-gutter-sm"><q-icon :name="service.type === 'manual' ? 'cleaning_services' : 'schedule'" :color="service.state ? 'positive' : 'grey-6'" size="26px" /><div class="col"><div class="text-subtitle1 text-weight-medium">{{ service.name }}</div><div class="row items-center q-gutter-xs q-mt-xs"><q-badge outline :color="service.type === 'scheduler' ? 'primary' : 'grey-7'" :label="service.type === 'scheduler' ? '定时任务' : '手动操作'" /><span class="text-caption text-secondary">{{ service.interval }}</span></div></div><q-badge :color="service.state ? 'positive' : 'grey-6'" :label="service.state ? 'ON' : 'OFF'" /></q-card-section>
+          <q-card-section v-if="service.type === 'scheduler'" class="q-pt-none text-caption text-secondary">下一次执行{{ service.id === 'autoremovetorrents' ? '（最早任务）' : '' }}：{{ nextExecutionLabel(service) }}</q-card-section>
           <q-separator /><q-card-actions align="right"><q-btn v-if="service.editable" flat color="primary" icon="edit" :label="isCleanupEditor(service.editable) ? '清理设置' : '周期设置'" @click="openScheduleEditor(service)" /><q-btn flat :color="service.type === 'manual' ? 'negative' : 'primary'" :icon="service.type === 'manual' ? 'delete' : 'play_arrow'" :label="service.type === 'manual' ? '清理' : '立即运行'" :loading="actionBusy === service.id" @click="runService(service)" /></q-card-actions>
         </q-card>
       </div>
