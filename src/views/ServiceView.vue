@@ -17,7 +17,8 @@ import {
   type NetTestResult
 } from '@/api/system'
 
-type ScheduleEditorId = 'search' | 'recognition-cleanup' | 'transfer-history-cleanup' | 'subscription-history-cleanup' | 'download-history-cleanup'
+type CleanupEditorId = 'recognition-cleanup' | 'transfer-history-cleanup' | 'subscription-history-cleanup' | 'download-history-cleanup'
+type ScheduleEditorId = 'search' | 'database-statistics' | CleanupEditorId
 
 interface ServiceItem {
   id: string
@@ -37,13 +38,16 @@ const actionBusy = ref('')
 const configSnapshot = ref<AppConfig>({})
 const scheduleDialog = ref(false)
 const scheduleSaving = ref(false)
+const statisticsInterval = ref(12)
+const statisticsIntervalUnit = ref<'hour' | 'day'>('hour')
 const scheduleForm = ref({
   id: '' as ScheduleEditorId | '',
   name: '',
   enabled: true,
   intervalHours: 24,
   retentionValue: 30,
-  retentionUnit: 'day' as 'day' | 'month'
+  retentionUnit: 'day' as 'day' | 'month',
+  maxRecords: 200
 })
 
 const runningCount = computed(() => services.value.filter((service) => service.state).length)
@@ -53,7 +57,7 @@ const columns: QTableColumn<ServiceItem>[] = [
   { name: 'name', label: '名称', field: 'name', align: 'left', sortable: true },
   { name: 'type', label: '类型', field: 'type', align: 'left' },
   { name: 'state', label: '状态', field: 'state', align: 'left' },
-  { name: 'interval', label: '运行周期', field: 'interval', align: 'left' },
+  { name: 'interval', label: '执行策略', field: 'interval', align: 'left' },
   { name: 'actions', label: '操作', field: 'id', align: 'right' }
 ]
 
@@ -63,18 +67,27 @@ function asDigit(value: unknown): number | null {
   return Number(stringValue)
 }
 
-function readCleanup(cleanup: Record<string, unknown>, legacyDays?: unknown): {
+const cleanupDefaultLimits: Record<CleanupEditorId, number> = {
+  'recognition-cleanup': 200,
+  'transfer-history-cleanup': 200,
+  'subscription-history-cleanup': 100,
+  'download-history-cleanup': 100
+}
+
+function readCleanup(cleanup: Record<string, unknown>, defaultMaxRecords = 200): {
   intervalHours: number
   retentionValue: number
   retentionUnit: 'day' | 'month'
+  maxRecords: number
 } {
-  const legacyValue = asDigit(legacyDays)
+  const legacyValue = asDigit(cleanup.retention_days)
   const retentionValue = asDigit(cleanup.retention_value) || legacyValue || 30
   const retentionUnit = cleanup.retention_unit === 'month' ? 'month' : 'day'
   return {
     intervalHours: asDigit(cleanup.interval_hours) || 24,
     retentionValue,
-    retentionUnit
+    retentionUnit,
+    maxRecords: asDigit(cleanup.max_records) || defaultMaxRecords
   }
 }
 
@@ -82,13 +95,26 @@ function retentionLabel(value: number, unit: 'day' | 'month') {
   return `${value} ${unit === 'month' ? '个月' : '天'}`
 }
 
-const historyCleanupKeys: Record<Exclude<ScheduleEditorId, 'search' | 'recognition-cleanup'>, string> = {
+const historyCleanupKeys: Record<Exclude<CleanupEditorId, 'recognition-cleanup'>, string> = {
   'transfer-history-cleanup': 'transfer_history',
   'subscription-history-cleanup': 'subscription_history',
   'download-history-cleanup': 'download_history'
 }
 
-function cleanupForEditor(config: AppConfig, editor: Exclude<ScheduleEditorId, 'search'>) {
+function isCleanupEditor(editor?: ScheduleEditorId | ''): editor is CleanupEditorId {
+  return Boolean(editor && editor !== 'search' && editor !== 'database-statistics')
+}
+
+function readStatisticsSchedule(config: AppConfig) {
+  const settings = (config.scheduler?.database_statistics || {}) as Record<string, unknown>
+  return {
+    enabled: settings.enabled === undefined ? true : Boolean(settings.enabled),
+    value: asDigit(settings.interval_value) || 12,
+    unit: settings.interval_unit === 'day' ? 'day' as const : 'hour' as const
+  }
+}
+
+function cleanupForEditor(config: AppConfig, editor: CleanupEditorId) {
   if (editor === 'recognition-cleanup') {
     const recognition = (config.recognition || {}) as Record<string, unknown>
     const records = (recognition.records || {}) as Record<string, unknown>
@@ -99,7 +125,7 @@ function cleanupForEditor(config: AppConfig, editor: Exclude<ScheduleEditorId, '
   return (cleanup[historyCleanupKeys[editor]] || {}) as Record<string, unknown>
 }
 
-function cleanupConfigPath(editor: Exclude<ScheduleEditorId, 'search'>) {
+function cleanupConfigPath(editor: CleanupEditorId) {
   if (editor === 'recognition-cleanup') return 'recognition.records.cleanup'
   return `history.cleanup.${historyCleanupKeys[editor]}`
 }
@@ -110,14 +136,17 @@ function buildServices(config: AppConfig): ServiceItem[] {
   const recognition = (config.recognition || {}) as Record<string, unknown>
   const records = (recognition.records || {}) as Record<string, unknown>
   const cleanup = (records.cleanup || {}) as Record<string, unknown>
-  const recognitionSchedule = readCleanup(cleanup, cleanup.retention_days)
+  const recognitionSchedule = readCleanup(cleanup)
   const list: ServiceItem[] = []
   let search = asDigit(pt.search_rss_interval)
   const searchEnabled = search !== null && search > 0
   if (searchEnabled && search !== null && search < 6) search = 6
   list.push({ id: 'subscribe_search_all', name: '订阅搜索', type: 'scheduler', editable: 'search', interval: searchEnabled ? `每 ${search} 小时` : '未启用', state: searchEnabled })
+  const statistics = readStatisticsSchedule(config)
+  list.push({ id: 'database_statistics', name: '数据库精确统计', type: 'scheduler', editable: 'database-statistics',
+    interval: `每 ${statistics.value} ${statistics.unit === 'day' ? '天' : '小时'}`, state: statistics.enabled })
   const cleanupEnabled = Boolean(cleanup.enabled)
-  list.push({ id: 'recognition_record_cleanup', name: '清理过期媒体识别记录', type: 'scheduler', editable: 'recognition-cleanup', interval: `每 ${recognitionSchedule.intervalHours} 小时，保留 ${retentionLabel(recognitionSchedule.retentionValue, recognitionSchedule.retentionUnit)}`, state: cleanupEnabled })
+  list.push({ id: 'recognition_record_cleanup', name: '清理过期媒体识别记录', type: 'scheduler', editable: 'recognition-cleanup', interval: `每 ${recognitionSchedule.intervalHours} 小时，保留 ${retentionLabel(recognitionSchedule.retentionValue, recognitionSchedule.retentionUnit)}，上限 ${recognitionSchedule.maxRecords} 条`, state: cleanupEnabled })
   const history = (config.history || {}) as Record<string, unknown>
   const historyCleanup = (history.cleanup || {}) as Record<string, unknown>
   const cleanupServices = [
@@ -127,13 +156,13 @@ function buildServices(config: AppConfig): ServiceItem[] {
   ] as const
   for (const item of cleanupServices) {
     const settings = (historyCleanup[item.key] || {}) as Record<string, unknown>
-    const schedule = readCleanup(settings)
+    const schedule = readCleanup(settings, cleanupDefaultLimits[item.editor])
     list.push({
       id: item.id,
       name: item.name,
       type: 'scheduler',
       editable: item.editor,
-      interval: `每 ${schedule.intervalHours} 小时，保留 ${retentionLabel(schedule.retentionValue, schedule.retentionUnit)}`,
+      interval: `每 ${schedule.intervalHours} 小时，保留 ${retentionLabel(schedule.retentionValue, schedule.retentionUnit)}，上限 ${schedule.maxRecords} 条`,
       state: Boolean(settings.enabled)
     })
   }
@@ -188,15 +217,19 @@ async function runService(service: ServiceItem) {
     }
     return
   }
-  const cleanup = service.editable && service.editable !== 'search'
+  const cleanup = isCleanupEditor(service.editable)
     ? cleanupForEditor(configSnapshot.value, service.editable)
     : {}
-  const schedule = readCleanup(cleanup, cleanup.retention_days)
+  const defaultLimit = isCleanupEditor(service.editable)
+    ? cleanupDefaultLimits[service.editable] : 200
+  const schedule = readCleanup(cleanup, defaultLimit)
   const runMessage = service.id === 'recognition_record_cleanup'
-    ? `将立即删除超过 ${retentionLabel(schedule.retentionValue, schedule.retentionUnit)} 的媒体识别记录及其解析明细，仍在运行的请求会跳过。是否继续？`
-    : service.editable && service.editable !== 'search'
-      ? `将立即删除超过 ${retentionLabel(schedule.retentionValue, schedule.retentionUnit)} 的${service.name.replace('清理过期', '')}。是否继续？`
-      : `是否立即运行 ${service.name}？`
+    ? `将清理超过 ${retentionLabel(schedule.retentionValue, schedule.retentionUnit)} 的媒体识别记录及其解析明细，再按 ${schedule.maxRecords} 条上限保留最新记录；仍在运行的请求会跳过，可能暂时超过上限。是否继续？`
+    : isCleanupEditor(service.editable)
+      ? `将清理超过 ${retentionLabel(schedule.retentionValue, schedule.retentionUnit)} 的${service.name.replace('清理过期', '')}，再按 ${schedule.maxRecords} 条上限保留最新记录。是否继续？`
+      : service.id === 'database_statistics'
+        ? '将立即刷新数据库数据概览中所有应用表的精确记录数，手动执行不受 12 小时间隔限制，任务在后台执行。是否继续？'
+        : `是否立即运行 ${service.name}？`
   if (!await modal.confirm(runMessage)) return
   actionBusy.value = service.id
   try {
@@ -214,14 +247,19 @@ function openScheduleEditor(service: ServiceItem) {
   if (!service.editable) return
   const config = configSnapshot.value
   const pt = (config.pt || {}) as Record<string, unknown>
-  if (service.editable === 'search') {
+  if (service.editable === 'database-statistics') {
+    const schedule = readStatisticsSchedule(config)
+    statisticsInterval.value = schedule.value
+    statisticsIntervalUnit.value = schedule.unit
+    scheduleForm.value = { ...scheduleForm.value, id: service.editable, name: service.name, enabled: schedule.enabled }
+  } else if (service.editable === 'search') {
     const hours = asDigit(pt.search_rss_interval) || 6
     scheduleForm.value = { id: service.editable, name: service.name,
       enabled: (asDigit(pt.search_rss_interval) || 0) > 0,
-      intervalHours: Math.max(6, hours), retentionValue: 30, retentionUnit: 'day' }
+      intervalHours: Math.max(6, hours), retentionValue: 30, retentionUnit: 'day', maxRecords: 200 }
   } else {
     const cleanup = cleanupForEditor(config, service.editable)
-    const schedule = readCleanup(cleanup, cleanup.retention_days)
+    const schedule = readCleanup(cleanup, cleanupDefaultLimits[service.editable])
     scheduleForm.value = { id: service.editable, name: service.name,
       enabled: Boolean(cleanup.enabled), ...schedule }
   }
@@ -239,7 +277,17 @@ async function saveSchedule() {
       return
     }
     items['pt.search_rss_interval'] = form.enabled ? hours : 0
-  } else if (form.id) {
+  } else if (form.id === 'database-statistics') {
+    const value = Number(statisticsInterval.value)
+    const hours = value * (statisticsIntervalUnit.value === 'day' ? 24 : 1)
+    if (!Number.isSafeInteger(value) || value < 1 || !Number.isSafeInteger(hours) || hours < 12) {
+      modal.warning('统计间隔须为正整数，且不能低于 12 小时')
+      return
+    }
+    items['scheduler.database_statistics.enabled'] = form.enabled
+    items['scheduler.database_statistics.interval_value'] = value
+    items['scheduler.database_statistics.interval_unit'] = statisticsIntervalUnit.value
+  } else if (isCleanupEditor(form.id)) {
     const hours = Number(form.intervalHours)
     if (!Number.isInteger(hours) || hours < 1 || hours > 8760) {
       modal.warning('执行周期须为 1 至 8760 小时')
@@ -251,11 +299,17 @@ async function saveSchedule() {
       modal.warning(form.retentionUnit === 'month' ? '保留时间须为 1 至 1200 个月' : '保留时间须为 1 至 36500 天')
       return
     }
+    const maxRecords = Number(form.maxRecords)
+    if (!Number.isSafeInteger(maxRecords) || maxRecords < 1) {
+      modal.warning('记录上限须为大于 0 的整数')
+      return
+    }
     const path = cleanupConfigPath(form.id)
     items[`${path}.enabled`] = form.enabled
     items[`${path}.interval_hours`] = hours
     items[`${path}.retention_value`] = retention
     items[`${path}.retention_unit`] = form.retentionUnit
+    items[`${path}.max_records`] = maxRecords
     if (form.id === 'recognition-cleanup') {
       items[`${path}.retention_days`] = form.retentionUnit === 'month' ? retention * 30 : retention
     }
@@ -265,7 +319,7 @@ async function saveSchedule() {
   try {
     const response = await updateConfig(items)
     if (response.code === 0) {
-      modal.success('清理周期已保存，定时任务已重载')
+      modal.success('服务设置已保存，定时任务已重载')
       scheduleDialog.value = false
       await load()
     } else modal.error(response.msg || '保存服务周期失败')
@@ -337,8 +391,10 @@ async function openNetTest() {
   }
 }
 
-onMounted(() => {
-  void load()
+onMounted(async () => {
+  await load()
+  const requestedService = services.value.find(service => service.id === route.query.task)
+  if (requestedService) openScheduleEditor(requestedService)
   if (route.query.tool === 'name-test') openNameTest()
 })
 </script>
@@ -368,12 +424,12 @@ onMounted(() => {
       <q-table v-if="!$q.screen.lt.sm" flat :rows="services" :columns="columns" row-key="id" :loading="loading" hide-pagination :rows-per-page-options="[0]" no-data-label="没有开启任何后台服务">
         <template #body-cell-type="slotProps"><q-td :props="slotProps"><q-badge outline :color="slotProps.row.type === 'scheduler' ? 'primary' : 'grey-7'" :label="slotProps.row.type === 'scheduler' ? '定时任务' : '手动操作'" /></q-td></template>
         <template #body-cell-state="slotProps"><q-td :props="slotProps"><q-badge :color="slotProps.row.state ? 'positive' : 'grey-6'" :label="slotProps.row.state ? 'ON' : 'OFF'" /></q-td></template>
-        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn v-if="slotProps.row.editable" flat dense color="primary" icon="edit" label="周期设置" @click="openScheduleEditor(slotProps.row)" /><q-btn flat dense :color="slotProps.row.type === 'manual' ? 'negative' : 'primary'" :icon="slotProps.row.type === 'manual' ? 'delete' : 'play_arrow'" :label="slotProps.row.type === 'manual' ? '清理' : '运行'" :loading="actionBusy === slotProps.row.id" @click="runService(slotProps.row)" /></q-td></template>
+        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn v-if="slotProps.row.editable" flat dense color="primary" icon="edit" :label="isCleanupEditor(slotProps.row.editable) ? '清理设置' : '周期设置'" @click="openScheduleEditor(slotProps.row)" /><q-btn flat dense :color="slotProps.row.type === 'manual' ? 'negative' : 'primary'" :icon="slotProps.row.type === 'manual' ? 'delete' : 'play_arrow'" :label="slotProps.row.type === 'manual' ? '清理' : '运行'" :loading="actionBusy === slotProps.row.id" @click="runService(slotProps.row)" /></q-td></template>
       </q-table>
       <div v-else class="mobile-service-list">
         <q-card v-for="service in services" :key="service.id" flat bordered class="service-item">
           <q-card-section class="row items-center q-gutter-sm"><q-icon :name="service.type === 'manual' ? 'cleaning_services' : 'schedule'" :color="service.state ? 'positive' : 'grey-6'" size="26px" /><div class="col"><div class="text-subtitle1 text-weight-medium">{{ service.name }}</div><div class="row items-center q-gutter-xs q-mt-xs"><q-badge outline :color="service.type === 'scheduler' ? 'primary' : 'grey-7'" :label="service.type === 'scheduler' ? '定时任务' : '手动操作'" /><span class="text-caption text-secondary">{{ service.interval }}</span></div></div><q-badge :color="service.state ? 'positive' : 'grey-6'" :label="service.state ? 'ON' : 'OFF'" /></q-card-section>
-          <q-separator /><q-card-actions align="right"><q-btn v-if="service.editable" flat color="primary" icon="edit" label="周期设置" @click="openScheduleEditor(service)" /><q-btn flat :color="service.type === 'manual' ? 'negative' : 'primary'" :icon="service.type === 'manual' ? 'delete' : 'play_arrow'" :label="service.type === 'manual' ? '清理' : '立即运行'" :loading="actionBusy === service.id" @click="runService(service)" /></q-card-actions>
+          <q-separator /><q-card-actions align="right"><q-btn v-if="service.editable" flat color="primary" icon="edit" :label="isCleanupEditor(service.editable) ? '清理设置' : '周期设置'" @click="openScheduleEditor(service)" /><q-btn flat :color="service.type === 'manual' ? 'negative' : 'primary'" :icon="service.type === 'manual' ? 'delete' : 'play_arrow'" :label="service.type === 'manual' ? '清理' : '立即运行'" :loading="actionBusy === service.id" @click="runService(service)" /></q-card-actions>
         </q-card>
       </div>
     </q-card>
@@ -385,13 +441,22 @@ onMounted(() => {
         <q-card-section class="q-gutter-y-md">
           <q-toggle v-model="scheduleForm.enabled" color="primary" label="启用定时任务" />
           <q-input v-if="scheduleForm.id === 'search'" v-model.number="scheduleForm.intervalHours" outlined type="number" min="6" max="8760" label="运行间隔（小时）" :disable="!scheduleForm.enabled" hint="最短 6 小时，最长 365 天" />
+          <template v-else-if="scheduleForm.id === 'database-statistics'">
+            <div class="text-body2 text-secondary">定时刷新数据库数据概览中的精确记录数，默认每 12 小时执行。12 小时下限仅适用于定时任务；手动刷新可随时执行，关闭定时任务后仍可使用。</div>
+            <div class="row q-col-gutter-x-md">
+              <div class="col-7"><q-input v-model.number="statisticsInterval" outlined type="number" :min="statisticsIntervalUnit === 'hour' ? 12 : 1" step="1" label="执行间隔" hint="须为正整数，最短 12 小时" /></div>
+              <div class="col-5"><q-select v-model="statisticsIntervalUnit" outlined emit-value map-options label="间隔单位" :options="[{ label: '小时', value: 'hour' }, { label: '天', value: 'day' }]" /></div>
+            </div>
+          </template>
           <template v-else-if="scheduleForm.id">
-            <div class="text-body2 text-secondary">超过数据保存时间的记录会在执行周期到达时清理；关闭任务后不会自动删除记录。</div>
+            <div class="text-body2 text-secondary">每次执行会清理过期记录，再按记录上限保留最新记录；关闭任务后仍可手动运行清理。</div>
             <q-input v-model.number="scheduleForm.intervalHours" outlined type="number" min="1" max="8760" label="执行周期（小时）" :disable="!scheduleForm.enabled" hint="范围 1 至 8760 小时" />
             <div class="row q-col-gutter-md">
               <div class="col-7"><q-input v-model.number="scheduleForm.retentionValue" outlined type="number" min="1" :max="scheduleForm.retentionUnit === 'month' ? 1200 : 36500" label="数据保存时间" /></div>
               <div class="col-5"><q-select v-model="scheduleForm.retentionUnit" outlined emit-value map-options label="数据保存单位" :options="[{ label: '天', value: 'day' }, { label: '月', value: 'month' }]" /></div>
             </div>
+            <q-input v-model.number="scheduleForm.maxRecords" outlined type="number" min="1" step="1" label="记录上限（条）" hint="每次清理优先保留最新记录，须为大于 0 的整数" />
+            <div v-if="scheduleForm.id === 'recognition-cleanup'" class="text-caption text-secondary">运行中的识别请求会暂时保留，记录总数可能暂时超过上限。</div>
           </template>
         </q-card-section>
         <q-separator />

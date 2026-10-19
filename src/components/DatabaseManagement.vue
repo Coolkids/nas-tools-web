@@ -712,7 +712,7 @@ defineExpose({ refresh, confirmLeave })
 
     <div class="db-content-grid">
       <q-card flat bordered class="db-section-card overview-card">
-        <div class="section-heading"><div><div class="text-subtitle1">数据概览</div><div class="text-caption text-secondary"><template v-if="info?.table_count_mode === 'exact'">精确记录数 · {{ formatDate(info?.exact_statistics_at) }}</template><template v-else>记录数为数据库目录估算；可在后台异步刷新精确值。</template> 权限不足或统计失败显示为暂不可用。 <span v-if="info?.table_count_reasons?._all">{{ info.table_count_reasons._all }}</span></div></div><div class="row q-gutter-xs"><q-btn flat dense color="primary" icon="refresh" aria-label="刷新数据库状态" :loading="loading" @click="refreshAndClearCompleted" /><q-btn outline dense color="primary" label="精确统计" :loading="statisticsStarting || (task?.kind === 'database_statistics' && !terminalStatuses.has(task.status))" :disable="conflictBusy || statisticsStarting" @click="refreshExactStatistics" /></div></div>
+        <div class="section-heading statistics-heading"><div><div class="text-subtitle1">数据概览</div><div class="text-caption text-secondary"><template v-if="info?.table_count_mode === 'exact'">精确记录数 · {{ formatDate(info?.exact_statistics_at) }}</template><template v-else>记录数为数据库目录估算；可在后台异步刷新精确值。</template> 权限不足或统计失败显示为暂不可用。 <span v-if="info?.table_count_reasons?._all">{{ info.table_count_reasons._all }}</span></div></div><div class="row items-center q-gutter-xs statistics-actions"><q-btn flat dense color="primary" icon="refresh" aria-label="刷新数据库状态" :loading="loading" @click="refreshAndClearCompleted" /><q-btn outline dense color="primary" label="精确统计" :loading="statisticsStarting || (task?.kind === 'database_statistics' && !terminalStatuses.has(task.status))" :disable="conflictBusy || statisticsStarting" @click="refreshExactStatistics" /><q-btn flat dense color="primary" icon="schedule" label="定时统计设置" :to="{ path: '/service', query: { task: 'database_statistics' } }" /></div></div>
         <q-input v-model="search" dense outlined clearable label="搜索表名" class="table-search"><template #prepend><q-icon name="search" /></template></q-input>
         <q-expansion-item v-for="domain in filteredDomains" :key="domain.name" default-opened expand-separator header-class="domain-header">
           <template #header><q-item-section><q-item-label>{{ domain.label }}</q-item-label><q-item-label caption>{{ domain.rows.length }} 张表 · {{ countLabel(domainRowCount(domain.rows)) }} 条记录</q-item-label></q-item-section></template>
@@ -847,6 +847,9 @@ defineExpose({ refresh, confirmLeave })
 .db-section-card { padding: 18px; min-width: 0; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
 .section-heading .text-caption { margin-top: 3px; }
+.statistics-heading { flex-wrap: wrap; align-items: flex-start; }
+.statistics-heading > :first-child { flex: 1 1 260px; }
+.statistics-actions { flex-shrink: 0; }
 .table-search { margin-bottom: 12px; }
 .domain-header { font-weight: 600; }
 .backup-summary { min-height: 58px; padding: 10px 12px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border-subtle); border-radius: 12px; background: color-mix(in srgb, var(--page-bg) 56%, var(--surface)); }
