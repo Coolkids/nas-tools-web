@@ -717,7 +717,7 @@ defineExpose({ refresh, confirmLeave })
         <q-expansion-item v-for="domain in filteredDomains" :key="domain.name" default-opened expand-separator header-class="domain-header">
           <template #header><q-item-section><q-item-label>{{ domain.label }}</q-item-label><q-item-label caption>{{ domain.rows.length }} 张表 · {{ countLabel(domainRowCount(domain.rows)) }} 条记录</q-item-label></q-item-section></template>
           <q-table v-if="$q.screen.gt.xs" flat dense :rows="domain.rows" :columns="tableColumns" row-key="table" :pagination="{ rowsPerPage: 0 }" hide-pagination />
-          <q-list v-else separator class="mobile-table-list"><q-item v-for="row in domain.rows" :key="row.table"><q-item-section>{{ row.table }}</q-item-section><q-item-section side>{{ countLabel(row.count) }} 条</q-item-section></q-item></q-list>
+          <q-list v-else separator class="mobile-table-list"><q-item v-for="row in domain.rows" :key="row.table"><q-item-section><q-item-label>{{ row.table }}</q-item-label><q-item-label caption>记录数：{{ countLabel(row.count) }}<template v-if="row.count !== null"> 条</template></q-item-label></q-item-section></q-item></q-list>
         </q-expansion-item>
         <div v-if="!domains.length" class="empty-note">暂无可展示的表统计。</div>
       </q-card>
