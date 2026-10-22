@@ -1,5 +1,11 @@
 import { doAction } from '@/api/request'
 
+export interface CacheHotRefreshStatus {
+  supported: boolean
+  enabled: boolean
+  reason: string | null
+}
+
 export interface SystemCache {
   name: string
   label: string
@@ -16,6 +22,7 @@ export interface SystemCache {
   ttl_seconds?: number
   stats_at?: number | null
   stats_estimated?: boolean
+  hot_refresh?: CacheHotRefreshStatus
 }
 
 export interface CacheBackendStatus {

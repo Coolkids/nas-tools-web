@@ -131,9 +131,11 @@ export interface NameTestData extends NameTestError {
   video_codec: string
   audio_codec: string
   org_string: string
-  ignored_words: string
-  replaced_words: string
-  offset_words: string
+  recognition_original_title?: string
+  recognition_processed_title?: string
+  ignored_words: string | string[]
+  replaced_words: string | string[]
+  offset_words: string | string[]
 }
 
 export interface NameTestResult {

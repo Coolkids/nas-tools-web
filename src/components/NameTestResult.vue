@@ -72,6 +72,9 @@ function toArray(value: unknown): string[] {
 const replacedWords = computed(() => toArray(data.value?.replaced_words))
 const ignoredWords = computed(() => toArray(data.value?.ignored_words))
 const offsetWords = computed(() => toArray(data.value?.offset_words))
+const originalTitle = computed(() => data.value?.recognition_original_title || data.value?.org_string || props.input)
+const processedTitle = computed(() => data.value?.recognition_processed_title || data.value?.org_string || '')
+const titleChanged = computed(() => Boolean(originalTitle.value && processedTitle.value && originalTitle.value !== processedTitle.value))
 const compactFields = computed(() => parsedFields.value.slice(0, 4))
 const detailsOpen = ref(false)
 watch([data, replacedWords, ignoredWords, offsetWords], ([value, replaced, ignored, offset]) => {
@@ -173,11 +176,12 @@ function searchName() {
 
       <q-expansion-item v-if="!compact" v-model="detailsOpen" dense icon="account_tree" label="识别过程" class="process-section">
         <div class="process-grid">
-          <div v-if="data.org_string" class="process-row"><span class="field-label">原始识别用名</span><span class="field-value">{{ data.org_string }}</span></div>
-          <div v-if="ignoredWords.length" class="process-row"><span class="field-label">应用屏蔽词</span><span class="field-value process-values"><q-chip v-for="word in ignoredWords" :key="`ignore-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
-          <div v-if="replacedWords.length" class="process-row"><span class="field-label">应用替换词</span><span class="field-value process-values"><q-chip v-for="word in replacedWords" :key="`replace-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
-          <div v-if="offsetWords.length" class="process-row"><span class="field-label">应用集数偏移</span><span class="field-value process-values"><q-chip v-for="word in offsetWords" :key="`offset-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
-          <div v-if="!data.org_string && !ignoredWords.length && !replacedWords.length && !offsetWords.length" class="text-caption text-secondary">未返回额外处理记录。</div>
+          <div v-if="originalTitle" class="process-row"><span class="field-label">替换前名称</span><span class="field-value">{{ originalTitle }}</span></div>
+          <div v-if="processedTitle" class="process-row"><span class="field-label">替换后名称</span><span class="field-value">{{ processedTitle }}</span></div>
+          <div v-if="ignoredWords.length" class="process-row"><span class="field-label">命中自定义屏蔽词</span><span class="field-value process-values"><q-chip v-for="word in ignoredWords" :key="`ignore-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
+          <div v-if="replacedWords.length" class="process-row"><span class="field-label">命中自定义替换词</span><span class="field-value process-values"><q-chip v-for="word in replacedWords" :key="`replace-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
+          <div v-if="offsetWords.length" class="process-row"><span class="field-label">命中集数偏移词</span><span class="field-value process-values"><q-chip v-for="word in offsetWords" :key="`offset-${word}`" dense color="grey-3" text-color="grey-8" :label="word" /></span></div>
+          <div v-if="!ignoredWords.length && !replacedWords.length && !offsetWords.length" class="text-caption text-secondary">{{ titleChanged ? '名称已变化，但未返回自定义识别词命中明细。' : '未命中自定义识别词；名称未发生规则替换。' }}</div>
         </div>
       </q-expansion-item>
     </template>

@@ -17,7 +17,7 @@ export const settingsGroups = [
   { value: 'engines', label: '解析引擎', icon: 'hub', description: 'Anitopy 始终启用，按需加入独立的 ML 与 OpenAI 兼容服务。' },
   { value: 'execution', label: '并行与超时', icon: 'speed', description: '独立解析和查询并行执行，最终统一校验结果；有限预算取总时限与阶段时限的剩余最小值。' },
   { value: 'matching', label: 'TMDB 与匹配', icon: 'manage_search', description: '限制查询范围，综合名称证据与硬约束选择结果；偏好不会覆盖类型、季集等硬矛盾。' },
-  { value: 'cache', label: '缓存策略', icon: 'storage', description: '四层缓存共用现有后端。新有效期用于后续写入，已有条目保留原到期时间。' },
+  { value: 'cache', label: '缓存策略', icon: 'storage', description: '控制媒体识别缓存的启用状态。' },
   { value: 'records', label: '记录与清理', icon: 'history', description: '记录范围与清理规则独立。切换记录类型不会删除已有历史。' }
 ] as const
 export const settingsFields: SettingsField[] = [
@@ -33,6 +33,7 @@ export const settingsFields: SettingsField[] = [
   field('engines', 'recognition.providers.openai.max_output_tokens', '最大输出 Token', 'integer', { min: 1, provider: 'openai', advanced: true }),
   field('engines', 'recognition.providers.openai.response_format_mode', '输出格式', 'select', { provider: 'openai', advanced: true, choices: choices([['自动协商', 'auto'], ['JSON Schema', 'json_schema'], ['JSON Object', 'json_object'], ['提示词 JSON', 'prompt']]), help: '自动模式仅在服务明确拒绝格式参数时降级；提示词 JSON 不发送 response_format，所有模式仍严格校验结果。' }),
   field('engines', 'recognition.providers.openai.token_parameter', 'Token 参数', 'select', { provider: 'openai', advanced: true, choices: choices([['自动协商', 'auto'], ['max_tokens', 'max_tokens'], ['max_completion_tokens', 'max_completion_tokens']]) }),
+  field('engines', 'recognition.query.prefer_english', '搜索优先使用英文名', 'boolean', { help: '有英文标题、副标题或别名时先查英文；无法确认作品时再回退其他名称。没有英文名时直接使用其他名称。' }),
   field('engines', 'recognition.profiles.parse_only.network_allowed', '仅解析时允许联网', 'boolean', { advanced: true, help: '仅解析始终不查询 TMDB。' }),
   field('engines', 'recognition.profiles.resolve.network_allowed', '媒体匹配时允许联网', 'boolean', { advanced: true }),
   field('engines', 'recognition.profiles.resolve.tmdb_allowed', '允许查询 TMDB', 'boolean', { advanced: true }),
@@ -56,10 +57,7 @@ export const settingsFields: SettingsField[] = [
     field('matching', `recognition.matching.weights.${key}`, ['名称权重', '类型与季集权重', '年份权重', '引擎共识权重', '热度权重'][i], 'number', { min: key === 'title' ? Number.MIN_VALUE : 0, max: 1, advanced: true, help: '五项权重总和必须为 1，名称权重大于 0。' })),
   field('cache', 'recognition.cache.enabled', '启用识别缓存', 'boolean', { help: '控制 AI 解析及四层缓存的读取、写入与刷新。' }),
   field('cache', 'recognition.cache.parse.enabled', '启用 AI 解析缓存', 'boolean'),
-  field('cache', 'recognition.cache.parse.singleflight', '合并相同在途请求', 'boolean'),
-  ...(['identity', 'search', 'detail', 'episode'] as const).map((key, i) =>
-    field('cache', `cache.ttl_seconds.recognition_${key}`, ['作品标题有效期', '原始搜索有效期', '作品详情有效期', '单集详情有效期'][i], 'duration', { min: 1, allowForever: true,
-      help: key === 'identity' ? '仅按作品标题复用已确认的 TMDB ID，同一作品各集共用；季集号、发布组、画质和引擎设置不进入缓存键。可设为永不过期，TMDB 详情按自己的有效期更新。' : key === 'detail' ? 'TMDB 详情独立过期和热刷新；缺失、过期或数据无效时重新获取并写入缓存，无需重新解析已确认的作品标题。' : undefined })),
+  field('execution', 'recognition.cache.parse.singleflight', '合并相同 AI 解析请求', 'boolean', { advanced: true }),
   field('cache', 'recognition.cache_v3.stale_grace_seconds', '过期宽限', 'duration', { min: 0 }),
   field('cache', 'recognition.cache_v3.hot_refresh_enabled', '自动刷新热缓存', 'boolean', { hot: true, help: '本周期命中超过 1 次、位于同类有效缓存前 50% 且临近到期时刷新。' }),
   field('cache', 'recognition.cache_v3.refresh_ahead_seconds', '刷新提前量', 'duration', { min: 1, hot: true, help: '提前量达到或超过有限 TTL 时，实际窗口取 TTL 的一半；不过期条目不参与。' }),
@@ -123,7 +121,8 @@ export function validateField(field: SettingsField, value: unknown, draft: Recog
 
 export function fieldSection(field: SettingsField): string {
   const path = field.path
-  if (field.group === 'engines') return path.includes('.anitopy_ml.') ? 'Anitopy-ML' : path.includes('.openai.') ? 'OpenAI 兼容 API' : '联网范围'
+  if (field.group === 'engines') return path.endsWith('.prefer_english') ? '搜索偏好'
+    : path.includes('.anitopy_ml.') ? 'Anitopy-ML' : path.includes('.openai.') ? 'OpenAI 兼容 API' : '联网范围'
   if (field.group === 'execution') return path.includes('.timeouts.') ? '阶段时限' : '并发限制'
   if (field.group === 'matching') return path.includes('.query.') ? '查询范围' : path.includes('.weights.') ? '评分权重'
     : /min_name_similarity|match_threshold|min_score_gap/.test(path) ? '匹配阈值' : '候选偏好'

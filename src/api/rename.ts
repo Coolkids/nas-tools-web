@@ -47,6 +47,10 @@ export interface TmdbCacheInfo {
   media_type: string
   poster_path: string
   backdrop_path: string
+  cache_layer?: 'identity' | 'detail'
+  cache_label?: string
+  fresh_until?: number | null
+  language?: string
 }
 
 export type TmdbCacheItem = [string, TmdbCacheInfo, string]

@@ -45,6 +45,9 @@ const cacheManagement = ref<InstanceType<typeof CacheManagement>[]>([])
 const databaseManagement = ref<InstanceType<typeof DatabaseManagement>[]>([])
 const recognitionSettings = ref<InstanceType<typeof RecognitionSettingsPanel>[]>([])
 const form = reactive<Record<string, unknown>>({})
+async function refreshCacheManagement() {
+  await Promise.all(cacheManagement.value.map((panel) => panel.refresh()))
+}
 async function confirmStorageTabLeave() {
   const recognition = recognitionSettings.value[0]
   if (['ai', 'cache'].includes(activeTab.value) && recognition && !await recognition.confirmLeave()) return false
@@ -68,7 +71,7 @@ async function activateTab(tab: string, updateRoute: boolean) {
     const query: LocationQuery = { ...route.query, tab: next }
     void router.replace({ query })
   }
-  if (next === 'cache') void Promise.all(cacheManagement.value.map((panel) => panel.refresh()))
+  if (next === 'cache') void refreshCacheManagement()
   if (next === 'database') void Promise.all(databaseManagement.value.map((panel) => panel.refresh()))
 }
 
@@ -101,7 +104,7 @@ const SECURITY_KEYS = [
   'security.telegram_webhook_allow_ip.ipv4', 'security.telegram_webhook_allow_ip.ipv6',
   'security.synology_webhook_allow_ip.ipv4', 'security.synology_webhook_allow_ip.ipv6', 'security.api_key'
 ]
-const LAB_KEYS = ['laboratory.use_douban_titles', 'laboratory.search_en_title', 'laboratory.tmdb_proxy']
+const LAB_KEYS = ['laboratory.use_douban_titles', 'laboratory.tmdb_proxy']
 
 const SCRAPER_NFO = [
   { group: '电影', items: [
@@ -190,7 +193,6 @@ const SECURITY_FIELDS: SettingField[] = [
 ]
 const LAB_FIELDS: SettingField[] = [
   { key: 'laboratory.use_douban_titles', label: '使用豆瓣名称联想', kind: 'toggle' },
-  { key: 'laboratory.search_en_title', label: '搜索优先使用英文名', kind: 'toggle' },
   { key: 'laboratory.tmdb_proxy', label: '使用TMDB代理服务', kind: 'toggle' }
 ]
 const LAB_FIELD_GROUPS = [{ tab: 'laboratory', title: '其他实验室功能',
@@ -228,7 +230,6 @@ const SETTING_DESCRIPTIONS: Record<string, string> = {
   'security.synology_webhook_allow_ip.ipv6': '允许访问 Synology Chat Webhook 的 IPv6 网段，支持 CIDR。',
   'security.api_key': '外部 API 调用使用的密钥，请妥善保管并避免分享。',
   'laboratory.use_douban_titles': '使用豆瓣标题作为额外名称，提高中文名称匹配率。',
-  'laboratory.search_en_title': '识别时优先使用各引擎解析出的英文标题、副标题和别名搜索；其他名称仍会参与查询。',
   'laboratory.tmdb_proxy': '通过配置的代理访问 TMDB，适用于直连不稳定的网络。'
 }
 
@@ -378,14 +379,14 @@ onMounted(loadData)
 
 <template>
   <div class="basic-view page-shell">
-    <PageHeader title="基础设置" description="系统、媒体、服务、安全、AI 推理、缓存与数据库配置" />
+    <PageHeader title="基础设置" description="系统、媒体、服务、安全、媒体识别、缓存与数据库配置" />
     <q-card flat bordered class="settings-card">
       <q-tabs :model-value="activeTab" active-color="primary" indicator-color="primary" align="left" narrow-indicator scrollable @update:model-value="requestTabChange">
         <q-tab name="system" label="系统" />
         <q-tab name="media" label="媒体" />
         <q-tab name="service" label="服务" />
         <q-tab name="security" label="安全" />
-        <q-tab name="ai" label="AI 推理" />
+        <q-tab name="ai" label="媒体识别" />
         <q-tab name="cache" label="缓存" />
         <q-tab name="database" label="数据库" />
         <q-tab name="laboratory" label="实验室" />
@@ -397,7 +398,7 @@ onMounted(loadData)
           <RecognitionSettingsPanel v-else-if="tab === 'ai'" ref="recognitionSettings" />
           <template v-else-if="['cache', 'laboratory'].includes(tab)">
             <CacheManagement v-if="tab === 'cache'" ref="cacheManagement" />
-            <RecognitionSettingsPanel v-if="tab === 'cache'" ref="recognitionSettings" cache-only class="q-mt-xl" />
+            <RecognitionSettingsPanel v-if="tab === 'cache'" ref="recognitionSettings" cache-only class="q-mt-xl" @saved="refreshCacheManagement" />
             <section v-for="section in laboratoryFieldSections.filter((section) => section.tab === tab && tab !== 'cache')" :key="section.title" class="laboratory-settings-group">
               <div class="laboratory-group-heading">
                 <div class="text-subtitle1">{{ section.title }}</div>

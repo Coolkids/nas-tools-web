@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { type QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import StorageStatusCard from '@/components/StorageStatusCard.vue'
+import CacheHotRefreshBadge from '@/components/CacheHotRefreshBadge.vue'
 import DurationInput from '@/components/settings/DurationInput.vue'
 import { formatDuration } from '@/utils/duration'
 import { getRecognitionSettings } from '@/api/recognition'
@@ -505,7 +506,7 @@ defineExpose({ refresh, confirmLeave })
       <template #item="props">
         <q-card flat bordered class="cache-card q-ma-xs">
           <q-card-section class="row items-start no-wrap q-pb-sm">
-            <div class="col"><div class="text-subtitle2">{{ props.row.label }}</div><div v-if="props.row.description" class="text-caption text-secondary">{{ props.row.description }}</div><div class="text-caption text-secondary">{{ props.row.entries }} 条有效缓存<span v-if="props.row.max_entries === 1"> · 上限 1 条</span></div></div>
+            <div class="col"><div class="text-subtitle2 row items-center q-gutter-x-sm q-gutter-y-xs"><span>{{ props.row.label }}</span><CacheHotRefreshBadge :status="props.row.hot_refresh" /></div><div v-if="props.row.description" class="text-caption text-secondary">{{ props.row.description }}</div><div class="text-caption text-secondary">{{ props.row.entries }} 条有效缓存<span v-if="props.row.max_entries === 1"> · 上限 1 条</span></div></div>
             <q-btn flat dense color="negative" label="清理" :loading="clearing === props.row.name" :disable="loading || Boolean(clearing) || Boolean(backend?.maintenance)" @click="clear(props.row.name, props.row.label)" />
           </q-card-section>
           <q-separator />
@@ -520,7 +521,7 @@ defineExpose({ refresh, confirmLeave })
         </q-card>
       </template>
       <template #body-cell-label="props">
-        <q-td :props="props"><div>{{ props.row.label }}</div><div v-if="props.row.description" class="text-caption text-secondary">{{ props.row.description }}</div></q-td>
+        <q-td :props="props"><div class="row items-center q-gutter-x-sm q-gutter-y-xs"><span>{{ props.row.label }}</span><CacheHotRefreshBadge :status="props.row.hot_refresh" /></div><div v-if="props.row.description" class="text-caption text-secondary">{{ props.row.description }}</div></q-td>
       </template>
       <template #body-cell-entries="props">
         <q-td :props="props">{{ props.row.entries }}<q-badge v-if="props.row.max_entries === 1" class="q-ml-sm" color="grey">上限 1 条</q-badge></q-td>

@@ -38,6 +38,7 @@ const previewImage = ref('')
 
 const columns: QTableColumn<TmdbCacheItem>[] = [
   { name: 'index', label: '索引', field: (item) => item[2], align: 'left' },
+  { name: 'layer', label: '缓存类型', field: (item) => cacheLabel(item), align: 'left' },
   { name: 'title', label: '标题', field: (item) => item[1].title, align: 'left', sortable: true },
   { name: 'tmdb', label: 'TMDB', field: (item) => item[1].id, align: 'left' },
   { name: 'poster', label: '海报', field: (item) => item[1].poster_path, align: 'left' },
@@ -162,6 +163,9 @@ function scheduleMobileSearch() {
 function posterUrl(item: TmdbCacheItem) { return item[1].poster_path ? `https://image.tmdb.org/t/p/w500${item[1].poster_path}` : '' }
 function tmdbUrl(item: TmdbCacheItem) { return `https://www.themoviedb.org/${item[1].media_type === '电影' ? 'movie' : 'tv'}/${item[1].id}` }
 function typeLabel(item: TmdbCacheItem) { return item[1].media_type === '电影' ? '电影' : '电视剧' }
+function cacheLabel(item: TmdbCacheItem) {
+  return [item[1].cache_label || '媒体识别', item[1].language].filter(Boolean).join(' · ')
+}
 function openPreview(item: TmdbCacheItem) {
   const url = posterUrl(item)
   if (url) { previewImage.value = url; previewVisible.value = true }
@@ -208,7 +212,7 @@ async function clearAll() {
 
 <template>
   <div class="page-shell tmdb-cache">
-    <PageHeader title="TMDB 缓存" description="本地 TMDB 识别缓存管理">
+    <PageHeader title="TMDB 缓存" description="管理媒体识别、标题与 TMDB ID 对应关系及作品详情缓存">
       <template #actions>
         <div v-if="$q.screen.lt.sm" class="mobile-cache-actions">
           <q-btn dense color="primary" unelevated icon="search" label="查询" aria-label="搜索缓存" @click="openMobileSearch"><q-tooltip>搜索缓存</q-tooltip></q-btn>
@@ -260,7 +264,7 @@ async function clearAll() {
                 <div v-else class="poster mobile-poster poster-placeholder"><q-icon :name="item[1].media_type === '电影' ? 'movie' : 'tv'" /></div>
                 <div class="cache-item-media col min-width-0">
                   <div class="cache-title">{{ item[1].title }}</div>
-                  <div class="cache-item-meta row items-center q-gutter-xs q-mt-xs"><q-badge outline color="primary" :label="typeLabel(item)" /><a :href="tmdbUrl(item)" target="_blank" rel="noreferrer" class="tmdb-link">TMDB {{ item[1].id }}</a></div>
+                  <div class="cache-item-meta row items-center q-gutter-xs q-mt-xs"><q-badge outline color="primary" :label="typeLabel(item)" /><q-badge outline color="secondary" :label="cacheLabel(item)" /><a :href="tmdbUrl(item)" target="_blank" rel="noreferrer" class="tmdb-link">TMDB {{ item[1].id }}</a></div>
                   <div class="cache-index-line"><span class="cache-index-label">索引</span><span class="cache-index-value">{{ item[2] }}</span></div>
                 </div>
               </div>

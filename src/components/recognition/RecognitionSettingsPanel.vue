@@ -41,8 +41,9 @@ const preferredGenreChoices = computed(() => {
   options.push({ label: '无偏好', value: 0 })
   return options
 })
-const fields = computed(() => settingsFields.filter(field => props.cacheOnly ? field.group === 'cache'
-  : props.cleanupOnly ? field.path.startsWith('recognition.records.cleanup.') : true).map(field => field.path === preferredGenrePath
+const fields = computed(() => settingsFields.filter(field => props.cacheOnly ? field.path.startsWith('recognition.cache_v3.')
+  : props.cleanupOnly ? field.path.startsWith('recognition.records.cleanup.')
+    : field.group !== 'cache' || field.path.startsWith('recognition.cache.')).map(field => field.path === preferredGenrePath
     ? { ...field, choices: preferredGenreChoices.value,
       help: tmdbGenresLoading.value ? '正在从 TMDB 加载类别…仅提供有限加权。' : tmdbGenresError.value
         ? `无法从 TMDB 获取类别：${tmdbGenresError.value}。仅提供有限加权。` : field.help }
@@ -58,9 +59,10 @@ const advancedSections = computed(() => sections(visibleFields.value.filter(fiel
 const dirtyPatch = computed(() => snapshot.value && draft.value ? settingsPatch(snapshot.value, draft.value, fields.value) : {})
 const dirty = computed(() => Object.keys(dirtyPatch.value).length > 0 || secretInput.value.length > 0 || Object.keys(errors.value).length > 0)
 const busy = computed(() => saving.value || secretBusy.value || probing.value)
-const group = computed(() => settingsGroups.find(item => item.value === active.value)!)
+const group = computed(() => props.cacheOnly
+  ? { label: '热缓存刷新', description: '设置识别缓存的过期宽限和后台刷新行为。各类缓存有效期在上方列表中设置，新有效期用于后续写入。' }
+  : settingsGroups.find(item => item.value === active.value)!)
 const servicePreset = computed(() => openAIServicePresets[draft.value?.recognition.providers.openai.service_type || 'compatible'])
-const backendNames = { memory: '内存', memory_disk: '内存 + 磁盘', redis: 'Redis', valkey: 'Valkey' }
 const capabilityReason = computed(() => {
   const reason = snapshot.value?.capabilities.reason
   return reason === 'backend_unsupported' ? '内存后端不支持自动热刷新；缓存与手动刷新仍可用。'
@@ -225,9 +227,9 @@ defineExpose({ confirmLeave, load })
 </script>
 
 <template>
-  <section ref="root" class="recognition-settings" :aria-label="cacheOnly ? '识别缓存策略' : 'AI 推理与媒体识别'">
+  <section ref="root" class="recognition-settings" :aria-label="cacheOnly ? '热缓存刷新设置' : cleanupOnly ? '定时清理识别记录' : '媒体识别设置'">
     <div class="recognition-heading">
-      <div><h2>{{ cacheOnly ? '识别缓存策略' : cleanupOnly ? '定时清理识别记录' : 'AI 推理与媒体识别' }}</h2><p>独立引擎 · 完整并行 · 统一匹配</p></div>
+      <div v-if="cleanupOnly"><h2>定时清理识别记录</h2></div>
       <q-btn v-if="!cacheOnly && !cleanupOnly" flat color="primary" icon="fact_check" label="媒体识别记录" to="/recognition" />
     </div>
     <q-banner v-if="error" class="settings-error" role="alert">{{ error }}
@@ -243,43 +245,43 @@ defineExpose({ confirmLeave, load })
         <div class="section-heading"><h3>{{ group.label }}</h3><p>{{ group.description }}</p></div>
         <div v-if="active === 'engines'" class="baseline-engine"><q-icon name="check_circle" color="positive" size="24px" /><div><strong>Anitopy</strong><span>本地解析，无需网络</span></div><q-badge outline color="positive">始终启用</q-badge></div>
         <q-banner v-if="active === 'execution'" dense class="policy-banner">完整并行执行，不采用渐进早停。各阶段耗时可能重叠，总耗时不能通过相加得出。</q-banner>
-        <div v-if="active === 'cache'" class="backend-status">
-          <div><span>配置后端</span><strong>{{ backendNames[snapshot.capabilities.configured_backend] }}</strong></div>
-          <div><span>实际后端</span><strong>{{ backendNames[snapshot.capabilities.actual_backend] }}</strong></div>
+        <div v-if="cacheOnly" class="backend-status">
           <div><span>当前自动热刷新</span><strong>{{ snapshot.capabilities.effective_enabled ? '已开启' : '未开启' }}</strong></div>
-          <q-btn flat dense color="primary" label="管理缓存方式" to="/basic?tab=cache" />
           <p :class="{ 'text-warning': snapshot.capabilities.configured_backend !== snapshot.capabilities.actual_backend }">{{ capabilityReason }}<span v-if="snapshot.capabilities.actual_backend === 'memory'"> 自动刷新设置保留，切回支持的后端后按原期望生效。</span></p>
         </div>
         <p v-if="active === 'records' && !cleanupOnly" class="policy-banner">{{ recordExplanation }}</p>
         <section v-for="section in basicSections" :key="section.label" class="settings-subsection" :aria-label="section.label">
           <h4>{{ section.label }}</h4>
           <div class="recognition-grid">
-            <RecognitionSettingField v-for="item in section.fields" :key="`${formRevision}:${item.path}`" :field="item" :model-value="getSetting(draft, item.path)" :error="errors[item.path]" :disable="disabled(item)" @update:model-value="change(item, $event)" @validity="durationValidity(item, $event)" />
+            <div v-for="item in section.fields" :key="`${formRevision}:${item.path}`" :class="{ 'setting-card': active === 'cache' }">
+              <h5 v-if="active === 'cache'" class="setting-card__title">{{ item.label }}</h5>
+              <RecognitionSettingField :field="item" :card-title="active === 'cache'" :model-value="getSetting(draft, item.path)" :error="errors[item.path]" :disable="disabled(item)" @update:model-value="change(item, $event)" @validity="durationValidity(item, $event)" />
+            </div>
+          </div>
+          <div v-if="section.label === 'OpenAI 兼容 API'" class="policy-banner" data-testid="openai-service-help">
+            <strong>{{ servicePreset.label }}</strong><p>{{ servicePreset.help }}</p>
+            <q-btn v-if="servicePreset.base_url" flat dense color="primary" label="填入推荐地址" :disable="busy" @click="useServiceAddress" />
+          </div>
+          <div v-if="section.label === 'OpenAI 兼容 API'" class="credential-card">
+            <div class="credential-heading"><strong>兼容 API 密钥</strong><q-badge :color="snapshot.recognition.providers.openai.api_key_set ? 'positive' : 'grey-7'">{{ snapshot.recognition.providers.openai.api_key_set ? '已配置' : '未配置' }}</q-badge></div>
+            <p>密钥不回显，留空保持原值。关闭引擎后仍保留密钥与配置。</p>
+            <q-banner v-if="snapshot.recognition.providers.openai.credential_message" dense class="text-warning">{{ snapshot.recognition.providers.openai.credential_message }}</q-banner>
+            <q-input v-model="secretInput" outlined dense type="password" autocomplete="new-password" label="新的 API 密钥（留空保持）" :disable="busy" />
+            <div class="row q-gutter-sm q-mt-sm"><q-btn outline color="primary" label="保存密钥" :disable="!secretInput.trim() || busy" :loading="secretBusy" @click="credential(false)" /><q-btn flat color="negative" label="清除密钥" :disable="!snapshot.recognition.providers.openai.api_key_set || busy" @click="clearCredential" /><q-btn outline color="primary" label="测试 OpenAI 连接" :loading="probing" :disable="busy" @click="probe" /></div>
+            <p>测试使用当前地址、模型和新输入密钥（留空使用已保存密钥），最长等待 15 秒；不会保存草稿或生成识别历史。</p>
+            <q-banner v-if="probeResult" dense :class="probeResult.status === 'success' ? 'settings-notice' : 'settings-error'" role="status">
+              {{ probeResult.status === 'success' ? '连接测试成功' : '连接测试失败' }}<span v-if="probeResult.error">：{{ probeResult.error }}</span>
+              <div v-if="probeResult.capabilities.service_type">服务：{{ openAIServicePresets[probeResult.capabilities.service_type]?.label }}</div>
+              <div v-if="probeResult.capabilities.extraction_mode">提取方案：{{ probeResult.capabilities.extraction_mode }}</div>
+              <div v-if="probeResult.capabilities.format">输出格式：{{ probeResult.capabilities.format }} · Token 参数：{{ probeResult.capabilities.token_parameter }}</div>
+              <div v-if="probeResult.capabilities.downgrades?.length">兼容协商：{{ probeResult.capabilities.downgrades.join('、') }}</div>
+              <LLMTokenUsage :usage="probeResult.usage" />
+            </q-banner>
           </div>
         </section>
-        <div v-if="active === 'engines'" class="policy-banner" data-testid="openai-service-help">
-          <strong>{{ servicePreset.label }}</strong><p>{{ servicePreset.help }}</p>
-          <q-btn v-if="servicePreset.base_url" flat dense color="primary" label="填入推荐地址" :disable="busy" @click="useServiceAddress" />
-        </div>
         <q-expansion-item v-if="advancedSections.length" v-model="expanded" label="高级设置" icon="tune" class="advanced-settings">
           <section v-for="section in advancedSections" :key="section.label" class="settings-subsection" :aria-label="section.label"><h4>{{ section.label }}</h4><div class="recognition-grid"><RecognitionSettingField v-for="item in section.fields" :key="`${formRevision}:${item.path}`" :field="item" :model-value="getSetting(draft, item.path)" :error="errors[item.path]" :disable="disabled(item)" @update:model-value="change(item, $event)" /></div></section>
         </q-expansion-item>
-        <div v-if="active === 'engines'" class="credential-card">
-          <div class="credential-heading"><strong>兼容 API 密钥</strong><q-badge :color="snapshot.recognition.providers.openai.api_key_set ? 'positive' : 'grey-7'">{{ snapshot.recognition.providers.openai.api_key_set ? '已配置' : '未配置' }}</q-badge></div>
-          <p>密钥不回显，留空保持原值。关闭引擎后仍保留密钥与配置。</p>
-          <q-banner v-if="snapshot.recognition.providers.openai.credential_message" dense class="text-warning">{{ snapshot.recognition.providers.openai.credential_message }}</q-banner>
-          <q-input v-model="secretInput" outlined dense type="password" autocomplete="new-password" label="新的 API 密钥（留空保持）" :disable="busy" />
-          <div class="row q-gutter-sm q-mt-sm"><q-btn outline color="primary" label="保存密钥" :disable="!secretInput.trim() || busy" :loading="secretBusy" @click="credential(false)" /><q-btn flat color="negative" label="清除密钥" :disable="!snapshot.recognition.providers.openai.api_key_set || busy" @click="clearCredential" /><q-btn outline color="primary" label="测试 OpenAI 连接" :loading="probing" :disable="busy" @click="probe" /></div>
-          <p>测试使用当前地址、模型和新输入密钥（留空使用已保存密钥），最长等待 15 秒；不会保存草稿或生成识别历史。</p>
-          <q-banner v-if="probeResult" dense :class="probeResult.status === 'success' ? 'settings-notice' : 'settings-error'" role="status">
-            {{ probeResult.status === 'success' ? '连接测试成功' : '连接测试失败' }}<span v-if="probeResult.error">：{{ probeResult.error }}</span>
-            <div v-if="probeResult.capabilities.service_type">服务：{{ openAIServicePresets[probeResult.capabilities.service_type]?.label }}</div>
-            <div v-if="probeResult.capabilities.extraction_mode">提取方案：{{ probeResult.capabilities.extraction_mode }}</div>
-            <div v-if="probeResult.capabilities.format">输出格式：{{ probeResult.capabilities.format }} · Token 参数：{{ probeResult.capabilities.token_parameter }}</div>
-            <div v-if="probeResult.capabilities.downgrades?.length">兼容协商：{{ probeResult.capabilities.downgrades.join('、') }}</div>
-            <LLMTokenUsage :usage="probeResult.usage" />
-          </q-banner>
-        </div>
         <div v-if="active === 'records'" class="cleanup-policy"><p>下次定时执行：{{ cleanupNext }}。定时任务始终只清理过期或超量历史。</p>
           <RecognitionCleanupActions /><q-btn flat dense color="primary" label="前往定时任务" to="/service" /></div>
       </div>
@@ -301,6 +303,8 @@ h3 { margin: 0; font-size: 18px; font-weight: 650; }
 .settings-subsection + .settings-subsection { margin-top: 24px; }
 .settings-subsection h4 { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--text-secondary); }
 .recognition-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 16px; align-items: start; }
+.setting-card { min-width: 0; padding: 14px; border: 1px solid var(--border-subtle); border-radius: 10px; }
+.setting-card__title { margin: 0 0 12px; font-size: 14px; line-height: 1.5; font-weight: 600; color: var(--text-primary); }
 .recognition-grid :deep(.recognition-field--wide) { grid-column: span 2; }
 .settings-subsection[aria-label="缓存有效期"] .recognition-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
 .baseline-engine { display: flex; gap: 12px; align-items: center; padding: 16px; border: 1px solid var(--border-subtle); border-radius: 10px; margin-bottom: 24px; }

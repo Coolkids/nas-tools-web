@@ -4,7 +4,7 @@ import { durationInUnit, durationUnits, formatDuration, MAX_DURATION_SECONDS, pr
   toDurationSeconds, type DurationUnit } from '@/utils/duration'
 
 const props = withDefaults(defineProps<{
-  modelValue: number; label: string; allowForever?: boolean; min?: number; max?: number; disable?: boolean
+  modelValue: number; label: string; ariaLabel?: string; allowForever?: boolean; min?: number; max?: number; disable?: boolean
 }>(), { allowForever: false, min: 1, max: MAX_DURATION_SECONDS, disable: false })
 const emit = defineEmits<{ 'update:modelValue': [number]; validity: [string | null] }>()
 const unit = ref<DurationUnit | 'forever'>('second')
@@ -15,6 +15,8 @@ let lastEmitted: number | undefined
 const options = computed(() => [...durationUnits.map(({ label, value }) => ({ label, value })),
   ...(props.allowForever ? [{ label: '不过期', value: 'forever' }] : [])])
 const actual = computed(() => formatDuration(props.modelValue, props.allowForever))
+const valueAriaLabel = computed(() => props.ariaLabel ? `${props.ariaLabel}数值` : props.label)
+const unitAriaLabel = computed(() => `${props.ariaLabel || props.label}单位`)
 
 function valid(message: string | null) {
   error.value = message || ''
@@ -59,10 +61,10 @@ watch(() => props.modelValue, seconds => {
 <template>
   <div class="duration-input" :data-duration-label="label">
     <div class="duration-input__fields" :class="{ 'duration-input__fields--forever': unit === 'forever' }">
-      <q-input v-if="unit !== 'forever'" :model-value="value" :label="label" outlined dense type="number"
+      <q-input v-if="unit !== 'forever'" :model-value="value" :label="label" :aria-label="valueAriaLabel" outlined dense type="number"
         step="any" :disable="disable" :error="Boolean(error)" :error-message="error" hide-bottom-space
         @update:model-value="edit" />
-      <q-select :model-value="unit" label="单位" :aria-label="`${label}单位`" outlined dense emit-value map-options
+      <q-select :model-value="unit" label="单位" :aria-label="unitAriaLabel" outlined dense emit-value map-options
         :options="options" :disable="disable" @update:model-value="changeUnit" />
     </div>
     <div class="duration-input__hint">{{ unit === 'forever' ? '不过期；内存缓存仍会在重启后清空。' : `实际时长：${actual}` }}</div>

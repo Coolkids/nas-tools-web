@@ -9,3 +9,4 @@ style.md
 playwright-report/
 test-results/
 tests/
+/AGENTS.md
