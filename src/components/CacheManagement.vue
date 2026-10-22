@@ -119,7 +119,7 @@ function hasByteValue(value?: number | null): value is number {
 }
 
 function hasLocalFileData(cache: SystemCache) {
-  return hasByteValue(cache.store_bytes) && cache.store_bytes > 0
+  return cache.backend === 'memory_disk' && hasByteValue(cache.store_bytes) && cache.store_bytes > 0
 }
 
 function formatBytes(bytes?: number | null) {
