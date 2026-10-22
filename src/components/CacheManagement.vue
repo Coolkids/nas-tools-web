@@ -3,6 +3,9 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { type QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import StorageStatusCard from '@/components/StorageStatusCard.vue'
+import DurationInput from '@/components/settings/DurationInput.vue'
+import { formatDuration } from '@/utils/duration'
+import { getRecognitionSettings } from '@/api/recognition'
 import {
   cancelCacheJob, checkCacheStorage, clearSystemCache, getCacheJob, getSystemCacheInfo, recoverCacheMigration,
   retryCacheRestart, startCacheMigration, updateSystemCacheTtl,
@@ -20,14 +23,13 @@ const initialLoading = ref(true)
 const clearing = ref('')
 const ttlDialog = ref(false)
 const ttlTarget = ref<SystemCache | null>(null)
-const ttlValue = ref<number | null>(1)
-const ttlUnit = ref<CacheTtlUnit>('hour')
+const ttlSeconds = ref(3600)
+const ttlVersion = ref('')
+const ttlInvalid = ref<string | null>(null)
+const ttlLoading = ref(false)
+const ttlConflict = ref(false)
 const ttlSaving = ref(false)
 const ttlError = ref('')
-const ttlUnits = [
-  { label: '分钟', value: 'minute' }, { label: '小时', value: 'hour' },
-  { label: '天', value: 'day' }, { label: '永久', value: 'forever' }
-]
 const error = ref('')
 const backend = ref<CacheBackendStatus | null>(null)
 const migrationOpen = ref(false)
@@ -134,37 +136,40 @@ function formatTime(value?: number | null) {
 
 function formatTtl(value?: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
-  if (value <= 0) return '永久'
-  if (value % 86400 === 0) return `${value / 86400} 天`
-  if (value % 3600 === 0) return `${value / 3600} 小时`
-  if (value % 60 === 0) return `${value / 60} 分钟`
-  if (value >= 60) return `${Number((value / 60).toFixed(2))} 分钟`
-  return `${value} 秒`
+  return formatDuration(value)
 }
 
-function openTtlEditor(cache: SystemCache) {
+async function openTtlEditor(cache: SystemCache) {
   ttlTarget.value = cache
   ttlError.value = ''
-  const seconds = cache.ttl_seconds ?? 0
-  ttlUnit.value = seconds <= 0 ? 'forever' : seconds % 86400 === 0 ? 'day'
-    : seconds % 3600 === 0 ? 'hour' : 'minute'
-  const factor = ttlUnit.value === 'day' ? 86400 : ttlUnit.value === 'hour' ? 3600 : 60
-  ttlValue.value = seconds > 0 ? Number((seconds / factor).toFixed(6)) : 1
+  ttlInvalid.value = null; ttlConflict.value = false; ttlVersion.value = ''
+  ttlSeconds.value = cache.ttl_seconds ?? 0
   ttlDialog.value = true
+  ttlLoading.value = true
+  try { ttlVersion.value = (await getRecognitionSettings()).version }
+  catch (cause) { ttlError.value = (cause as Error).message }
+  finally { ttlLoading.value = false }
+}
+
+async function reloadTtlVersion() {
+  ttlLoading.value = true
+  try { ttlVersion.value = (await getRecognitionSettings()).version; ttlConflict.value = false; ttlError.value = '已重新读取配置版本并保留输入，请核对后再保存。' }
+  catch (cause) { ttlError.value = (cause as Error).message }
+  finally { ttlLoading.value = false }
 }
 
 async function saveTtl() {
-  if (!ttlTarget.value || ttlSaving.value) return
+  if (!ttlTarget.value || ttlSaving.value || ttlLoading.value || ttlInvalid.value || !ttlVersion.value) return
   ttlError.value = ''
-  const factor = ttlUnit.value === 'day' ? 86400 : ttlUnit.value === 'hour' ? 3600 : 60
-  const seconds = Number(ttlValue.value) * factor
-  if (ttlUnit.value !== 'forever' && (!Number.isFinite(seconds) || seconds < 1 || seconds > 36500 * 86400)) {
+  const seconds = ttlSeconds.value
+  if (!Number.isSafeInteger(seconds) || seconds < 0 || seconds > 36500 * 86400) {
     ttlError.value = '请输入大于 0 且不超过 36500 天的有效期'
     return
   }
   ttlSaving.value = true
   try {
-    const result = await updateSystemCacheTtl(ttlTarget.value.name, ttlValue.value, ttlUnit.value)
+    const result = await updateSystemCacheTtl(ttlTarget.value.name, seconds, seconds === 0 ? 'forever' : 'second', ttlVersion.value)
+    if (result.code === 409) ttlConflict.value = true
     if (result.code !== 0) throw new Error(result.msg || '保存缓存有效期失败')
     modal.success(`${ttlTarget.value.label}有效期已保存`)
     ttlDialog.value = false
@@ -550,15 +555,13 @@ defineExpose({ refresh, confirmLeave })
         <q-separator />
         <q-card-section class="cache-ttl-fields">
           <div class="text-body2 text-secondary">当前有效期：{{ formatTtl(ttlTarget?.ttl_seconds) }}。新有效期用于后续写入，已有缓存保留原到期时间。</div>
-          <div class="cache-ttl-inputs" :class="{ 'is-permanent': ttlUnit === 'forever' }">
-            <q-input v-if="ttlUnit !== 'forever'" v-model.number="ttlValue" outlined type="number" step="any" label="有效时长" :disable="ttlSaving" @update:model-value="ttlError = ''" />
-            <q-select v-model="ttlUnit" outlined label="有效期单位" emit-value map-options :options="ttlUnits" :disable="ttlSaving" @update:model-value="ttlError = ''" />
-          </div>
-          <div v-if="ttlUnit === 'forever'" class="text-caption text-secondary">缓存不自动到期，可随时在本页面手动清理；内存缓存仍会在服务重启后清空。</div>
+          <DurationInput v-model="ttlSeconds" label="有效时长" allow-forever :disable="ttlSaving || ttlLoading" @validity="ttlInvalid = $event" />
+          <q-linear-progress v-if="ttlLoading" indeterminate />
           <div v-if="ttlError" class="text-negative" role="alert">{{ ttlError }}</div>
+          <q-btn v-if="ttlConflict" flat color="primary" label="重新读取并保留输入" @click="reloadTtlVersion" />
         </q-card-section>
         <q-separator />
-        <q-card-actions align="right"><q-btn flat label="取消" :disable="ttlSaving" @click="ttlDialog = false" /><q-btn color="primary" unelevated label="保存" :loading="ttlSaving" @click="saveTtl" /></q-card-actions>
+        <q-card-actions align="right"><q-btn flat label="取消" :disable="ttlSaving" @click="ttlDialog = false" /><q-btn color="primary" unelevated label="保存" :loading="ttlSaving" :disable="ttlLoading || Boolean(ttlInvalid) || !ttlVersion || ttlConflict" @click="saveTtl" /></q-card-actions>
       </q-card>
     </q-dialog>
 

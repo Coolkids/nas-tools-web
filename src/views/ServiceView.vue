@@ -4,6 +4,9 @@ import { useRoute } from 'vue-router'
 import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/PageHeader.vue'
 import NameTestResult from '@/components/NameTestResult.vue'
+import RecognitionSettingsPanel from '@/components/recognition/RecognitionSettingsPanel.vue'
+import RecognitionCleanupActions from '@/components/recognition/RecognitionCleanupActions.vue'
+import { getRecognitionStatistics } from '@/api/recognition'
 import { useModalStore } from '@/stores/modal'
 import { getConfig, updateConfig, type AppConfig } from '@/api/config'
 import {
@@ -40,14 +43,27 @@ const schedulerJobs = ref<SchedulerJob[]>([])
 const schedulerTimezone = ref('')
 const scheduleError = ref('')
 const schedulesLoading = ref(false)
+const canManageRecognition = ref(false)
 const services = computed(() => configuredServices.value.map(service => {
   if (service.id !== 'autoremovetorrents') return service
   const jobs = schedulerJobs.value.filter(job => job.namespace === 'torrent_remover')
   return jobs.length ? { ...service, state: jobs.some(job => job.next_run_time !== null),
     interval: `${jobs.length} 个删种任务` } : service
-}))
+}).concat(canManageRecognition.value ? [{ id: 'recognition_record_manual_cleanup', name: '手动清理媒体识别记录',
+  type: 'manual' as const, interval: '按已保存规则执行，也可清理全部记录', state: false }] : []))
 let scheduleRefreshTimer: ReturnType<typeof setInterval> | undefined
 const actionBusy = ref('')
+const recognitionSchedule = ref<InstanceType<typeof RecognitionSettingsPanel>>()
+function recognitionScheduleSaved() {
+  modal.success('识别清理设置已保存')
+  scheduleDialog.value = false
+  void load()
+}
+
+async function closeSchedule() {
+  if (recognitionSchedule.value && !await recognitionSchedule.value.confirmLeave()) return
+  scheduleDialog.value = false
+}
 const configSnapshot = ref<AppConfig>({})
 const scheduleDialog = ref(false)
 const scheduleSaving = ref(false)
@@ -327,6 +343,7 @@ function openScheduleEditor(service: ServiceItem) {
 async function saveSchedule() {
   if (scheduleSaving.value) return
   const form = scheduleForm.value
+  if (form.id === 'recognition-cleanup') return // versioned panel owns this policy
   const items: Record<string, unknown> = {}
   if (form.id === 'search') {
     const hours = Number(form.intervalHours)
@@ -368,9 +385,6 @@ async function saveSchedule() {
     items[`${path}.retention_value`] = retention
     items[`${path}.retention_unit`] = form.retentionUnit
     items[`${path}.max_records`] = maxRecords
-    if (form.id === 'recognition-cleanup') {
-      items[`${path}.retention_days`] = form.retentionUnit === 'month' ? retention * 30 : retention
-    }
   } else return
 
   scheduleSaving.value = true
@@ -453,6 +467,7 @@ onMounted(async () => {
   scheduleRefreshTimer = setInterval(refreshVisibleSchedules, 30_000)
   document.addEventListener('visibilitychange', refreshVisibleSchedules)
   await load()
+  void getRecognitionStatistics().then(value => { canManageRecognition.value = value.can_manage }).catch(() => {})
   const requestedService = services.value.find(service => service.id === route.query.task)
   if (requestedService) openScheduleEditor(requestedService)
   if (route.query.tool === 'name-test') openNameTest()
@@ -493,22 +508,23 @@ onUnmounted(() => {
       <q-table v-if="!$q.screen.lt.sm" flat :rows="services" :columns="columns" row-key="id" :loading="loading" hide-pagination :rows-per-page-options="[0]" no-data-label="没有开启任何后台服务">
         <template #body-cell-type="slotProps"><q-td :props="slotProps"><q-badge outline :color="slotProps.row.type === 'scheduler' ? 'primary' : 'grey-7'" :label="slotProps.row.type === 'scheduler' ? '定时任务' : '手动操作'" /></q-td></template>
         <template #body-cell-state="slotProps"><q-td :props="slotProps"><q-badge :color="slotProps.row.state ? 'positive' : 'grey-6'" :label="slotProps.row.state ? 'ON' : 'OFF'" /></q-td></template>
-        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><q-btn v-if="slotProps.row.editable" flat dense color="primary" icon="edit" :label="isCleanupEditor(slotProps.row.editable) ? '清理设置' : '周期设置'" @click="openScheduleEditor(slotProps.row)" /><q-btn flat dense :color="slotProps.row.type === 'manual' ? 'negative' : 'primary'" :icon="slotProps.row.type === 'manual' ? 'delete' : 'play_arrow'" :label="slotProps.row.type === 'manual' ? '清理' : '运行'" :loading="actionBusy === slotProps.row.id" @click="runService(slotProps.row)" /></q-td></template>
+        <template #body-cell-actions="slotProps"><q-td :props="slotProps"><RecognitionCleanupActions v-if="slotProps.row.id === 'recognition_record_manual_cleanup'" compact @completed="load" /><template v-else><q-btn v-if="slotProps.row.editable" flat dense color="primary" icon="edit" :label="isCleanupEditor(slotProps.row.editable) ? '清理设置' : '周期设置'" @click="openScheduleEditor(slotProps.row)" /><q-btn flat dense :color="slotProps.row.type === 'manual' ? 'negative' : 'primary'" :icon="slotProps.row.type === 'manual' ? 'delete' : 'play_arrow'" :label="slotProps.row.type === 'manual' ? '清理' : '运行'" :loading="actionBusy === slotProps.row.id" @click="runService(slotProps.row)" /></template></q-td></template>
       </q-table>
       <div v-else class="mobile-service-list">
         <q-card v-for="service in services" :key="service.id" flat bordered class="service-item">
           <q-card-section class="row items-center q-gutter-sm"><q-icon :name="service.type === 'manual' ? 'cleaning_services' : 'schedule'" :color="service.state ? 'positive' : 'grey-6'" size="26px" /><div class="col"><div class="text-subtitle1 text-weight-medium">{{ service.name }}</div><div class="row items-center q-gutter-xs q-mt-xs"><q-badge outline :color="service.type === 'scheduler' ? 'primary' : 'grey-7'" :label="service.type === 'scheduler' ? '定时任务' : '手动操作'" /><span class="text-caption text-secondary">{{ service.interval }}</span></div></div><q-badge :color="service.state ? 'positive' : 'grey-6'" :label="service.state ? 'ON' : 'OFF'" /></q-card-section>
           <q-card-section v-if="service.type === 'scheduler'" class="q-pt-none text-caption text-secondary">下一次执行{{ service.id === 'autoremovetorrents' ? '（最早任务）' : '' }}：{{ nextExecutionLabel(service) }}</q-card-section>
-          <q-separator /><q-card-actions align="right"><q-btn v-if="service.editable" flat color="primary" icon="edit" :label="isCleanupEditor(service.editable) ? '清理设置' : '周期设置'" @click="openScheduleEditor(service)" /><q-btn flat :color="service.type === 'manual' ? 'negative' : 'primary'" :icon="service.type === 'manual' ? 'delete' : 'play_arrow'" :label="service.type === 'manual' ? '清理' : '立即运行'" :loading="actionBusy === service.id" @click="runService(service)" /></q-card-actions>
+          <q-separator /><q-card-actions align="right"><RecognitionCleanupActions v-if="service.id === 'recognition_record_manual_cleanup'" compact @completed="load" /><template v-else><q-btn v-if="service.editable" flat color="primary" icon="edit" :label="isCleanupEditor(service.editable) ? '清理设置' : '周期设置'" @click="openScheduleEditor(service)" /><q-btn flat :color="service.type === 'manual' ? 'negative' : 'primary'" :icon="service.type === 'manual' ? 'delete' : 'play_arrow'" :label="service.type === 'manual' ? '清理' : '立即运行'" :loading="actionBusy === service.id" @click="runService(service)" /></template></q-card-actions>
         </q-card>
       </div>
     </q-card>
 
     <q-dialog v-model="scheduleDialog" :maximized="$q.screen.lt.sm" persistent>
       <q-card class="tool-dialog schedule-dialog">
-        <q-card-section class="row items-center"><div class="text-h6">{{ scheduleForm.name }}设置</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="scheduleDialog = false" /></q-card-section>
+        <q-card-section class="row items-center"><div class="text-h6">{{ scheduleForm.name }}设置</div><q-space /><q-btn flat round dense icon="close" aria-label="关闭" @click="closeSchedule" /></q-card-section>
         <q-separator />
-        <q-card-section class="q-gutter-y-md">
+        <q-card-section v-if="scheduleForm.id === 'recognition-cleanup'"><RecognitionSettingsPanel ref="recognitionSchedule" cleanup-only @saved="recognitionScheduleSaved" /></q-card-section>
+        <q-card-section v-else class="q-gutter-y-md">
           <q-toggle v-model="scheduleForm.enabled" color="primary" label="启用定时任务" />
           <q-input v-if="scheduleForm.id === 'search'" v-model.number="scheduleForm.intervalHours" outlined type="number" min="6" max="8760" label="运行间隔（小时）" :disable="!scheduleForm.enabled" hint="最短 6 小时，最长 365 天" />
           <template v-else-if="scheduleForm.id === 'database-statistics'">
@@ -526,11 +542,10 @@ onUnmounted(() => {
               <div class="col-5"><q-select v-model="scheduleForm.retentionUnit" outlined emit-value map-options label="数据保存单位" :options="[{ label: '天', value: 'day' }, { label: '月', value: 'month' }]" /></div>
             </div>
             <q-input v-model.number="scheduleForm.maxRecords" outlined type="number" min="1" step="1" label="记录上限（条）" hint="每次清理优先保留最新记录，须为大于 0 的整数" />
-            <div v-if="scheduleForm.id === 'recognition-cleanup'" class="text-caption text-secondary">运行中的识别请求会暂时保留，记录总数可能暂时超过上限。</div>
           </template>
         </q-card-section>
         <q-separator />
-        <q-card-actions align="right" class="dialog-actions"><q-btn flat label="取消" :disable="scheduleSaving" @click="scheduleDialog = false" /><q-btn color="primary" unelevated label="保存并重载定时任务" :loading="scheduleSaving" @click="saveSchedule" /></q-card-actions>
+        <q-card-actions v-if="scheduleForm.id !== 'recognition-cleanup'" align="right" class="dialog-actions"><q-btn flat label="取消" :disable="scheduleSaving" @click="scheduleDialog = false" /><q-btn color="primary" unelevated label="保存并重载定时任务" :loading="scheduleSaving" @click="saveSchedule" /></q-card-actions>
       </q-card>
     </q-dialog>
 

@@ -119,3 +119,26 @@ nginx 会：
 ## 相关项目
 
 - [nas-tools](https://github.com/Coolkids/nas-tools) — NAStool Python 后端
+
+
+## 媒体识别设置验收
+
+`/basic?tab=ai` 的五组设置与缓存页、服务清理编辑器共用后端配置版本。单元测试使用 Vitest/Vue Test Utils；E2E 使用 Playwright 桌面和手机 Chromium，自动启动隔离 Flask 与 Quasar，不复用开发服务。
+
+测试源为相邻后端 `nas-tools/tests/config/recognition.yaml`。从后端根目录执行 `.venv/bin/python tests/tools/generate_recognition_frontend_fixture.py` 更新本仓快照；runner 校验源哈希，禁止静默沿用过期快照。后端项目虚拟环境必须已安装项目测试依赖。
+
+```bash
+npm ci
+npx playwright install chromium --only-shell
+npm run type-check
+npm run build
+npm run test:unit
+npm run test:e2e
+```
+
+每次报告保存在 `.test-runtime/recognition-v3/{unit|e2e}-<UTC>-<id>/`，含环境摘要、JUnit、日志与退出码，E2E另有HTML和截图。假密钥只用于回环假模型，HTTP trace关闭；测试不会访问付费模型。不要公开运行数据库/密钥文件。S22–S24当前65项unit、38项桌面/手机E2E通过，包含22项记录/流程/回放/实时恢复/非空清理场景。后续完整存储与目标环境发布验收留S25。完整交付记录见后端 `docs/NAS-Tools_媒体识别_V3_S24_实施与验收.md`。
+
+
+记录页保留 `/recognition` 和 `/ai_recognition` 重定向，详情可通过 `?request_id=<id>` 直接打开。流程图使用 Vue Flow 1.48.2；实时与历史回放共用事件 reducer，未留存和已清理不伪造空历史。开发代理与生产 Nginx 均需转发原 JSONL/Excel 导出地址。
+
+`npm run test:e2e -- tests/e2e/history.spec.ts` 可单独运行S24。启动器只在私有测试服务安装 `_test/history`、`_test/release` 和 `_test/collect`；生产应用不会注册这些fixture路由。样本和受控runner仍使用真实Flask会话、Trace/仓储/清理和SSE，不访问外网服务。

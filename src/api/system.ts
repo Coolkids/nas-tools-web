@@ -109,6 +109,7 @@ export interface NameTestError {
   name: string
   recognition_status?: string
   recognition_reason?: string | null
+  recognition_request_id?: string
 }
 
 export interface NameTestData extends NameTestError {
@@ -147,6 +148,7 @@ export function nameTest(name: string): Promise<NameTestResult> {
 
 export function getTmdbGenres(): Promise<{
   code: number
+  msg?: string
   genres: Array<{ id: number; name: string }>
 }> {
   return doAction('get_tmdb_genres', {})

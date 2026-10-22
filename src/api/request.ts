@@ -78,7 +78,7 @@ export function setNeedsLoginHandler(fn: () => void): void {
   needsLoginHandler = fn
 }
 
-function redirectToLogin(): void {
+export function redirectToLogin(): void {
   if (needsLoginHandler) {
     needsLoginHandler()
   } else {

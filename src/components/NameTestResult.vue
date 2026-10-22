@@ -18,19 +18,32 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ 'open-details': [] }>()
 const modal = useModalStore()
 const data = computed(() => 'title' in props.result ? props.result : null)
-const skipped = computed(() => props.result.recognition_status === 'skipped')
+// V3 uses terminal uppercase states; legacy responses use success/failed/skipped.
+const status = computed(() => props.result.recognition_status?.toUpperCase())
+const skipped = computed(() => status.value === 'SKIPPED')
+const parsed = computed(() => status.value === 'PARSED')
+const review = computed(() => status.value === 'REVIEW_REQUIRED')
 const recognized = computed(() => Boolean(data.value?.tmdbid)
-  && (!props.result.recognition_status || props.result.recognition_status === 'success'))
-const failureReason = computed(() => {
+  && (!status.value || ['SUCCESS', 'MATCHED'].includes(status.value)))
+const informational = computed(() => skipped.value || parsed.value || review.value || status.value === 'CANCELLED')
+const resultReason = computed(() => {
   if (recognized.value) return ''
   const reason = props.result.recognition_reason
   if (reason) return recognitionReasonLabels[reason] || reason
   if (!data.value) return props.result.name || '服务未返回具体失败原因'
+  if (parsed.value) return '名称解析已完成，未进行媒体匹配'
+  if (review.value) return '名称解析已完成，媒体匹配需要人工确认'
+  if (status.value === 'CANCELLED') return '识别任务已取消'
+  if (status.value === 'TIMEOUT') return '识别任务超时'
   return skipped.value ? '当前配置跳过了媒体匹配' : '未匹配到媒体，服务未返回具体失败原因'
 })
-const errorMessage = computed(() => data.value ? '' : failureReason.value)
-const conclusionLabel = computed(() => recognized.value ? '已匹配媒体' : skipped.value ? '已跳过匹配' : '识别失败')
-const conclusionColor = computed(() => recognized.value ? 'positive' : skipped.value ? 'warning' : 'negative')
+const errorMessage = computed(() => data.value ? '' : resultReason.value)
+const reasonLabel = computed(() => parsed.value ? '匹配说明' : review.value ? '待确认原因'
+  : skipped.value ? '跳过原因' : status.value === 'CANCELLED' ? '取消原因' : '失败原因')
+const conclusionLabel = computed(() => recognized.value ? '已匹配媒体' : parsed.value ? '已解析'
+  : review.value ? '待确认' : skipped.value ? '已跳过匹配'
+  : status.value === 'TIMEOUT' ? '识别超时' : status.value === 'CANCELLED' ? '已取消' : '识别失败')
+const conclusionColor = computed(() => recognized.value ? 'positive' : parsed.value ? 'info' : informational.value ? 'warning' : 'negative')
 
 const parsedFields = computed(() => {
   if (!data.value) return []
@@ -47,7 +60,7 @@ const parsedFields = computed(() => {
     ['视频编码', data.value.video_codec],
     ['音频编码', data.value.audio_codec],
     ['制作组/字幕组', data.value.team],
-    ['TMDB ID', data.value.tmdbid]
+    ['TMDB ID', recognized.value ? data.value.tmdbid : '']
   ].filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
 })
 
@@ -73,7 +86,7 @@ function mediaPath() {
 }
 
 function tmdbUrl() {
-  if (!data.value?.tmdbid) return ''
+  if (!recognized.value || !data.value?.tmdbid) return ''
   const returnedUrl = data.value.tmdblink
   if (returnedUrl) {
     try {
@@ -87,7 +100,7 @@ function tmdbUrl() {
 }
 
 function seasonUrl() {
-  if (!data.value?.tmdbid) return ''
+  if (!recognized.value || !data.value?.tmdbid) return ''
   if (data.value.tmdb_S_E_link) return data.value.tmdb_S_E_link
   const season = String(data.value.season_episode || '').match(/S(\d+)/i)?.[1] || String(data.value.season_episode || '').match(/第(\d+)季/)?.[1]
   return season ? `https://www.themoviedb.org/tv/${data.value.tmdbid}/season/${season}` : ''
@@ -121,8 +134,8 @@ function searchName() {
         <div class="result-input-text"><div class="result-input-value" :title="input || source">{{ input || source }}</div><div v-if="source && input" class="result-source" :title="source">路径：{{ source }}</div></div>
         <div class="result-input-actions"><q-btn v-if="input" flat dense round icon="content_copy" aria-label="复制输入" @click="copyValue(input, '输入')"><q-tooltip>复制完整输入</q-tooltip></q-btn><q-btn v-if="source" flat dense round icon="folder_copy" aria-label="复制路径" @click="copyValue(source, '路径')"><q-tooltip>复制完整路径</q-tooltip></q-btn></div>
     </div>
-    <q-banner v-if="errorMessage" dense rounded class="result-error" :class="{ 'result-skipped': skipped }" role="status">
-      <template #avatar><q-icon :name="skipped ? 'info_outline' : 'error_outline'" :color="conclusionColor" /></template>
+    <q-banner v-if="errorMessage" dense rounded class="result-error" :class="{ 'result-skipped': informational, 'result-parsed': parsed }" role="status">
+      <template #avatar><q-icon :name="informational ? 'info_outline' : 'error_outline'" :color="conclusionColor" /></template>
       <div class="text-weight-medium">{{ conclusionLabel }}</div>
       <div>{{ errorMessage }}</div>
     </q-banner>
@@ -130,16 +143,16 @@ function searchName() {
     <template v-else-if="data">
       <section class="result-section result-conclusion">
         <div class="result-section-heading"><span>识别结论</span><q-badge :color="conclusionColor" :label="conclusionLabel" /></div>
-        <q-banner v-if="failureReason" dense rounded class="result-error" :class="{ 'result-skipped': skipped }" role="status">
-          <template #avatar><q-icon :name="skipped ? 'info_outline' : 'error_outline'" :color="conclusionColor" /></template>
-          {{ skipped ? '跳过原因' : '失败原因' }}：{{ failureReason }}
+        <q-banner v-if="resultReason" dense rounded class="result-error" :class="{ 'result-skipped': informational, 'result-parsed': parsed }" role="status">
+          <template #avatar><q-icon :name="informational ? 'info_outline' : 'error_outline'" :color="conclusionColor" /></template>
+          {{ reasonLabel }}：{{ resultReason }}
         </q-banner>
         <div class="result-actions">
           <q-btn v-if="data.name || input" class="result-action" flat dense no-caps color="primary" icon="search" :label="`识别名称：${data.name || input}`" :title="data.name || input" @click="searchName" />
           <span v-else class="result-static">识别名称：未返回</span>
           <q-btn v-if="data.title" class="result-action" flat dense no-caps color="positive" icon="content_copy" :label="`标题：${data.title}`" :title="data.title" @click="copyValue(data.title, '标题')" />
           <span v-else class="result-static">标题：未返回</span>
-          <div v-if="data.tmdbid" class="result-action-group">
+          <div v-if="recognized" class="result-action-group">
             <q-btn v-if="tmdbUrl()" class="result-action result-action-main" flat dense no-caps color="positive" icon="open_in_new" :label="`TMDB ID：${data.tmdbid}`" :title="`打开 ${tmdbUrl()}`" @click="openUrl(tmdbUrl())" />
             <span v-else class="result-static result-action-main">TMDB ID：{{ data.tmdbid }} · 暂无可用链接</span>
             <q-btn class="result-copy-action" flat dense round color="positive" icon="content_copy" aria-label="复制 TMDB ID" @click="copyValue(data.tmdbid, 'TMDB ID')"><q-tooltip>复制 TMDB ID</q-tooltip></q-btn>
@@ -175,6 +188,7 @@ function searchName() {
 .name-test-result { display: grid; gap: 12px; margin-top: 16px; min-width: 0; color: var(--text-primary); }
 .result-error { min-width: 0; overflow-wrap: anywhere; background: var(--negative-soft, rgba(193, 66, 66, .1)); }
 .result-skipped { background: var(--warning-soft, rgba(138, 87, 0, .1)); }
+.result-parsed { background: var(--info-soft, rgba(49, 140, 231, .1)); }
 .result-input { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-muted); }
 .result-input-text { min-width: 0; }
 .result-input-actions { display: flex; align-items: center; gap: 2px; }

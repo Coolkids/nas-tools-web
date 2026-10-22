@@ -5,3 +5,7 @@ dist
 .idea
 .npm-cache
 style.md
+.test-runtime/
+playwright-report/
+test-results/
+tests/

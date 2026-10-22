@@ -6,17 +6,22 @@ const FLASK_TARGET = process.env.FLASK_TARGET || 'http://localhost:3000'
 function rewriteSameHostDevProxyOrigin(proxy: any) {
   const targetOrigin = new URL(FLASK_TARGET)
   proxy.on('proxyReq', (proxyRequest: any, request: any) => {
-    const source = request.headers.origin
-    if (!source) return
-    try {
-      // The browser talks to Quasar's port while Flask receives the proxied
-      // request on its own port. Preserve the same-host boundary check used
-      // by storage mutations without trusting a different source hostname.
-      if (new URL(source).hostname === targetOrigin.hostname) {
-        proxyRequest.setHeader('Origin', targetOrigin.origin)
+    for (const header of ['origin', 'referer']) {
+      const source = request.headers[header]
+      if (!source) continue
+      try {
+        // Browser GETs normally carry Referer rather than Origin. Rebase
+        // both only for this exact dev-server origin, including its port;
+        // a different local site's origin must still fail the backend gate.
+        const supplied = new URL(source)
+        if (['http:', 'https:'].includes(supplied.protocol) && !supplied.username && !supplied.password
+          && supplied.host.toLowerCase() === String(request.headers.host || '').toLowerCase()) {
+          proxyRequest.setHeader(header, header === 'origin' ? targetOrigin.origin
+            : targetOrigin.origin + supplied.pathname + supplied.search)
+        }
+      } catch {
+        // Leave invalid or opaque sources for Flask to reject.
       }
-    } catch {
-      // Leave malformed or opaque Origin headers unchanged for Flask to reject.
     }
   })
 }
@@ -59,6 +64,9 @@ export default defineConfig(() => ({
       },
       '/login_json': { target: FLASK_TARGET, changeOrigin: true },
       '/logout_json': { target: FLASK_TARGET, changeOrigin: true },
+      '/recognition_export.jsonl': { target: FLASK_TARGET, changeOrigin: true, configure: rewriteSameHostDevProxyOrigin },
+      '/recognition_export.xlsx': { target: FLASK_TARGET, changeOrigin: true, configure: rewriteSameHostDevProxyOrigin },
+      '/ai_recognition_export.xlsx': { target: FLASK_TARGET, changeOrigin: true, configure: rewriteSameHostDevProxyOrigin },
       '/dirlist': { target: FLASK_TARGET, changeOrigin: true },
       '/api/v1': {
         target: FLASK_TARGET,
