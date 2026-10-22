@@ -508,6 +508,7 @@ interface TmdbSearchItem {
   tmdb_id: string
   title: string
   year: string
+  type: string
   image: string
   overview: string
   link: string
@@ -517,6 +518,10 @@ const tmdbSearchVisible = ref(false)
 const tmdbSearchKeyword = ref('')
 const tmdbSearchResults = ref<TmdbSearchItem[]>([])
 const tmdbSearchSelected = ref('')
+
+function tmdbSearchKey(item: TmdbSearchItem) {
+  return `${item.type}:${item.tmdb_id}`
+}
 
 function searchTmdb() {
   tmdbSearchKeyword.value = ''
@@ -540,7 +545,17 @@ async function doTmdbSearch() {
 }
 
 function confirmTmdbSearch() {
-  if (tmdbSearchSelected.value) transferTmdb.value = tmdbSearchSelected.value
+  const selected = tmdbSearchResults.value.find(item => tmdbSearchKey(item) === tmdbSearchSelected.value)
+  if (selected) {
+    transferTmdb.value = selected.tmdb_id
+    transferType.value = selected.type === '电影' ? 'MOV' : selected.type === '动漫' ? 'ANIME' : 'TV'
+    if (transferType.value === 'MOV') {
+      transferSeason.value = ''
+      transferEpFormat.value = ''
+      transferEpDetails.value = ''
+      transferEpOffset.value = ''
+    }
+  }
   tmdbSearchVisible.value = false
   transferVisible.value = true
 }
@@ -845,10 +860,10 @@ async function deleteSelectedHardlinks() {
         <q-card-section>
           <div class="search-row"><q-input v-model="tmdbSearchKeyword" outlined dense class="col" placeholder="输入名称查询" @keyup.enter="doTmdbSearch" /><q-btn color="primary" icon="search" label="搜索" @click="doTmdbSearch" /></div>
           <q-list v-if="tmdbSearchResults.length" bordered separator class="tmdb-list q-mt-md">
-            <q-item v-for="item in tmdbSearchResults" :key="item.tmdb_id" clickable :active="tmdbSearchSelected === item.tmdb_id" active-class="bg-blue-1" @click="tmdbSearchSelected = item.tmdb_id">
-              <q-item-section side><q-radio v-model="tmdbSearchSelected" :val="item.tmdb_id" /></q-item-section>
+            <q-item v-for="item in tmdbSearchResults" :key="tmdbSearchKey(item)" clickable :active="tmdbSearchSelected === tmdbSearchKey(item)" active-class="bg-blue-1" @click="tmdbSearchSelected = tmdbSearchKey(item)">
+              <q-item-section side><q-radio v-model="tmdbSearchSelected" :val="tmdbSearchKey(item)" /></q-item-section>
               <q-item-section avatar><PosterPreview :src="item.image || '/no-image.png'" ratio="0.72" width="50px" @error="onTmdbPosterError" /></q-item-section>
-              <q-item-section><q-item-label class="text-weight-medium">{{ item.title }} ({{ item.year }})</q-item-label><q-item-label caption lines="3">{{ item.overview || '暂无简介' }}</q-item-label></q-item-section>
+              <q-item-section><q-item-label class="text-weight-medium">{{ item.title }} ({{ item.year }}) · {{ item.type }}</q-item-label><q-item-label caption lines="3">{{ item.overview || '暂无简介' }}</q-item-label></q-item-section>
             </q-item>
           </q-list>
           <div v-else-if="tmdbSearchKeyword" class="empty-state compact"><q-icon name="search_off" size="40px" color="grey-5" /><div>未找到相关信息</div></div>
