@@ -62,6 +62,7 @@ function createViewer() {
     }],
     options: {
       className: 'nas-image-viewer',
+      zIndex: 7000,
       initialCoverage: 0.9,
       keyboard: true,
       navbar: false,
