@@ -129,6 +129,7 @@ export interface RecognitionConfig {
   timeouts: Record<`${TimeoutStage}_ms`, number | null>
   providers: { anitopy: { enabled: boolean }; anitopy_ml: { enabled: boolean; endpoint: string; model_revision: string }; openai: OpenAIOptions }
   query: { max_queries: number | null; max_pages_per_query: number; candidates_per_query: number; detail_top_k: number
+    max_results_per_query: number | null; excess_results_policy: 'discard' | 'error'
     tmdb_concurrency: number; tmdb_qps: number; tmdb_retry_max: number; episode_details_enabled: boolean; prefer_english: boolean }
   matching: { min_name_similarity: number; match_threshold: number; min_score_gap: number; preferred_type: 'movie' | 'tv' | 'unknown'
     preferred_genre_id: number; adult_policy: 'exclude' | 'lowest' | 'include'

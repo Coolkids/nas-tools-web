@@ -45,6 +45,8 @@ export const settingsFields: SettingsField[] = [
   ...timeoutNames.map(([key, label]) => field('execution', `recognition.timeouts.${key}_ms`, `${label}（毫秒）`, 'nullable',
     { min: 1, unlimitedLabel: '不限时', help: ['anitopy_ml', 'openai'].includes(key) ? '引擎关闭时预算保留，当前不生效。' : undefined })),
   field('matching', 'recognition.query.max_queries', '最大查询数', 'nullable', { min: 1, unlimitedLabel: '不限数量', help: '不限数量仍去重并遵守并发和每秒请求数限制。' }),
+  field('matching', 'recognition.query.max_results_per_query', '关键词结果总数阈值', 'nullable', { min: 1, unlimitedLabel: '不限数量', help: '默认 100。TMDB 返回的结果总数大于此值时，按超量策略处理；不限数量时不触发。此阈值独立于每查询候选上限。' }),
+  field('matching', 'recognition.query.excess_results_policy', '关键词结果超量策略', 'select', { choices: choices([['丢弃该关键词，继续匹配', 'discard'], ['报错，阻止自动匹配', 'error']]), help: '丢弃时不再翻页，该查询的全部候选不参与评分，也不影响其他关键词的覆盖；报错时保留覆盖不足状态。若所有关键词均被丢弃，则无法匹配。' }),
   ...(['max_pages_per_query', 'candidates_per_query', 'detail_top_k', 'tmdb_retry_max'] as const).map((key, i) =>
     field('matching', `recognition.query.${key}`, ['每查询页数', '每查询候选上限', '详情 Top-K', 'TMDB 重试次数'][i], 'integer', { min: key === 'tmdb_retry_max' ? 0 : 1 })),
   field('matching', 'recognition.query.episode_details_enabled', '查询本集详情', 'boolean'),

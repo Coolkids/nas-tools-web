@@ -22,6 +22,8 @@ export const recognitionReasonLabels: Record<string, string> = {
   ENGLISH_NAME_PREFERRED: '先查询英文名称，仅在无法确认时回退此名称',
   QUERY_PAGE_LIMIT: '达到查询页数上限，仍有分页未读取',
   QUERY_CANDIDATE_LIMIT: '达到本关键词候选数量上限，仍有结果未读取',
+  QUERY_RESULT_LIMIT_DISCARDED: '结果总数超过阈值，已丢弃该关键词及其候选',
+  QUERY_RESULT_LIMIT_EXCEEDED: '结果总数超过阈值，按设置报错并阻止自动匹配',
   QUERY_REQUEST_FAILED: '关键词查询未能完成',
   TMDB_DETAIL_FAILED: '候选的 TMDB 详情获取失败',
   insufficient_coverage: '查询或必要详情覆盖不足',
