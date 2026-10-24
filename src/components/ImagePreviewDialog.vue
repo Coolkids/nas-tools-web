@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { api as viewerApi } from 'v-viewer'
+import { useViewer } from 'v-viewer'
 import type Viewer from 'viewerjs'
 import { computed, nextTick, onBeforeUnmount, watch } from 'vue'
 
@@ -23,6 +23,50 @@ const emit = defineEmits<{
 
 let previewMode: PreviewMode = 'fit'
 let activeViewer: ViewerWithRoot | null = null
+
+const { show: showViewer, hide: hideViewer, destroy: destroyViewer } = useViewer({
+  images: () => [{
+    src: props.src,
+    alt: props.alt,
+    'data-source': originalSrc.value || props.src
+  }],
+  options: () => ({
+    className: 'nas-image-viewer',
+    zIndex: 7000,
+    initialCoverage: 0.9,
+    keyboard: true,
+    navbar: false,
+    navigation: false,
+    title: true,
+    toolbar: {
+      fitScreen: { show: true, size: 'large', click: () => setPreviewMode('fit') },
+      originalSize: { show: true, size: 'large', click: () => setPreviewMode('original') },
+      zoomIn: true,
+      zoomOut: true,
+      reset: { show: true, click: () => setPreviewMode('fit') },
+      oneToOne: false,
+      prev: false,
+      play: false,
+      next: false,
+      rotateLeft: false,
+      rotateRight: false,
+      flipHorizontal: false,
+      flipVertical: false
+    },
+    url: 'data-source',
+    movable: true,
+    zoomable: true,
+    zoomOnGesture: true,
+    zoomOnTouch: true,
+    zoomOnWheel: true,
+    slideOnTouch: false,
+    slideOnWheel: false,
+    hidden: () => {
+      activeViewer = null
+      emit('update:modelValue', false)
+    }
+  })
+})
 
 function originalImageUrl(url: string) {
   return url.replace(/\/t\/p\/(?:w\d+|h\d+)(?=\/)/, '/t/p/original')
@@ -54,56 +98,15 @@ function createViewer() {
   if (!props.src || !props.modelValue || activeViewer) return
 
   previewMode = 'fit'
-  const viewer = viewerApi({
-    images: [{
-      src: props.src,
-      alt: props.alt,
-      'data-source': originalSrc.value || props.src
-    }],
-    options: {
-      className: 'nas-image-viewer',
-      zIndex: 7000,
-      initialCoverage: 0.9,
-      keyboard: true,
-      navbar: false,
-      navigation: false,
-      title: true,
-      toolbar: {
-        fitScreen: { show: true, size: 'large', click: () => setPreviewMode('fit') },
-        originalSize: { show: true, size: 'large', click: () => setPreviewMode('original') },
-        zoomIn: true,
-        zoomOut: true,
-        reset: { show: true, click: () => setPreviewMode('fit') },
-        oneToOne: false,
-        prev: false,
-        play: false,
-        next: false,
-        rotateLeft: false,
-        rotateRight: false,
-        flipHorizontal: false,
-        flipVertical: false
-      },
-      url: 'data-source',
-      movable: true,
-      zoomable: true,
-      zoomOnGesture: true,
-      zoomOnTouch: true,
-      zoomOnWheel: true,
-      slideOnTouch: false,
-      slideOnWheel: false,
-      hidden: () => {
-        activeViewer = null
-        emit('update:modelValue', false)
-      }
-    }
-  }) as ViewerWithRoot
+  const viewer = showViewer() as ViewerWithRoot | undefined
+  if (!viewer) return
 
   activeViewer = viewer
   syncModeButton()
 }
 
 function closeViewer() {
-  activeViewer?.hide()
+  hideViewer()
 }
 
 watch(() => props.modelValue, (isVisible) => {
@@ -117,7 +120,7 @@ watch(() => props.modelValue, (isVisible) => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
-  activeViewer?.destroy()
+  destroyViewer()
   activeViewer = null
 })
 </script>
